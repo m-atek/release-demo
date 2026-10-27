@@ -49,6 +49,9 @@ HOST_SECRETS = Path("/run/release-demo/secrets")
 UI = {"local": "http://localhost:8082", "host": "https://artifactory-demo.es.nl"}
 USER = "release-pipeline"
 TOKEN_SECONDS = 365 * 24 * 3600
+# The token carries the user's own permissions. A member-of-groups scope would
+# give it only those groups' rights, without the user's Deploy permission.
+SCOPE = "applied-permissions/user"
 
 USER_STEPS = [
     "Administration, User Management, Users, New user.",
@@ -116,7 +119,15 @@ def missing_repositories(jcr):
 
 
 def token_works(jcr, token):
-    """Anonymous access is off, so listing repositories needs a valid token."""
+    """A token with the user's own permissions (its scope), that JCR still accepts:
+    anonymous access is off, so listing repositories needs a valid token."""
+    try:
+        payload = token.split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    except (IndexError, ValueError):
+        return False
+    if SCOPE not in claims.get("scp", "").split():
+        return False
     return jcr.call("GET", "/artifactory/api/repositories", auth=f"Bearer {token}")[0] == 200
 
 
@@ -124,7 +135,7 @@ def create_token(jcr):
     """Through the token API, which accepts the admin password in this edition.
     Returns the token, or None when the user doesn't exist yet."""
     status, reply = jcr.call("POST", "/artifactory/api/security/token", Form(
-        username=USER, scope="member-of-groups:readers", expires_in=str(TOKEN_SECONDS)))
+        username=USER, scope=SCOPE, expires_in=str(TOKEN_SECONDS)))
     if status == 200 and isinstance(reply, dict) and reply.get("access_token"):
         return reply["access_token"]
     if status in (400, 404) and "user" in str(reply).lower():
