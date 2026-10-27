@@ -96,9 +96,10 @@ resource "aws_instance" "server" {
 
   tags = { Name = each.key, Role = "inventory-server", Service = "inventory" }
 
-  # A new AMI doesn't replace a server: Ansible keeps them current.
+  # A new AMI doesn't replace a server: Ansible keeps them current. Neither
+  # does the public address a stopped server gives up (AWS then reports none).
   lifecycle {
-    ignore_changes = [ami, user_data]
+    ignore_changes = [ami, user_data, associate_public_ip_address]
   }
 }
 

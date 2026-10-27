@@ -110,8 +110,9 @@ resource "aws_instance" "store" {
   tags = { Name = each.key, Role = "store-server", Store = each.value.store }
 
   # A newer base image doesn't replace a running fleet; the next up after a
-  # down builds from the current one.
+  # down builds from the current one. Neither does the public address a
+  # stopped server gives up (AWS then reports none).
   lifecycle {
-    ignore_changes = [ami, user_data]
+    ignore_changes = [ami, user_data, associate_public_ip_address]
   }
 }
