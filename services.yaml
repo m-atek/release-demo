@@ -496,3 +496,120 @@ store-floor:
     production:
       check:
         timeout_seconds: 600
+
+# Demo 6: a Mac app through Jamf to a pilot group, then every managed Mac,
+# and its Windows twin as a signed MSI. Two build agents make the installers
+# (desktop.build_agents); the tools host does the rest. staging is the pilot
+# group, production every managed Mac.
+store-assistant:
+  platform: desktop-macos-windows
+  path: services/store-assistant
+
+  settings:
+    # 1: Apple (Developer ID, notarization), Microsoft (Artifact Signing) and
+    # Jamf run as stand-ins with the same interfaces. STANDIN_APPLE, _JAMF and
+    # _MICROSOFT switch one of them. The pipeline passes these to every step.
+    STANDIN: "1"
+    STANDIN_NOTARY_SECONDS: "150"
+
+  # Parts built on other agents, in parallel, each from its own checkout,
+  # before scripts.build and scripts.test run on the tools host. The pipeline
+  # stashes dist/<service>/parts/<label>/ on each agent and unstashes it there.
+  build_agents:
+    mac:
+      build: python3 scripts/demos/desktop/mac_build.py build store-assistant --jira-key "$JIRA_KEY"
+      test: python3 scripts/demos/desktop/mac_build.py test store-assistant
+    windows:
+      build: pwsh -NoProfile -File scripts/demos/desktop/windows_build.ps1 -Step build -Service store-assistant
+      test: pwsh -NoProfile -File scripts/demos/desktop/windows_build.ps1 -Step test -Service store-assistant
+
+  desktop:
+    # The Windows track can be cut here: an open decision.
+    tracks: [mac, windows]
+
+  jira:
+    project: ORD
+
+  slack:
+    options: [standard]
+
+  scripts:
+    build: scripts/demos/desktop/combine.py
+    test: scripts/demos/desktop/reports.py
+    publish: scripts/publish.py
+    deploy: scripts/demos/desktop/deploy.py
+    check: scripts/demos/desktop/check.py
+
+  servicenow:
+    cmdb_item: store-assistant
+    assignment_group: Platform team
+    approvers: Change approvers
+    templates:
+      standard: Routine release of store-assistant
+      rollback: Rollback of store-assistant
+      pilot: Pilot of Store Assistant
+    # Texts for the templates above, for servicenow_setup.py: the shared ones
+    # speak of a Lambda alias.
+    template_texts:
+      pilot:
+        short_description: Pilot of Store Assistant
+        description: Delivers a new Store Assistant to the Macs in the Jamf group Pilot only, through the Jamf policy Store Assistant. Demo system, not a client's.
+        implementation_plan: Upload the notarized package from JFrog Container Registry, verified by its SHA-256, to Jamf; point the policy at it; scope it to Pilot; flush the policy's logs.
+        backout_plan: Point the policy back at the previous package and flush its logs. The pilot Macs reinstall the previous version at their next check-in.
+        test_plan: The pilot Macs report the new version in Jamf inventory.
+        justification: A new version reaches the pilot group before every other Mac.
+        risk_impact_analysis: Low, the pilot group only, and the rollback is one step.
+      standard:
+        short_description: Routine release of store-assistant
+        description: A pre-approved release of Store Assistant, started from Slack and run by the release pipeline. Demo system, not a client's.
+        implementation_plan: The pipeline signs, notarizes and stores the installers once, delivers the Mac package through Jamf to Pilot, checks it, then widens the policy's scope to All managed Macs.
+        backout_plan: Point the Jamf policy back at the previous package and flush its logs.
+        test_plan: Unit tests, the quality gate, an SBOM scan with no critical findings, notarization, and the pilot Macs reporting the new version.
+        justification: Routine releases of Store Assistant follow the same automated, tested path every time.
+        risk_impact_analysis: Low, the pilot group checks the release first.
+      rollback:
+        short_description: Rollback of store-assistant
+        description: Puts the previous Store Assistant back on the Macs in the policy's scope. Started with /rollback in Slack.
+        implementation_plan: Point the Jamf policy Store Assistant at the previous release's package and flush its logs.
+        backout_plan: Point the policy at the newer package again.
+        test_plan: The Macs in scope report the previous version in Jamf inventory.
+        justification: Restores the previous version quickly after a bad release.
+        risk_impact_analysis: Low, the Macs return to the version they ran before.
+
+  sonarqube:
+    project_key: m-atek_release-demo_store-assistant
+    # SonarQube Cloud reads Swift with the scanner the pipeline runs. C# needs
+    # the SonarScanner for .NET on the Windows agent, so it is left out here.
+    properties:
+      sonar.sources: services/store-assistant/mac/Sources
+      sonar.tests: services/store-assistant/mac/Tests
+      sonar.coverageReportPaths: .release/reports/coverage-mac.xml
+
+  jamf:
+    policy: Store Assistant
+    pilot_group: Pilot
+    all_group: All managed Macs
+
+  windows:
+    test_instance: release-demo-desktop-test
+    build_agent: release-demo-desktop-build
+    product: { name: Store Assistant, folder: Expeditious Software\Store Assistant }
+    wix_sdk: WixToolset.Sdk/6.0.2
+
+  environments:
+    staging:
+      label: Pilot
+      jamf_scope: Pilot
+      check:
+        # The pilot Mac updates at its next check-in (every 15 minutes), or
+        # at once with sudo jamf policy.
+        timeout_seconds: 1200
+        report_groups: [Pilot]
+        show_groups: [All managed Macs]
+    production:
+      label: All managed Macs
+      jamf_scope: All managed Macs
+      check:
+        timeout_seconds: 900
+        report_groups: [Pilot]
+        show_groups: [All managed Macs]

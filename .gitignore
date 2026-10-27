@@ -18,3 +18,9 @@ crash.log
 
 # Terraform build output
 infra/.build/
+
+# Swift and .NET build output
+.build/
+.swiftpm/
+bin/
+obj/

@@ -1,0 +1,15 @@
+<!-- Store Assistant for Windows: the Mac app's twin, in WPF on .NET 10. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <AssemblyName>StoreAssistant</AssemblyName>
+    <RootNamespace>StoreAssistant</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\StoreAssistant.Core\StoreAssistant.Core.csproj" />
+  </ItemGroup>
+</Project>

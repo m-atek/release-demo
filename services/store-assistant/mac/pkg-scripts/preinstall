@@ -1,0 +1,10 @@
+#!/bin/sh
+# Runs as root before the installer replaces the app. If Store Assistant is
+# open, quit it and remember to open it again, so the new version shows at once.
+marker=/private/tmp/nl.es.StoreAssistant.reopen
+rm -f "$marker"
+if /usr/bin/pgrep -x StoreAssistant >/dev/null 2>&1; then
+  /usr/bin/pkill -x StoreAssistant
+  touch "$marker"
+fi
+exit 0

@@ -1,0 +1,11 @@
+<!-- The MSI, built with the WiX Toolset SDK. The SDK version comes from
+     services.yaml (windows.wix_sdk) through -p:WixSdk; PublishDir is the
+     app's dotnet publish output. -->
+<Project Sdk="WixToolset.Sdk/6.0.2">
+  <PropertyGroup>
+    <OutputName>StoreAssistant-$(Version)</OutputName>
+    <OutputType>Package</OutputType>
+    <DefineConstants>Version=$(Version);PublishDir=$(PublishDir)</DefineConstants>
+    <SuppressValidation>false</SuppressValidation>
+  </PropertyGroup>
+</Project>

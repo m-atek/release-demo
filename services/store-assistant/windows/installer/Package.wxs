@@ -1,0 +1,30 @@
+<!-- Store Assistant for Windows. Per machine, in Program Files. A major
+     upgrade replaces any other version, older ones included, so a rollback
+     can install an older MSI over a newer one. The version goes to the
+     uninstall entry (DisplayVersion), which the pipeline's check reads. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Store Assistant" Manufacturer="Expeditious Software" Version="$(var.Version)"
+           UpgradeCode="6F3C2B8E-4A61-4E0C-9C55-3D7A1B2E9F40" Scope="perMachine" Compressed="yes">
+    <MajorUpgrade AllowDowngrades="yes" />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="ARPCOMMENTS" Value="Demo system, not a client's." />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="CompanyFolder" Name="Expeditious Software">
+        <Directory Id="INSTALLFOLDER" Name="Store Assistant" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main">
+      <Files Directory="INSTALLFOLDER" Include="$(var.PublishDir)\**">
+        <Exclude Files="$(var.PublishDir)\**\*.pdb" />
+      </Files>
+      <Component Id="StartMenuShortcut" Directory="ProgramMenuFolder">
+        <Shortcut Name="Store Assistant" Target="[INSTALLFOLDER]StoreAssistant.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Expeditious Software\Store Assistant" Name="Version" Type="string"
+                       Value="$(var.Version)" KeyPath="yes" />
+      </Component>
+    </Feature>
+  </Package>
+</Wix>
