@@ -5,8 +5,9 @@
 #   scripts/demo.sh up <demo>       create or start it, wait until it answers
 #   scripts/demo.sh down <demo>     stop it
 #   scripts/demo.sh status [<demo>] what runs, for one demo or all of them
+#   scripts/demo.sh <action> <demo> any other step a demo has, for example open-pr
 #
-# Each demo implements these in scripts/demos/<demo>/{up,down,status}.sh.
+# Each demo implements these in scripts/demos/<demo>/<action>.sh.
 
 set -euo pipefail
 
@@ -14,7 +15,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DEMOS=$ROOT/scripts/demos
 
 usage() {
-  sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
   echo "Demos: $(cd "$DEMOS" 2>/dev/null && ls -d */ 2>/dev/null | tr -d / | tr '\n' ' ')"
   exit 2
 }
@@ -38,5 +39,8 @@ case $action in
       "$script" || true
     done
     ;;
-  *) usage ;;
+  *)
+    [[ -n $demo && -x $DEMOS/$demo/$action.sh ]] || usage
+    exec "$DEMOS/$demo/$action.sh"
+    ;;
 esac

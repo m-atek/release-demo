@@ -14,6 +14,9 @@ def call() {
         }
         def services = readYaml(file: 'services.yaml')
         for (String service : services.keySet() as List) {
+            if (services[service].pipeline == 'pull-request') {
+                continue  // built by its own pull request job (demo 2)
+            }
             String version = readFile("${services[service].path}/VERSION").trim()
             sh 'rm -rf .release dist'
             stage("${service}: Build") { toolchain.build(service, 'CI') }

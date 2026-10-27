@@ -24,10 +24,11 @@ locals {
   )
   slack_handler_config = {
     services = {
+      # A service released through pull requests (demo 2) has no /release.
       for name, s in local.services : name => {
         jira_project = s.jira.project
         options      = try(s.slack.options, [])
-      }
+      } if try(s.pipeline, "release") != "pull-request"
     }
   }
 }

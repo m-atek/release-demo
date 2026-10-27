@@ -10,6 +10,7 @@ Prints counts only, never values.
 """
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -58,6 +59,11 @@ def main():
     write(directory, "splunk.env", f"SPLUNK_PASSWORD={values['splunk/password']}\n"
                                    f"SPLUNK_HEC_TOKEN={values['splunk/hec-token']}\n", gid=0, mode=0o600)
     write(directory, "jcr.env", f"JF_SHARED_DATABASE_PASSWORD={values['jcr/db-password']}\n", gid=0, mode=0o600)
+    if "github/app-private-key" in values:
+        # Jenkins' GitHub App credential reads only PKCS#8 keys; GitHub hands out PKCS#1.
+        pkcs8 = subprocess.run(["openssl", "pkcs8", "-topk8", "-nocrypt"], input=values["github/app-private-key"],
+                               capture_output=True, text=True, check=True).stdout
+        write(directory, "github-app-private-key-pkcs8", pkcs8)
     if "cloudflare/tunnel-token" not in values:
         # Compose names the file even when the tunnel isn't running.
         write(directory, "cloudflare-tunnel-token", "", gid=0, mode=0o400)

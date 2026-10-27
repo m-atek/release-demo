@@ -34,7 +34,8 @@ def manifest(owner):
         "redirect_url": f"http://localhost:{PORT}/callback",
         "public": False,
         "hook_attributes": {"url": "https://example.invalid/no-webhook", "active": False},
-        "default_permissions": {"contents": "write", "metadata": "read"},
+        "default_permissions": {"contents": "write", "metadata": "read", "checks": "write",
+                                "pull_requests": "write", "statuses": "write"},
         "default_events": [],
     }
 
@@ -62,7 +63,7 @@ def main():
         '<!doctype html><meta charset="utf-8"><title>Create the GitHub App</title>'
         '<body style="font:18px system-ui;max-width:640px;margin:64px auto">'
         f"<h1>GitHub App for {html.escape(args.owner)}/{REPOSITORY}</h1>"
-        "<p>Contents read and write, metadata read, no webhook.</p>"
+        "<p>Contents, checks, pull requests and commit statuses read and write, metadata read, no webhook.</p>"
         f'<form action="https://github.com/settings/apps/new?state={state}" method="post">'
         f'<input type="hidden" name="manifest" value="{html.escape(json.dumps(manifest(args.owner)))}">'
         '<button style="font:inherit;padding:10px 20px">Create it on GitHub</button></form></body>'

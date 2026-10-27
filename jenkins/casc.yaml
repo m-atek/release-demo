@@ -92,6 +92,13 @@ credentials:
               id: sonar-token
               description: SonarQube Cloud token, for the scanner in the quality gate stage
               secret: ${sonar-token:-not-set}
+          # Demo 2: the GitHub App publishes check runs on pull requests. Jenkins
+          # needs its key in PKCS#8 form, which host_secrets.py writes.
+          - gitHubApp:
+              id: github-app
+              description: The release-demo GitHub App, for pull request check runs
+              appID: ${github-app-id:-0}
+              privateKey: ${github-app-private-key-pkcs8:-}
           - string:
               scope: GLOBAL
               id: jcr-token
