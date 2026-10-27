@@ -22,9 +22,15 @@ mount_data() {
   local device=/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${DATA_VOLUME_ID//-/}
   for _ in $(seq 60); do [[ -e $device ]] && break; sleep 2; done
   [[ -e $device ]] || { echo "Data volume $DATA_VOLUME_ID isn't attached"; exit 1; }
-  blkid "$device" >/dev/null || mkfs.ext4 -q -L release-demo-data "$device"
+  blkid "$device" >/dev/null || mkfs.ext4 -q "$device"
   mkdir -p /data
-  grep -q "LABEL=release-demo-data" /etc/fstab || echo "LABEL=release-demo-data /data ext4 defaults,nofail 0 2" >> /etc/fstab
+  # By UUID: the device name can change between boots. One line, marked, so a
+  # rerun replaces it instead of adding another.
+  local uuid
+  uuid=$(blkid -s UUID -o value "$device")
+  sed -i '/release-demo data volume/d; /LABEL=release-demo-dat/d' /etc/fstab
+  echo "UUID=$uuid /data ext4 defaults,nofail 0 2 # release-demo data volume" >> /etc/fstab
+  systemctl daemon-reload
   mountpoint -q /data || mount /data
 }
 

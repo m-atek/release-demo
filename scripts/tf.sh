@@ -26,6 +26,12 @@ if [[ $1 == bootstrap ]]; then
   exit
 fi
 
+# The Cloudflare provider reads its token from the environment, never a file.
+cloudflare_token=$(aws ssm get-parameter --with-decryption --name /release-demo/cloudflare/api-token \
+  --query Parameter.Value --output text 2>/dev/null || true)
+[[ -n $cloudflare_token && $cloudflare_token != unset ]] && export CLOUDFLARE_API_TOKEN=$cloudflare_token
+unset cloudflare_token
+
 state_bucket() {
   aws ssm get-parameter --name /release-demo/terraform/state-bucket --query Parameter.Value --output text 2>/dev/null ||
     { echo "No state bucket yet. Run: scripts/tf.sh bootstrap" >&2; exit 1; }

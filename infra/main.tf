@@ -7,6 +7,8 @@ terraform {
     aws     = { source = "hashicorp/aws", version = "~> 6.69.0" }
     random  = { source = "hashicorp/random", version = "~> 3.9.0" }
     archive = { source = "hashicorp/archive", version = "~> 2.8.0" }
+    # CLOUDFLARE_API_TOKEN comes from SSM through scripts/tf.sh.
+    cloudflare = { source = "cloudflare/cloudflare", version = "~> 5.27.0" }
   }
   # The bucket comes from SSM at init: scripts/tf.sh init.
   backend "s3" {

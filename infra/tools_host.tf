@@ -14,7 +14,7 @@ data "aws_ssm_parameter" "github_repository" {
 
 resource "aws_security_group" "tools_host" {
   name        = "release-demo-tools-host"
-  description = "Tools host: no inbound. JCR 8082 opens later only to demo servers' groups."
+  description = "Tools host: no inbound. JCR 8082 opens later only to the security groups of demo servers."
   vpc_id      = aws_vpc.demo.id
 
   egress {
