@@ -59,9 +59,64 @@ def initial_standins(store, build="1"):
     store.write("google-play.json", play)
 
 
+def placeholder_ipa(version, build):
+    """For the stand-ins only, when no Mac can rebuild: an .ipa holding just
+    2.3.0's Info.plist, sealed like the Apple stand-in's exports, so Jamf's
+    stand-in takes it through the same upload call."""
+    import plistlib
+    import tempfile
+    from pathlib import Path
+
+    from build import standin_export
+
+    config = mobile.config()
+    with tempfile.TemporaryDirectory() as temp:
+        app = Path(temp) / "Runner.app"
+        app.mkdir()
+        (app / "Info.plist").write_bytes(plistlib.dumps({
+            "CFBundleIdentifier": config["app"]["bundle_id"], "CFBundleShortVersionString": version,
+            "CFBundleVersion": build, "CFBundleDisplayName": config["app"]["name"],
+            "ITSAppUsesNonExemptEncryption": False}))
+        target = Path(temp) / "placeholder.ipa"
+        standin_export(app, "ad-hoc", target)
+        return target.read_bytes()
+
+
+def reset_shared_jamf(client):
+    """Demo 6's shared Jamf stand-in: Store Floor exists, every store device gets
+    2.3.0 with a build above the last, and the scope goes back to Pilot."""
+    from deploy import next_rebuild_number
+
+    config = mobile.config()
+    settings, app_config = config["jamf"], config["app"]
+    client.ensure_app(settings["app"], app_config["bundle_id"], settings["pilot_group"])
+    app = client.find_app(settings["app"])
+    on_start = app["version"] == START and app["scope"] == [settings["pilot_group"]] and all(
+        (client.installed(d["id"], app_config["bundle_id"]) or {}).get("version") == START
+        for d in client.devices(settings["all_group"]))
+    if on_start:
+        say(f"Jamf: already on {START}, scope {settings['pilot_group']}")
+        return
+    builds = [(client.installed(d["id"], app_config["bundle_id"]) or {}).get("build")
+              for d in client.devices(settings["all_group"])]
+    number = next_rebuild_number("1", app["build"], *builds)
+    client.set_scope(app["id"], [settings["all_group"]])
+    client.upload_ipa(app["id"], f"{SERVICE}-{START}-{number}-adhoc.ipa", placeholder_ipa(START, number))
+    client.put_back(app_config["bundle_id"], settings["app"], START, number, settings["all_group"])
+    client.set_scope(app["id"], [settings["pilot_group"]])
+    say(f"Jamf: every store device on {START} ({number}), scope {settings['pilot_group']}")
+
+
 def reset_standins(store):
     """Back to the start without a rebuild: the stand-in's devices on 2.3.0 with
     a higher build number, scope Pilot, and 2.3.0 the testers' latest."""
+    client = jamf_apps.jamf()
+    if isinstance(client, jamf_apps.SharedJamf):
+        if not (store.read("testflight.json") and store.read("google-play.json")):
+            initial_standins(store)
+        reset_shared_jamf(client)
+        reset_store_tracks(store)
+        return
     jamf_state = store.read("jamf.json")
     if not (jamf_state and store.read("testflight.json") and store.read("google-play.json")):
         initial_standins(store)
@@ -116,7 +171,9 @@ def reset_jamf(store):
 
     config = mobile.config()
     settings = config["jamf"]
-    client = jamf_apps.jamf(store=store)
+    client = jamf_apps.jamf()
+    if isinstance(client, jamf_apps.SharedJamf):
+        client.ensure_app(settings["app"], config["app"]["bundle_id"], settings["pilot_group"])
     app = client.find_app(settings["app"])
     if app["version"] == START and app["scope"] == [settings["pilot_group"]]:
         say(f"Jamf: already on {START} ({app['build']}), scope {settings['pilot_group']}")
@@ -180,7 +237,7 @@ def main():
         say(f"Stand-ins reset in {time.time() - started:.0f}s")
         return
 
-    if store and not store.read("jamf.json"):
+    if store and not store.read("testflight.json"):
         initial_standins(store)
         say("Stand-ins: created, everything on 2.3.0")
     reset_jamf(store)

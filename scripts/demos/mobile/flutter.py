@@ -10,6 +10,7 @@ container, on the data volume on the tools host, so builds stay fast.
 
 import hashlib
 import os
+import platform
 import shutil
 import subprocess
 from pathlib import Path
@@ -54,6 +55,10 @@ def in_container(command, cwd, env_names=(), mounts=(), check=True, capture=Fals
     args = ["docker", "run", "--rm", "--platform", "linux/amd64", "--user", f"{os.getuid()}:{os.getgid()}",
             "-v", f"{mobile.ROOT}:{mobile.ROOT}", "-v", f"{cache}:/cache", "-e", "GRADLE_USER_HOME=/cache/gradle",
             "-w", str(cwd)]
+    if platform.machine() == "arm64":
+        # amd64 under Rosetta on an Apple silicon Mac (local runs only): Java's
+        # default way of starting processes hangs there.
+        args += ["-e", "JAVA_TOOL_OPTIONS=-Djdk.lang.Process.launchMechanism=FORK"]
     for name in env_names:
         args += ["-e", name]
     for source, target in mounts:

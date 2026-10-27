@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, "scripts/demos/mobile")
 import mobile, reset
 store = mobile.state_store()
-if not store.read("jamf.json"):
+if not store.read("testflight.json"):
     reset.initial_standins(store)
     print("Stand-ins: created, everything on 2.3.0")
 PY

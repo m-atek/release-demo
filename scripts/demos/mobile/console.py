@@ -9,6 +9,10 @@
 /play      Android testing: the internal track's release, its version code
            and release notes, and the uploaded bundles.
 
+With demo 6's shared Jamf stand-in (scripts/demos/standins/jamf.py), /jamf
+opens that stand-in's own Device management page, which shows Store Floor's
+scope and the inventory of its groups.
+
 The pages refresh every three seconds. They read the stand-ins' state only;
 the pipeline changes it. They carry no product names and no stand-in label:
 the videos open with their own disclaimer, and this startup log says it.
@@ -18,6 +22,7 @@ import argparse
 import datetime
 import html
 import http.server
+import os
 import sys
 
 import mobile
@@ -149,15 +154,25 @@ def summary(store):
     config = mobile.config()
     bundle = config["app"]["bundle_id"]
     jamf, flight, play = (store.read(k) for k in ("jamf.json", "testflight.json", "google-play.json"))
-    if not jamf:
+    import jamf_apps
+
+    client = jamf_apps.jamf(store=None) if jamf_apps.SHARED.exists() and not os.environ.get("MOBILE_STANDIN_DIR") else None
+    if client is not None:
+        app = client.find_app(config["jamf"]["app"])
+        seen = ", ".join(f"{(client.installed(d['id'], bundle) or {}).get('version')}"
+                         for d in client.devices(config["jamf"]["pilot_group"]))
+        print(f"  device management: {app['name']} {app['version']} ({app['build']}), scope {', '.join(app['scope'])}; "
+              f"pilot devices on {seen}")
+    elif not jamf:
         print("  stand-ins: no state yet (scripts/demos/mobile/reset.py --standins)")
         return
-    app = next(iter(jamf["apps"].values()))
-    pilots = [jamf["devices"][str(i)] for i in jamf["groups"][config["jamf"]["pilot_group"]]]
-    seen = ", ".join(f"{(d['apps'].get(bundle) or {}).get('version')} ({(d['apps'].get(bundle) or {}).get('build')})"
-                     for d in pilots)
-    print(f"  device management: {app['name']} {app['version']} ({app['build']}), scope {', '.join(app['scope'])}; "
-          f"pilot devices on {seen}")
+    else:
+        app = next(iter(jamf["apps"].values()))
+        pilots = [jamf["devices"][str(i)] for i in jamf["groups"][config["jamf"]["pilot_group"]]]
+        seen = ", ".join(f"{(d['apps'].get(bundle) or {}).get('version')} ({(d['apps'].get(bundle) or {}).get('build')})"
+                         for d in pilots)
+        print(f"  device management: {app['name']} {app['version']} ({app['build']}), scope {', '.join(app['scope'])}; "
+              f"pilot devices on {seen}")
     latest = flight["builds"][0] if flight and flight["builds"] else None
     if latest:
         print(f"  iOS testing: {latest['version']} ({latest['build']}) {latest['internal_state'].lower()}")
@@ -165,6 +180,19 @@ def summary(store):
     if release:
         print(f"  Android testing: {release[0]['name']}, version code {', '.join(release[0]['versionCodes'])}, "
               f"{release[0]['status']}")
+
+
+def shared_jamf_page():
+    """A signed link to demo 6's Jamf stand-in page, or None without it."""
+    import jamf_apps
+
+    if not jamf_apps.SHARED.exists() or os.environ.get("MOBILE_STANDIN_DIR") or "jamf" not in mobile.standins():
+        return None
+    module = jamf_apps.shared_module()
+    ssm = mobile.ssm_client()
+    url = mobile.get_parameter(ssm, "jamf/standin-url").rstrip("/")
+    token = module.Signer(mobile.get_parameter(ssm, "jamf/standin-signing-key")).sign("ui", module.UI_SECONDS)
+    return f"{url}/standin/ui/login?token={token}"
 
 
 def main():
@@ -176,6 +204,7 @@ def main():
     if args.summary:
         summary(store)
         return
+    jamf_link = shared_jamf_page()
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
@@ -183,6 +212,11 @@ def main():
             if path == "/":
                 self.send_response(302)
                 self.send_header("Location", "/jamf")
+                self.end_headers()
+                return
+            if path == "/jamf" and jamf_link:
+                self.send_response(302)
+                self.send_header("Location", jamf_link)
                 self.end_headers()
                 return
             if path not in PAGES:

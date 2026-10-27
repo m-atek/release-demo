@@ -16,13 +16,21 @@ One app record whose scope is Pilot until the change is approved: a real fleet
 would keep a second record for everyone else, because Jamf removes a managed
 app from devices that leave its scope. The demo's devices never leave it.
 
-Demo 6's Jamf stand-in for Macs is scripts/demos/standins/jamf.py.
+Demo 6 owns the Jamf stand-in both demos share, scripts/demos/standins/jamf.py:
+a Jamf Pro look-alike behind a function URL, with its own page (Device
+management) and agentless store iPads. Where that file exists, jamf() uses its
+client, for the stand-in and the real Jamf Pro alike, through SharedJamf below.
+JamfStandin here is the fallback for a checkout without it, and for the tests.
 """
 
+import importlib.util
 import json
+import os
+import tempfile
 import time
 import urllib.parse
 import uuid
+from pathlib import Path
 from xml.sax.saxutils import escape
 
 import mobile
@@ -34,8 +42,24 @@ def build_key(build):
     return tuple(int(part) for part in str(build).split(".") if part.isdigit())
 
 
-def jamf(settings=None, store=None):
-    if "jamf" in mobile.standins(settings):
+SHARED = mobile.ROOT / "scripts" / "demos" / "standins" / "jamf.py"
+
+
+def shared_module():
+    spec = importlib.util.spec_from_file_location("standins_jamf", SHARED)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def jamf(settings=None, store=None, shared=None):
+    standin = "jamf" in mobile.standins(settings)
+    # MOBILE_STANDIN_DIR (tests, local runs) keeps this module's own stand-in.
+    if shared is None:
+        shared = SHARED.exists() and not os.environ.get("MOBILE_STANDIN_DIR")
+    if shared and store is None:
+        return SharedJamf(shared_module(), standin)
+    if standin:
         return JamfStandin(store or mobile.state_store())
     ssm = mobile.ssm_client()
     return JamfPro(*(mobile.get_parameter(ssm, f"{mobile.SERVICE}/{name}")
@@ -101,6 +125,85 @@ class JamfPro:
         ids = ",".join(str(i) for i in device_ids)
         for command in ("BlankPush", "UpdateInventory"):
             self.call("POST", f"/JSSResource/mobiledevicecommands/command/{command}/id/{ids}")
+
+
+class SharedJamf:
+    """Demo 6's Jamf client (the real Jamf Pro or the shared stand-in) with this module's calls."""
+
+    def __init__(self, module, standin):
+        self.module = module
+        self.client = module.connect(standin=standin)
+        self.standin = standin
+
+    def _call(self, function, *args):
+        try:
+            return function(*args)
+        except self.module.JamfError as error:
+            raise ServiceError(409, str(error)) from None
+
+    def app_url(self, app_id):
+        return f"{self.client.url}/mobileDeviceApps.html?id={app_id}&o=r"
+
+    def find_app(self, name):
+        app = self._call(self.client.mobile_app, name)
+        if not app:
+            raise ServiceError(404, f"Jamf has no mobile device app {name}. Run: scripts/demos/mobile/reset.py --standins")
+        scope = ["All mobile devices"] if app["scope"].get("all") else list(app["scope"].get("groups", []))
+        builds = [r["build"] for r in self._inventory().values() if r["identifier"] == app["bundle_id"]
+                  and r["version"] == app["version"]]
+        return {"id": app["id"], "name": app["name"], "bundle_id": app["bundle_id"], "version": app["version"],
+                "build": max(builds, key=build_key) if builds else None, "scope": scope, "url": self.app_url(app["id"])}
+
+    def upload_ipa(self, app_id, filename, data):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / filename
+            path.write_bytes(data)
+            self._call(self.client.upload_ipa, app_id, path)
+
+    def set_scope(self, app_id, groups):
+        self._call(self.client.set_mobile_app_scope, app_id, groups)
+
+    def devices(self, group):
+        found = self._call(self.client.mobile_device_group, group)
+        if not found:
+            raise ServiceError(404, f"Jamf has no mobile device group {group}")
+        return [{"id": m["id"], "name": m["name"]} for m in found["members"]]
+
+    def _inventory(self):
+        """Every device's apps, keyed by device id and bundle id."""
+        query = urllib.parse.urlencode([("section", "GENERAL"), ("section", "APPLICATIONS"), ("page-size", 500)])
+        rows = {}
+        for device in self._call(self.client.api, "GET", f"/api/v2/mobile-devices/detail?{query}")["results"]:
+            for app in device.get("applications") or []:
+                rows[(str(device["mobileDeviceId"]), app.get("identifier"))] = {
+                    "identifier": app.get("identifier"), "version": app.get("shortVersion") or app.get("version"),
+                    "build": app.get("version"),
+                    "reported_at": (device.get("general") or {}).get("lastInventoryUpdateDate")}
+        return rows
+
+    def installed(self, device_id, bundle_id):
+        return self._inventory().get((str(device_id), bundle_id))
+
+    def send_update(self, device_ids):
+        ids = ",".join(str(i) for i in device_ids)
+        for command in ("BlankPush", "UpdateInventory"):
+            try:
+                self.client.classic("POST", f"/mobiledevicecommands/command/{command}/id/{ids}")
+            except self.module.JamfError:
+                pass  # the stand-in's agentless devices install at once and need no nudge
+
+    # Setup and reset, on the shared stand-in
+
+    def ensure_app(self, name, bundle_id, pilot_group):
+        if not self._call(self.client.mobile_app, name):
+            self._call(self.client.create_mobile_app, name, bundle_id, [pilot_group])
+            print(f"Jamf: mobile device app {name} created, scoped to {pilot_group}")
+
+    def put_back(self, bundle_id, name, version, build, group):
+        """The stand-in's agentless devices back on exactly this build."""
+        for device in self.devices(group):
+            self._call(self.client.add_simulated_device, "mobile_device", device["name"],
+                       [{"identifier": bundle_id, "name": name, "version": str(build), "shortVersion": version}])
 
 
 STORES = ["Utrecht Centraal", "Amsterdam Zuid", "Rotterdam Blaak", "Eindhoven Strijp", "Den Haag Spui",
