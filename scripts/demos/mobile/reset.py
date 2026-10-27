@@ -68,7 +68,7 @@ def placeholder_ipa(version, build):
     import tempfile
     from pathlib import Path
 
-    from build import standin_export
+    standin_export = mobile.local("build").standin_export
 
     config = mobile.config()
     with tempfile.TemporaryDirectory() as temp:
@@ -86,7 +86,7 @@ def placeholder_ipa(version, build):
 def reset_shared_jamf(client):
     """Demo 6's shared Jamf stand-in: Store Floor exists, every store device gets
     2.3.0 with a build above the last, and the scope goes back to Pilot."""
-    from deploy import next_rebuild_number
+    next_rebuild_number = mobile.local("deploy").next_rebuild_number
 
     config = mobile.config()
     settings, app_config = config["jamf"], config["app"]
@@ -123,7 +123,7 @@ def reset_standins(store):
         initial_standins(store)
         say("Stand-ins: created, everything on 2.3.0")
         return
-    from deploy import next_rebuild_number
+    next_rebuild_number = mobile.local("deploy").next_rebuild_number
 
     config = mobile.config()
     bundle = config["app"]["bundle_id"]
@@ -168,7 +168,8 @@ def reset_store_tracks(store):
 def reset_jamf(store):
     """The real thing: rebuild 2.3.0 above the last build, upload it to every
     device, then narrow the scope back to Pilot."""
-    from deploy import next_rebuild_number, rebuild
+    deploy = mobile.local("deploy")
+    next_rebuild_number, rebuild = deploy.next_rebuild_number, deploy.rebuild
 
     config = mobile.config()
     settings = config["jamf"]

@@ -14,19 +14,17 @@ from pathlib import Path
 import pytest
 
 HERE = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(HERE))
+# Appended: the shared tests import scripts/check.py and friends by the same names.
+sys.path.append(str(HERE))
 
-import build  # noqa: E402  (demo 7's build.py)
-import check  # noqa: E402
-import deploy  # noqa: E402
 import google_play  # noqa: E402
 import jamf_apps  # noqa: E402
 import mobile  # noqa: E402
-import reset  # noqa: E402
 import run_state  # noqa: E402
-import test as flutter_test  # noqa: E402
 import testflight  # noqa: E402
 from standin import ServiceError  # noqa: E402
+
+build, check, deploy, reset, flutter_test = (mobile.local(name) for name in ("build", "check", "deploy", "reset", "test"))
 
 BUNDLE = "nl.es.demo.storefloor"
 

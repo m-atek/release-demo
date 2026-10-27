@@ -131,9 +131,7 @@ def rebuild(version, number):
 
 
 def build_orders_url():
-    from build import orders_url
-
-    return orders_url()
+    return mobile.local("build").orders_url()
 
 
 # --- Jamf -------------------------------------------------------------------

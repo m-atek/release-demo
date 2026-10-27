@@ -7,6 +7,7 @@ every stage script, so this file puts scripts/ on the import path.
 """
 
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -27,6 +28,19 @@ sys.path.append(str(ROOT / "scripts"))
 from common import SSM_PREFIX, aws_session, fail, get_parameter, service, ssm_client  # noqa: E402
 
 SERVICE = "store-floor"
+
+
+def local(name):
+    """This folder's build, check, deploy, reset or test script as a module. Shared
+    scripts in scripts/ have the same names, so these load by path, under
+    names of their own, whatever sys.path says."""
+    key = f"store_floor_{name}"
+    if key not in sys.modules:
+        spec = importlib.util.spec_from_file_location(key, HERE / f"{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[key] = module
+        spec.loader.exec_module(module)
+    return sys.modules[key]
 STANDINS = ("apple", "google-play", "jamf")
 
 
