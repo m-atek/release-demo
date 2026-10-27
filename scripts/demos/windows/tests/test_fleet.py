@@ -11,10 +11,22 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import check  # noqa: E402
-import deploy  # noqa: E402
+import importlib.util  # noqa: E402
+
 import fleet  # noqa: E402
 from common import service  # noqa: E402
+
+
+def demo_module(name):
+    """This demo's deploy.py or check.py, by path: the shared scripts have modules of the same names."""
+    spec = importlib.util.spec_from_file_location(f"windows_{name}", Path(__file__).resolve().parents[1] / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+check = demo_module("check")
+deploy = demo_module("deploy")
 
 
 def test_values_become_powershell_literals():

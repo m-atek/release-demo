@@ -8,9 +8,11 @@ The fleet part is one Run Command for all six servers (bootstrap.ps1): the
 baseline from JCR, verified by the SHA-256 services.yaml pins, as the service
 StoreSync, and the store's own config, without UploadEndpoint on the drifted
 server. The tiles in Grafana go back to "waiting" on 3.2.0. A reset also
-cancels store-sync changes still open, reopens ORD-31 with its version
-unreleased, and removes the tag store-sync-v3.3.0. Safe to run twice; under
-two minutes on a running fleet.
+cancels store-sync changes still open and reopens ORD-31 with its version
+unreleased. Like the main reset it keeps the past: earlier changes, notes and
+events stay, and a take that releases 3.3.0 again finds its tag and its
+release copy in place (the build is reproducible, so the copy matches). Safe
+to run twice; under two minutes on a running fleet.
 """
 
 import argparse
@@ -107,7 +109,6 @@ def main():
         print("Records")
         cancel_open_changes()
         shared("jira.py", "reopen", JIRA_KEY, f"{SERVICE} {RELEASE}")
-        shared("tag.py", "--delete", f"{SERVICE}-v{RELEASE}")
     print(f"{'Done' if ok else 'Not all servers are on the baseline'} in {waves.duration(time.monotonic() - started)}.")
     sys.exit(0 if ok else 1)
 
