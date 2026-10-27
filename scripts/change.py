@@ -6,6 +6,7 @@
     python scripts/change.py implement
     python scripts/change.py close successful|unsuccessful --notes "..."
     python scripts/change.py cancel --notes "..."
+    python scripts/change.py rollback successful|unsuccessful --notes "..."   a /rollback, from the rollback template
 
 Works through ServiceNow's Change Management API as release.pipeline. The
 change names the service's CMDB item, who asked (Sam), the plans, the
@@ -158,15 +159,17 @@ def wait(sn, state, timeout, interval):
     fail("No approval in time.")
 
 
-def implement(sn, state):
+def implement(sn, state, started=None):
     """Into Implement. A standard change starts in New and, like any change,
-    may only reach Implement from Scheduled, so it goes through Scheduled first."""
+    may only reach Implement from Scheduled, so it goes through Scheduled first.
+    The work starts now, or at started (epoch seconds) for work already done."""
     change = state["change"]
     path = f"/api/sn_chg_rest/change/{change['type']}/{change['sys_id']}"
     current = sn.call("GET", f"/api/now/table/change_request/{change['sys_id']}", sysparm_fields="state")["state"]
     if current not in (SCHEDULED, IMPLEMENT):
         sn.call("PATCH", path, {"state": SCHEDULED})
-    sn.call("PATCH", path, {"state": IMPLEMENT, "work_start": run_state.iso(run_state.now()).replace("T", " ").rstrip("Z")})
+    started = started or run_state.now()
+    sn.call("PATCH", path, {"state": IMPLEMENT, "work_start": run_state.iso(started).replace("T", " ").rstrip("Z")})
 
 
 def close(sn, state, code, notes):
@@ -174,6 +177,53 @@ def close(sn, state, code, notes):
     path = f"/api/sn_chg_rest/change/{change['type']}/{change['sys_id']}"
     sn.call("PATCH", path, {"state": REVIEW, "work_end": run_state.iso(run_state.now()).replace("T", " ").rstrip("Z")})
     sn.call("PATCH", path, {"state": CLOSED, "close_code": code, "close_notes": notes})
+
+
+def record_rollback(sn, ssm, state, code, notes):
+    """A /rollback, recorded once production is back: a pre-approved change from
+    the service's rollback template, in Implement from the rollback's start,
+    then closed with its result. It comes after the move, so a sleeping
+    ServiceNow never holds up the recovery. The run state is scripts/rollback.py's."""
+    config = service(state["service"])
+    name = config["servicenow"]["templates"]["rollback"]
+    template = sn.find("std_change_record_producer", f"name={name}^active=true", "sys_id")
+    if template is None:
+        fail(f"ServiceNow has no active standard change template '{name}'. Run scripts/servicenow_setup.py.")
+    production = state.get("deploys", {}).get("production", {})
+    was, was_number = production.get("previous_version", "?"), production.get("previous_number", "?")
+    back, back_number = production.get("rolled_back_to", "?"), production.get("rolled_back_number", "?")
+    group = sn.find("sys_user_group", "name=Platform team", "sys_id")["sys_id"]
+    ci = sn.find("cmdb_ci_appl", f"name={config['servicenow']['cmdb_item']}", "sys_id")["sys_id"]
+    asked_by = requester_user(sn, state.get("requested_by"))
+    build = state["build"].get("url", "")
+    key = state.get("jira_key")
+    issue = f"{key}: {get_parameter(ssm, 'jira/site-url').rstrip('/')}/browse/{key}" if key else "no Jira issue has its fix version"
+    fields = {
+        "short_description": f"Rollback of {state['service']} in production: {was} to {back}",
+        "description": f"/rollback in Slack moved {state['service']} in production from {was} back to {back}, the "
+                       "release before it, and checked it. Recorded by the rollback job. Demo system, not a client's.",
+        "cmdb_ci": ci, "assignment_group": group, "requested_by": asked_by["sys_id"], "category": "Software",
+        "justification": f"Roll back the release of {state['service']} {was}. Its issue: {issue}",
+        "implementation_plan": f"The rollback job moved production from version {was_number} ({was}) to version "
+                               f"{back_number} ({back}) and checked it.\nBuild: {build}",
+        "backout_plan": f"Move production forward again to version {was_number} ({was}).",
+        "test_plan": f"/health must report {back}, then every production check path must answer 200.",
+        "start_date": run_state.iso(state["started_at"]).replace("T", " ").rstrip("Z"),
+        "end_date": run_state.iso(run_state.now()).replace("T", " ").rstrip("Z"),
+    }
+    reply = sn.call("POST", f"/api/sn_chg_rest/change/standard/{template['sys_id']}", fields)
+    change_id, number = reply["sys_id"]["value"], reply["number"]["value"]
+    state["change"] = {"sys_id": change_id, "number": number, "type": "standard",
+                       "url": f"{sn.url}/change_request.do?sys_id={change_id}", "requested_by": asked_by["sys_id"]}
+    run_state.save(state)
+
+    search = urllib.parse.quote(f'search sourcetype="release:event" build_url="{build}"')
+    note(sn, state, "Rollback steps:\n" + stage_summary(state) + f"\n\nJenkins build: {build}\n"
+                    f"Splunk: https://splunk-demo.es.nl/en-US/app/search/search?q={search}\n"
+                    f"Grafana: {get_parameter(ssm, 'grafana/stack-url').rstrip('/')}/d/release-demo")
+    implement(sn, state, started=state["started_at"])
+    close(sn, state, code, notes)
+    print(f"{number}: rollback {was} to {back}, standard, closed {code}")
 
 
 def cancel(sn, state, notes):
@@ -199,6 +249,9 @@ def main():
     closer.add_argument("--notes", required=True)
     canceller = sub.add_parser("cancel")
     canceller.add_argument("--notes", required=True)
+    rollback = sub.add_parser("rollback")
+    rollback.add_argument("code", choices=["successful", "unsuccessful"])
+    rollback.add_argument("--notes", required=True)
     args = parser.parse_args()
 
     state = run_state.load()
@@ -215,6 +268,8 @@ def main():
         implement(sn, state)
     elif args.command == "close":
         close(sn, state, args.code, args.notes)
+    elif args.command == "rollback":
+        record_rollback(sn, ssm, state, args.code, args.notes)
     else:
         cancel(sn, state, args.notes)
 

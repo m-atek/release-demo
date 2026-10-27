@@ -41,6 +41,20 @@ pipelineJob('release') {
     definition fromRepository('Jenkinsfile')
 }
 
+pipelineJob('rollback') {
+    description('Rolls production back to the release before the live one, and records it. Started by /rollback in Slack as release-bot.')
+    parameters {
+        stringParam('SERVICE', 'orders-service', 'A service from services.yaml.')
+        stringParam('REQUESTED_BY', '', 'Slack user id of who asked.')
+        stringParam('SLACK_CHANNEL', '', 'Channel of the Slack status message.')
+        stringParam('SLACK_TS', '', 'Timestamp of the Slack status message.')
+        stringParam('REQUESTED_AT', '', 'Epoch seconds of the Slack command, where the total time starts.')
+    }
+    properties { disableConcurrentBuilds() }
+    logRotator { numToKeep(200) }
+    definition fromRepository('jenkins/rollback.Jenkinsfile')
+}
+
 pipelineJob('ci') {
     description('Every push to main: build, test, quality gate, SBOM and scan. Polls every 5 minutes; skips [skip ci].')
     properties {
@@ -53,7 +67,7 @@ pipelineJob('ci') {
 
 // Views next to All: a release dashboard with the latest builds and test
 // trends, and a monitor with one big tile per job for a second screen.
-List<String> demoJobs = ['release', 'ci', 'tools-smoke']
+List<String> demoJobs = ['release', 'rollback', 'ci', 'tools-smoke']
 
 dashboardView('Releases') {
     description('Releases and CI runs on the demo platform. Demo system, not a client\'s.')
