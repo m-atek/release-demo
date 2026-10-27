@@ -1,0 +1,30 @@
+<!--
+  store-sync, the Windows service: .NET Framework 4.8, as legacy store software
+  is. An SDK-style project, so the .NET SDK on the Linux build agent compiles
+  it against Microsoft's reference assemblies: no Windows build agent.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>StoreSync</AssemblyName>
+    <RootNamespace>StoreSync</RootNamespace>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Configuration" />
+    <Reference Include="System.ServiceProcess" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../StoreSync.Core/StoreSync.Core.csproj" />
+  </ItemGroup>
+</Project>

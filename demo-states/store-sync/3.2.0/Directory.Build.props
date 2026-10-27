@@ -1,0 +1,29 @@
+<!--
+  Settings every store-sync project shares. The version comes from VERSION, so
+  the binaries, /health and the package name always agree. The build is
+  deterministic: no commit hash, no machine paths and no timestamps end up in
+  the binaries, so the same source gives the same package checksum.
+-->
+<Project>
+  <PropertyGroup>
+    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)VERSION').Trim())</Version>
+    <Company>release-demo</Company>
+    <Product>store-sync</Product>
+    <Copyright>release-demo, MIT licence</Copyright>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <Deterministic>true</Deterministic>
+    <!-- Build machines' paths stay out of the binaries. Not for tests: coverage needs real paths. -->
+    <PathMap Condition="'$(ContinuousIntegrationBuild)' == 'true'">$(MSBuildThisFileDirectory)=/_/</PathMap>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <EnableSourceLink>false</EnableSourceLink>
+    <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- Restore exactly what packages.lock.json records. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode Condition="'$(ContinuousIntegrationBuild)' == 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
+</Project>

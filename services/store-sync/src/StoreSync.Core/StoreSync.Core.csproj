@@ -1,0 +1,11 @@
+<!--
+  What store-sync does, without Windows: its settings, its upload schedule and
+  its health report. netstandard2.0, so the .NET Framework 4.8 service uses it
+  and the tests run it on Linux.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>StoreSync.Core</RootNamespace>
+  </PropertyGroup>
+</Project>

@@ -250,3 +250,86 @@ network-stack:
     demo_branch: demo-2/store-exports
     demo_title: ORD-22 Store exports bucket and queue
     demo_file: infra/demos/2-terraform/network/exports.tf
+
+store-sync:
+  # Demo 1: a legacy .NET Framework 4.8 Windows service on six store servers,
+  # upgraded in waves through AWS Systems Manager Run Command. No logins, no
+  # inbound ports. infra/demos/1-windows creates the fleet.
+  platform: windows-fleet
+  path: services/store-sync
+  toolchain: jenkins/toolchain/dotnet.Dockerfile
+
+  jira:
+    project: ORD
+
+  slack:
+    # /release store-sync ORD-31 resume: a new change, linked to the last one,
+    # for the servers not on the new version yet.
+    options: [resume]
+
+  scripts:
+    build: scripts/demos/windows/build.py
+    test: scripts/demos/windows/test.sh
+    quality_gate: scripts/demos/windows/quality_gate.sh
+    publish: scripts/publish.py
+    plan: scripts/demos/windows/plan.py
+    deploy: scripts/demos/windows/deploy.py
+    check: scripts/demos/windows/check.py
+    change: scripts/change.py
+    notify: scripts/notify.py
+    events: scripts/events.py
+
+  servicenow:
+    cmdb_item: store-sync
+    # Each server is a Windows Server CI that runs store-sync, and an affected
+    # item of the change: scripts/demos/windows/servicenow_fleet.py.
+    server_class: cmdb_ci_win_server
+    assignment_group: Platform team
+    approvers: Change approvers
+    templates:
+      rollback: Rollback of store-sync
+
+  sonarqube:
+    project_key: m-atek_release-demo_store-sync
+
+  environments:
+    # No staging: the first wave, one server alone, is the canary.
+    production:
+      # The servers are found by these tags and their Name.
+      tags: { Project: release-demo, Demo: 1-windows }
+      waves:
+        - [STORE-001]
+        - [STORE-002, STORE-003]
+        - [STORE-004, STORE-005]
+        - [STORE-006]
+      # Never more servers at once than this, whatever the wave.
+      parallel: 2
+      install_dir: 'C:\StoreSync'
+      health_url: http://localhost:8080/health
+      # What up and reset.py install: the release before ORD-31.
+      baseline:
+        version: 3.2.0
+        path: store-sync-releases/3.2.0/store-sync-3.2.0.zip
+        # The build is reproducible, so the baseline's checksum is fixed:
+        # scripts/demos/windows/seed.py checks it, every server verifies it.
+        sha256: 1f8afb36d041cf1b01af9201536b7fb3a0d303a64376b34ec93561ce58d4fd52
+      prechecks:
+        min_free_gb: 5
+      check:
+        timeout_seconds: 60
+      # Made-up stores. The maintenance window is checked before each server,
+      # in the store's own time zone; in the demo it is always open.
+      servers:
+        STORE-001: { store: Amsterdam, timezone: Europe/Amsterdam, maintenance_window: "Mon-Sun 00:00-24:00" }
+        STORE-002: { store: Rotterdam, timezone: Europe/Amsterdam, maintenance_window: "Mon-Sun 00:00-24:00" }
+        STORE-003: { store: Utrecht, timezone: Europe/Amsterdam, maintenance_window: "Mon-Sun 00:00-24:00" }
+        STORE-004: { store: Eindhoven, timezone: Europe/Amsterdam, maintenance_window: "Mon-Sun 00:00-24:00" }
+        STORE-005: { store: The Hague, timezone: Europe/Amsterdam, maintenance_window: "Mon-Sun 00:00-24:00" }
+        STORE-006: { store: Antwerp, timezone: Europe/Brussels, maintenance_window: "Mon-Sun 00:00-24:00" }
+      settings:
+        UploadEndpoint: https://uploads.eu-west.store-sync.internal/{store_id}
+      # Planted on purpose by up and reset.py: STORE-004's config lacks
+      # UploadEndpoint. 3.2.0 falls back to a built-in endpoint, 3.3.0 has none.
+      # scripts/demo.sh fix-drift windows restores it.
+      drift:
+        STORE-004: UploadEndpoint
