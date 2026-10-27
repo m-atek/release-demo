@@ -116,6 +116,12 @@ grafana/external-id:
   source: you
   secure: true
   help: "CloudWatch data source, Grafana Assume Role: the External ID it shows."
+grafana/setup-token:
+  source: you
+  secure: true
+  help: "Stack, Administration, Users and access, Service accounts: release-demo-setup with the Admin role, token (glsa_...). Only scripts/grafana_setup.py uses it, on your Mac, to save the CloudWatch data source; never the tools host."
+  pattern: "^glsa_"
+  hint: "a service account token starts with glsa_"
 
 sonar/organization:
   source: you

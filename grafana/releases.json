@@ -1,0 +1,913 @@
+{
+  "uid": "release-demo",
+  "title": "Releases",
+  "description": "Demo system, not a client's. Releases of the demo services: live versions, delivery metrics, the last ten releases and Lambda metrics with every release and rollback marked.",
+  "tags": [
+    "release-demo"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "links": [],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "name": "Annotations & Alerts",
+        "type": "dashboard",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        }
+      },
+      {
+        "name": "orders-service releases",
+        "enable": true,
+        "hide": false,
+        "iconColor": "green",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "target": {
+          "type": "tags",
+          "tags": [
+            "release-demo",
+            "release",
+            "orders-service"
+          ],
+          "matchAny": false,
+          "limit": 100
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            5,
+            6
+          ]
+        }
+      },
+      {
+        "name": "orders-service rollbacks",
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "target": {
+          "type": "tags",
+          "tags": [
+            "release-demo",
+            "rollback",
+            "orders-service"
+          ],
+          "matchAny": false,
+          "limit": 100
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            5,
+            6
+          ]
+        }
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "cloudwatch",
+        "label": "CloudWatch",
+        "type": "datasource",
+        "query": "cloudwatch",
+        "hide": 2,
+        "current": {
+          "text": "CloudWatch (release-demo)",
+          "value": "release-demo-cloudwatch"
+        },
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "multi": false,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Demo system, not a client's.** orders-service is a fictional service. The releases, events and metrics on this dashboard come from real runs of the demo's release pipeline."
+      }
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "orders-service",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 2,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Live versions",
+      "description": "The version that last passed its check in each environment. After a rollback, production shows the version it went back to.",
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 6,
+        "h": 5
+      },
+      "timeFrom": "14d",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"orders-service\", environment=\"staging\"} | json | stage=\"Check staging\" and result=\"ok\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"orders-service\", environment=\"production\"} | json | stage=\"Check production\" and result=\"ok\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Line"
+              ]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "None yet"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Staging"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Production"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "text": {
+          "titleSize": 16,
+          "valueSize": 40
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Delivery metrics, last 14 days",
+      "description": "From the pipeline's production events in Grafana Cloud Logs, which keeps 14 days. Deployment frequency: production deployments per day. Lead time for changes: median time from the commit to its production deployment. Change failure rate: production deployments that failed their production check. Failed deployment recovery time: mean time from a failed production check to the previous version being back and checked.",
+      "gridPos": {
+        "x": 6,
+        "y": 3,
+        "w": 18,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "sum(count_over_time({source=\"release-demo\", service=\"orders-service\", environment=\"production\"} | json | stage=\"Production\" and result=\"ok\" [14d])) / 14",
+          "queryType": "instant",
+          "legendFormat": "Deployment frequency",
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "quantile_over_time(0.5, {source=\"release-demo\", service=\"orders-service\", environment=\"production\"} | json | stage=\"Production\" and result=\"ok\" | unwrap lead_time_seconds | __error__=\"\" [14d]) by (service)",
+          "queryType": "instant",
+          "legendFormat": "Lead time for changes",
+          "editorMode": "code"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "(sum(count_over_time({source=\"release-demo\", service=\"orders-service\", environment=\"production\"} | json | stage=\"Check production\" and result=\"failed\" [14d])) or vector(0)) / sum(count_over_time({source=\"release-demo\", service=\"orders-service\", environment=\"production\"} | json | stage=\"Production\" and result=\"ok\" [14d]))",
+          "queryType": "instant",
+          "legendFormat": "Change failure rate",
+          "editorMode": "code"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "sum(avg_over_time({source=\"release-demo\", service=\"orders-service\", environment=\"production\"} | json | stage=\"Rollback\" | unwrap recovery_seconds | __error__=\"\" [14d]) by (service)) or vector(0)",
+          "queryType": "instant",
+          "legendFormat": "Failed deployment recovery time",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "No deployments yet"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Deployment frequency"
+              },
+              {
+                "id": "unit",
+                "value": "suffix: per day"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Lead time for changes"
+              },
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "C"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Change failure rate"
+              },
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "D"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Failed deployment recovery time"
+              },
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "No rollbacks",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Lambda errors",
+      "description": "Errors of each environment's function, per minute, from CloudWatch. Green marks are releases, red marks are rollbacks.",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${cloudwatch}"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "region": "default",
+          "namespace": "AWS/Lambda",
+          "metricName": "Errors",
+          "dimensions": {
+            "FunctionName": "orders-service-production"
+          },
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "",
+          "expression": "",
+          "label": "production"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${cloudwatch}"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "region": "default",
+          "namespace": "AWS/Lambda",
+          "metricName": "Errors",
+          "dimensions": {
+            "FunctionName": "orders-service-staging"
+          },
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "",
+          "expression": "",
+          "label": "staging"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "auto",
+            "pointSize": 4,
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "barAlignment": 0,
+            "gradientMode": "none",
+            "lineInterpolation": "linear"
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "production"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "staging"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Lambda duration",
+      "description": "Average duration of each environment's function, per minute, from CloudWatch. Green marks are releases, red marks are rollbacks.",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${cloudwatch}"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "region": "default",
+          "namespace": "AWS/Lambda",
+          "metricName": "Duration",
+          "dimensions": {
+            "FunctionName": "orders-service-production"
+          },
+          "matchExact": true,
+          "statistic": "Average",
+          "period": "60",
+          "id": "",
+          "expression": "",
+          "label": "production"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "${cloudwatch}"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "region": "default",
+          "namespace": "AWS/Lambda",
+          "metricName": "Duration",
+          "dimensions": {
+            "FunctionName": "orders-service-staging"
+          },
+          "matchExact": true,
+          "statistic": "Average",
+          "period": "60",
+          "id": "",
+          "expression": "",
+          "label": "staging"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "auto",
+            "pointSize": 4,
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "barAlignment": 0,
+            "gradientMode": "none",
+            "lineInterpolation": "linear"
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "production"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "staging"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Last ten releases",
+      "description": "One row per release run in the last 14 days, newest first, with how it ended.",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 9
+      },
+      "timeFrom": "14d",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"orders-service\"} | json | stage=\"Record\" or stage=\"Rollback\" or result=\"failed\" | label_format outcome=`{{ if eq .stage \"Rollback\" }}Rolled back{{ else if eq .result \"ok\" }}Released{{ else }}Stopped at {{ .stage }}{{ end }}`",
+          "queryType": "range",
+          "maxLines": 1000,
+          "editorMode": "code"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "format": "auto",
+            "replace": true,
+            "keepTime": true
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Time",
+                "desc": false
+              }
+            ]
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "build": {
+                "operation": "groupby",
+                "aggregations": []
+              },
+              "version": {
+                "operation": "groupby",
+                "aggregations": []
+              },
+              "Time": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "first"
+                ]
+              },
+              "jira_key": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "first"
+                ]
+              },
+              "change": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "first"
+                ]
+              },
+              "outcome": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "first"
+                ]
+              },
+              "build_url": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "first"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Time (first)",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "limit",
+          "options": {
+            "limitField": 10
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "build_url (first)": true
+            },
+            "indexByName": {
+              "Time (first)": 0,
+              "version": 1,
+              "jira_key (first)": 2,
+              "change (first)": 3,
+              "outcome (first)": 4,
+              "build": 5,
+              "build_url (first)": 6
+            },
+            "renameByName": {
+              "Time (first)": "Finished",
+              "version": "Version",
+              "jira_key (first)": "Jira",
+              "change (first)": "Change",
+              "outcome (first)": "Result",
+              "build": "Build"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Result"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Released": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "Rolled back": {
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^Stopped at .*",
+                      "result": {
+                        "color": "red",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Build"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Jenkins build",
+                    "url": "${__data.fields[\"build_url (first)\"]}",
+                    "targetBlank": true
+                  }
+                ]
+              },
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Finished"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsLocalNoDateIfToday"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      }
+    }
+  ]
+}
