@@ -417,3 +417,79 @@ quote-service:
         # passes staging in every cloud, and fails here: drift in one cloud.
         azure: {name: quote-service-production, settings: {}}
         aws: {name: quote-service-production, settings: {QUOTE_GBP_RATE: "0.86"}}
+
+# Demo 7: Store Floor, a Flutter app for iPhone, iPad and Android phones.
+# /release store-floor ORD-80 jamf sends it to the store devices through Jamf,
+# pilot first; /release store-floor ORD-81 stores sends it to the testers on
+# TestFlight and Google Play's internal track. See scripts/demos/mobile/.
+store-floor:
+  platform: mobile (iOS and Android)
+  path: services/store-floor
+  # The build and test scripts run on the tools host itself: they run Flutter
+  # in the toolchain container and start store-floor-build, which builds iOS on
+  # the Mac agent and Android on the tools host at the same time.
+  build_agent: tools-host
+  toolchain: jenkins/toolchain/flutter.Dockerfile
+
+  scripts:
+    build: scripts/demos/mobile/build.py
+    test: scripts/demos/mobile/test.py
+    publish: scripts/publish.py
+    deploy: scripts/demos/mobile/deploy.py
+    check: scripts/demos/mobile/check.py
+
+  settings:
+    # Jamf, the Apple Developer Program, TestFlight and Google Play run as
+    # stand-ins (docs/adding-a-demo.md, section 5). "0" uses the real APIs, or
+    # name the stand-ins to keep, such as "jamf,apple".
+    STANDIN: "1"
+
+  app:
+    name: Store Floor
+    bundle_id: nl.es.demo.storefloor
+    package_name: nl.es.demo.storefloor
+    flutter: 3.44.0
+    build_job: store-floor-build
+    ios_agent: mac
+
+  jamf:
+    app: Store Floor
+    pilot_group: Pilot
+    all_group: All store devices
+  testflight:
+    group: Store team
+  google_play:
+    track: internal
+
+  jira:
+    project: ORD
+
+  slack:
+    options: [jamf, stores]
+
+  servicenow:
+    cmdb_item: store-floor
+    assignment_group: Platform team
+    approvers: Change approvers
+    templates:
+      standard: Release of store-floor to testers
+      rollback: Rollback of store-floor
+    # Options that make a pre-approved standard change: testers only, no
+    # store devices. Needs change.py to read it (see the demo's README section).
+    standard_options: [stores]
+
+  sonarqube:
+    project_key: m-atek_release-demo_store-floor
+    properties:
+      sonar.sources: services/store-floor/lib,services/store-floor/ios/Runner,services/store-floor/android/app/src/main
+      sonar.tests: services/store-floor/test
+      sonar.dart.lcov.reportPaths: .release/reports/lcov.info
+
+  environments:
+    # TestFlight's processing takes minutes or more; Jamf waits for the devices' report.
+    staging:
+      check:
+        timeout_seconds: 1800
+    production:
+      check:
+        timeout_seconds: 600
