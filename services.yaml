@@ -63,6 +63,7 @@ pricing-api:
   # orders-service and the store app (demo 7).
   platform: aws-lambda-api
   path: services/pricing-api
+  jcr: { shared: true }
   runtime: python3.13
   handler: handler.handler
 

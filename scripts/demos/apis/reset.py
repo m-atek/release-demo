@@ -8,7 +8,7 @@
 Steps:
 - aws: both aliases live on the newest Lambda version that runs 2.0.4, with
   no canary weight, and no canary alarm left;
-- jcr: production's contract in pricing-api-releases/2.0.4/, where the
+- jcr: production's contract in demos-releases/pricing-api/2.0.4/, where the
   contract check reads it (built once from demo-states), and the release
   copies of the later versions removed, so a take can release them again;
 - github: the tags pricing-api-v2.1.x and their GitHub releases removed;
@@ -111,7 +111,7 @@ def step_jcr(args):
     if status != 200:
         raise RuntimeError(f"JFrog Container Registry doesn't answer at {publish.JCR}: run this on the tools host")
 
-    base = f"{pricing.SERVICE}-releases/{BASELINE}"
+    base = f"{publish.releases_root(pricing.SERVICE)}/{BASELINE}"
     name = f"{pricing.SERVICE}-{BASELINE}.zip"
     if publish.stored_sha256(token, f"{base}/{name}"):
         print(f"  {base}/{name}: there")
@@ -127,12 +127,12 @@ def step_jcr(args):
     admin = "Basic " + base64.b64encode(f"admin:{get_parameter(ssm, 'jcr/admin-password')}".encode()).decode()
     removed = []
     for version in later_versions():
-        status, _ = publish.request("DELETE", f"{pricing.SERVICE}-releases/{version}/", token,
+        status, _ = publish.request("DELETE", f"{publish.releases_root(pricing.SERVICE)}/{version}/", token,
                                     headers={"Authorization": admin})
         if status in (200, 202, 204):
             removed.append(version)
         elif status != 404:
-            raise RuntimeError(f"JCR didn't remove {pricing.SERVICE}-releases/{version}/ ({status})")
+            raise RuntimeError(f"JCR didn't remove {publish.releases_root(pricing.SERVICE)}/{version}/ ({status})")
     print(f"  release copies after {BASELINE}: {'removed ' + ', '.join(removed) if removed else 'none'}")
 
 

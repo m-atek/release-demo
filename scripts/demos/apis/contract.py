@@ -5,7 +5,7 @@ the apps that call production?
     python scripts/demos/apis/contract.py pricing-api --base old/openapi.yaml   compare with a file instead
 
 Production's contract is the OpenAPI file in the release that production
-runs, as JFrog Container Registry keeps it: <service>-releases/<version>/,
+runs, as JFrog Container Registry keeps it: demos-releases/<service>/<version>/,
 the version being the one the alias live points at. The new contract is the
 file in this run's package in dist/. oasdiff breaking --fail-on ERR compares
 the two. A breaking change, such as a removed response field or a new
@@ -53,8 +53,9 @@ def from_package(content, name):
 
 def production_contract(version, name):
     """The OpenAPI file in production's release, from JFrog Container Registry."""
-    path = f"{pricing.SERVICE}-releases/{version}/{pricing.SERVICE}-{version}.zip"
-    status, body = pricing.shared("publish").request("GET", path, get_parameter(ssm_client(), "jcr/token"))
+    publish = pricing.shared("publish")
+    path = f"{publish.releases_root(pricing.SERVICE)}/{version}/{pricing.SERVICE}-{version}.zip"
+    status, body = publish.request("GET", path, get_parameter(ssm_client(), "jcr/token"))
     if status != 200:
         fail(f"FAIL production runs {version}, but JFrog Container Registry has no {path} ({status}): "
              f"nothing to compare with. reset.py apis puts the baseline there.")
