@@ -4,8 +4,9 @@
 terraform {
   required_version = ">= 1.10"
   required_providers {
-    aws    = { source = "hashicorp/aws", version = "~> 6.69.0" }
-    random = { source = "hashicorp/random", version = "~> 3.9.0" }
+    aws     = { source = "hashicorp/aws", version = "~> 6.69.0" }
+    random  = { source = "hashicorp/random", version = "~> 3.9.0" }
+    archive = { source = "hashicorp/archive", version = "~> 2.8.0" }
   }
   # The bucket comes from SSM at init: scripts/tf.sh init.
   backend "s3" {
@@ -28,7 +29,14 @@ variable "budget_email" {
   type        = string
 }
 
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
 locals {
+  account_id = data.aws_caller_identity.current.account_id
+  region     = data.aws_region.current.region
+  services   = yamldecode(file("${path.module}/../services.yaml"))
+
   parameters = yamldecode(file("${path.module}/parameters.yaml"))
   # Names only: values come from scripts/secrets.py, the setup scripts or the host.
   placeholders = { for name, p in local.parameters : name => p if p.source != "terraform" }

@@ -15,3 +15,6 @@ crash.log
 
 # Local editor and agent settings
 .claude/
+
+# Terraform build output
+infra/.build/
