@@ -24,7 +24,7 @@ import run_state
 from common import ROOT, fail, get_parameter, people, service, ssm_client
 from servicenow_setup import ServiceNow
 
-ASSESS, IMPLEMENT, REVIEW, CLOSED, CANCELED = "-4", "-1", "0", "3", "4"
+ASSESS, SCHEDULED, IMPLEMENT, REVIEW, CLOSED, CANCELED = "-4", "-2", "-1", "0", "3", "4"
 EVIDENCE = ["junit.xml", "sbom.cdx.json", "grype.json", "build-info.json"]
 
 
@@ -158,9 +158,14 @@ def wait(sn, state, timeout, interval):
 
 
 def implement(sn, state):
+    """Into Implement. A standard change starts in New and, like any change,
+    may only reach Implement from Scheduled, so it goes through Scheduled first."""
     change = state["change"]
-    sn.call("PATCH", f"/api/sn_chg_rest/change/{change['type']}/{change['sys_id']}",
-            {"state": IMPLEMENT, "work_start": run_state.iso(run_state.now()).replace("T", " ").rstrip("Z")})
+    path = f"/api/sn_chg_rest/change/{change['type']}/{change['sys_id']}"
+    current = sn.call("GET", f"/api/now/table/change_request/{change['sys_id']}", sysparm_fields="state")["state"]
+    if current not in (SCHEDULED, IMPLEMENT):
+        sn.call("PATCH", path, {"state": SCHEDULED})
+    sn.call("PATCH", path, {"state": IMPLEMENT, "work_start": run_state.iso(run_state.now()).replace("T", " ").rstrip("Z")})
 
 
 def close(sn, state, code, notes):
