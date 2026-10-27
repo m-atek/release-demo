@@ -79,10 +79,19 @@ def _lambda_last_modified():
         return "unknown"
 
 
+def stores():
+    """Production's stores come from its regional setting. Other environments
+    keep the test stores in STORES."""
+    if environment() == "production":
+        return os.environ["STORES"].split(",")
+    return STORES
+
+
 def todays_orders(today=None):
     """Fictional orders, the same all day, different every day."""
     today = today or datetime.date.today()
     pick = _picker(today.isoformat())
+    store_list = stores()
     orders = []
     for number in range(1, 8 + pick(7) + 1):
         first = pick(len(PRODUCTS))
@@ -90,7 +99,7 @@ def todays_orders(today=None):
         orders.append(
             {
                 "id": f"{today:%y%m%d}-{number:03d}",
-                "store": STORES[pick(len(STORES))],
+                "store": store_list[pick(len(store_list))],
                 "items": [name for name, _ in lines],
                 "total_eur": round(sum(price for _, price in lines), 2),
                 "status": STATUSES[pick(len(STATUSES))],
