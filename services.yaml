@@ -1,0 +1,59 @@
+# One entry per service. The stage scripts, the Slack handler, Terraform and
+# the local runner all read this file, so a service is described once.
+
+orders-service:
+  platform: aws-lambda
+  path: services/orders-service
+  runtime: python3.13
+  handler: handler.handler
+
+  jira:
+    project: ORD
+
+  slack:
+    # Words allowed after the Jira key in /release orders-service ORD-12 <option>.
+    options: [standard]
+
+  scripts:
+    build: scripts/build.py
+    publish: scripts/publish.py
+    deploy: scripts/deploy.py
+    check: scripts/check.py
+    change: scripts/change.py
+    notify: scripts/notify.py
+    events: scripts/events.py
+
+  servicenow:
+    cmdb_item: orders-service
+    assignment_group: Platform team
+    approvers: Change approvers
+    templates:
+      standard: Routine release of orders-service
+      rollback: Rollback of orders-service
+
+  sonarqube:
+    # Set to the key SonarQube Cloud shows for the project (organization key prefix).
+    project_key: release-demo_orders-service
+
+  environments:
+    staging:
+      function: orders-service-staging
+      alias: live
+      local_port: 8001
+      settings:
+        DELIVERY_ESTIMATE_DAYS: "2"
+      check:
+        timeout_seconds: 30
+        paths: []
+
+    production:
+      function: orders-service-production
+      alias: live
+      local_port: 8002
+      settings:
+        # Production still carries the setting under its old name. 1.4.1 reads
+        # the new name only, passes staging and fails here: configuration drift.
+        DELIVERY_DAYS: "2"
+      check:
+        timeout_seconds: 60
+        paths: [/, /api/orders]

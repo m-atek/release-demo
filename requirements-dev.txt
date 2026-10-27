@@ -1,0 +1,4 @@
+# Tools for the stage scripts and the tests. The function itself uses the
+# standard library only, so its package has no dependencies.
+pytest==9.1.1
+PyYAML==6.0.3

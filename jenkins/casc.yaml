@@ -1,0 +1,95 @@
+# Jenkins configured as code. Secrets are files in /run/secrets, one per value:
+# ${jenkins-admin-password} reads /run/secrets/jenkins-admin-password.
+# Other ${NAME} values come from the controller's environment (docker-compose.yml).
+
+jenkins:
+  systemMessage: "release-demo tools host. Demo system, not a client's."
+  # Builds run on the tools-host agent only, never on the controller.
+  numExecutors: 0
+  # Agents connect over WebSocket through the same port as the UI.
+  slaveAgentPort: -1
+  markupFormatter: plainText
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          name: Mateusz
+          password: ${jenkins-admin-password}
+        # Starts every release. The requester is a build parameter.
+        - id: release-bot
+          name: release-bot
+          password: ${jenkins-release-bot-password}
+
+  authorizationStrategy:
+    globalMatrix:
+      entries:
+        - user:
+            name: admin
+            permissions:
+              - Overall/Administer
+        - user:
+            name: release-bot
+            permissions:
+              - Overall/Read
+              - Job/Read
+              - Job/Build
+              - Job/Cancel
+
+  nodes:
+    - permanent:
+        name: tools-host
+        labelString: tools-host
+        mode: EXCLUSIVE
+        numExecutors: 4
+        remoteFS: ${AGENT_REMOTE_FS:-/home/jenkins/agent}
+        launcher:
+          inbound:
+            webSocket: true
+
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: JCR_URL
+            value: ${JCR_URL}
+          - key: SPLUNK_HEC_URL
+            value: ${SPLUNK_HEC_URL}
+
+security:
+  # The job scripts below are part of this file, which only an admin changes.
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: false
+
+unclassified:
+  location:
+    url: ${JENKINS_URL}
+  timestamper:
+    allPipelines: true
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: splunk-hec-token
+              description: Splunk HTTP Event Collector token
+              secret: ${splunk-hec-token}
+          - string:
+              scope: GLOBAL
+              id: jcr-token
+              description: JFrog Container Registry token for the release pipeline (scripts/jcr_setup.py)
+              secret: ${jcr-token:-not-set}
+
+jobs:
+  - script: >
+      pipelineJob('tools-smoke') {
+        description('Checks the tools host: the agent, a pinned toolchain container, JFrog Container Registry and Splunk.')
+        definition {
+          cps {
+            sandbox(true)
+            script(new File('/var/jenkins_casc/jobs/tools-smoke.Jenkinsfile').text)
+          }
+        }
+      }

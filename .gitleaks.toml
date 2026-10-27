@@ -1,0 +1,9 @@
+# gitleaks runs before every push and in the pipeline. Default rules, plus one
+# allowlist: Jenkins plugin versions embed commit hashes that look like keys.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Jenkins plugin versions such as 4.5.14-269.vfa_2321039a_83"
+paths = ['''jenkins/plugins\.txt$''']

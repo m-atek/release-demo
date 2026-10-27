@@ -1,0 +1,42 @@
+# Local mode on a Mac: the same stack, with the UIs on localhost and the
+# Jenkins agent in a container instead of on the EC2 host. The agent starts
+# toolchain containers through the Docker socket, as the host agent does.
+
+services:
+  jenkins:
+    ports:
+      - 127.0.0.1:8080:8080
+
+  jcr:
+    ports:
+      - 127.0.0.1:8082:8082
+
+  splunk:
+    ports:
+      - 127.0.0.1:8000:8000
+      - 127.0.0.1:8088:8088
+
+  agent:
+    build: agent
+    image: release-demo/agent:local
+    profiles: [agent]
+    restart: unless-stopped
+    environment:
+      JENKINS_URL: http://jenkins:8080
+      JENKINS_AGENT_NAME: tools-host
+      JENKINS_SECRET: "@/run/secrets/agent-secret"
+      JENKINS_WEB_SOCKET: "true"
+      JENKINS_AGENT_WORKDIR: /home/jenkins/agent
+    group_add:
+      - ${DOCKER_SOCKET_GID:-0}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${SECRETS_DIR}/agent-secret:/run/secrets/agent-secret:ro
+      - agent-work:/home/jenkins/agent
+    mem_limit: 2g
+    depends_on:
+      jenkins:
+        condition: service_healthy
+
+volumes:
+  agent-work:

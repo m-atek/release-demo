@@ -1,0 +1,2 @@
+# HTTP client for the carrier tracking API.
+urllib3==1.22

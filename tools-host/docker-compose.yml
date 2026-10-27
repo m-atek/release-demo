@@ -1,0 +1,108 @@
+# The tools host: Jenkins, JFrog Container Registry and Splunk Free, plus
+# cloudflared on the EC2 host. No container uses host networking. Secrets reach
+# the containers as files in SECRETS_DIR (a tmpfs on the EC2 host), never as
+# values in this file. Memory plan inside 16 GB: Jenkins 2, JCR 4 with its
+# database, Splunk 2, builds the rest.
+#
+# Run it through scripts/tools.sh, not directly.
+
+name: release-demo
+
+services:
+  jenkins:
+    build: ../jenkins
+    image: release-demo/jenkins:local
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: >-
+        -Xmx1536m
+        -Djenkins.install.runSetupWizard=false
+        -Dhudson.model.DirectoryBrowserSupport.CSP=
+      CASC_JENKINS_CONFIG: /var/jenkins_casc/casc.yaml
+      SECRETS: /run/secrets
+      JENKINS_URL: ${JENKINS_URL}
+      JCR_URL: http://jcr:8082
+      SPLUNK_HEC_URL: http://splunk:8088
+    volumes:
+      - jenkins-home:/var/jenkins_home
+      - ../jenkins:/var/jenkins_casc:ro
+      - ${SECRETS_DIR}:/run/secrets:ro
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/login"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  jcr:
+    image: releases-docker.jfrog.io/jfrog/artifactory-jcr:7.161.26
+    restart: unless-stopped
+    # JCR 7.161 starts only on PostgreSQL. The password comes from jcr.env.
+    environment:
+      JF_SHARED_EXTRAJAVAOPTS: "-Xms512m -Xmx2g"
+      JF_SHARED_DATABASE_TYPE: postgresql
+      JF_SHARED_DATABASE_DRIVER: org.postgresql.Driver
+      JF_SHARED_DATABASE_URL: jdbc:postgresql://jcr-db:5432/artifactory
+      JF_SHARED_DATABASE_USERNAME: artifactory
+    env_file:
+      - ${SECRETS_DIR}/jcr.env
+    volumes:
+      - jcr-var:/var/opt/jfrog/artifactory
+    # Five JVMs, a Node frontend and the router: about 3.1 GB once warm.
+    mem_limit: 4g
+    ulimits:
+      nofile: { soft: 32000, hard: 40000 }
+    depends_on:
+      jcr-db:
+        condition: service_healthy
+
+  jcr-db:
+    image: postgres:16.14-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: artifactory
+      POSTGRES_USER: artifactory
+      POSTGRES_PASSWORD_FILE: /run/secrets/jcr-db-password
+    volumes:
+      - jcr-db:/var/lib/postgresql/data
+      - ${SECRETS_DIR}/jcr-db-password:/run/secrets/jcr-db-password:ro
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "artifactory", "-d", "artifactory"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  splunk:
+    image: splunk/splunk:10.6.0
+    # Splunk publishes amd64 images only. On an Apple silicon Mac it runs under emulation.
+    platform: linux/amd64
+    restart: unless-stopped
+    # Set by scripts/tools.sh only after Mateusz accepts Splunk's General Terms.
+    environment:
+      SPLUNK_START_ARGS: ${SPLUNK_START_ARGS:-}
+      SPLUNK_GENERAL_TERMS: ${SPLUNK_GENERAL_TERMS:-}
+      SPLUNK_LICENSE_URI: Free
+      SPLUNK_HEC_SSL: "false"
+    env_file:
+      - ${SECRETS_DIR}/splunk.env
+    volumes:
+      - splunk-etc:/opt/splunk/etc
+      - splunk-var:/opt/splunk/var
+    mem_limit: 2g
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.0
+    profiles: [tunnel]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 run --token-file /run/secrets/cloudflare-tunnel-token
+    volumes:
+      - ${SECRETS_DIR}/cloudflare-tunnel-token:/run/secrets/cloudflare-tunnel-token:ro
+
+volumes:
+  jenkins-home:
+  jcr-var:
+  jcr-db:
+  splunk-etc:
+  splunk-var:

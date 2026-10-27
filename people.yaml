@@ -1,0 +1,23 @@
+# Who plays which part in the demo. Mateusz plays both Sam and Alex.
+# Slack user ids are filled in once the workspace exists (Profile, Copy member ID).
+
+mateusz:
+  display_name: Mateusz
+  slack_user_id: null
+  servicenow_user: null
+  github_login: null
+
+sam:
+  display_name: Sam Developer
+  slack_user_id: null
+  servicenow_user: sam.developer
+  # Sam has no GitHub account. Pull requests from Mateusz's account map to Sam.
+  github_login: null
+  releaser: true
+
+alex:
+  display_name: Alex Change Manager
+  # Alex has no Slack account. Slack shows the name ServiceNow records.
+  slack_user_id: null
+  servicenow_user: alex.change.manager
+  approver: true

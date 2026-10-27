@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Release checklist: orders-service</title>
+<style>
+  :root {
+    --ink: #172b4d; --muted: #6b778c; --line: #dfe1e6; --paper: #ffffff; --wash: #f4f5f7;
+    --handoff: #974f0c; --handoff-bg: #fff4e5;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--wash); color: var(--ink);
+    font: 19px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .bar { background: var(--paper); border-bottom: 1px solid var(--line); padding: 12px 24px;
+    color: var(--muted); font-size: 15px; }
+  .bar b { color: var(--ink); }
+  main { max-width: 780px; margin: 0 auto; padding: 32px 24px 48px; background: var(--paper);
+    min-height: calc(100vh - 47px); }
+  h1 { font-size: 34px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .meta { color: var(--muted); font-size: 15px; margin-bottom: 24px; }
+  .intro { margin: 0 0 20px; }
+  ol { list-style: none; counter-reset: step; margin: 0; padding: 0; }
+  li { counter-increment: step; display: grid; grid-template-columns: 44px 1fr; gap: 12px;
+    padding: 10px 12px; border-bottom: 1px solid var(--line); align-items: start; }
+  li::before { content: counter(step); font-weight: 700; font-size: 20px; color: var(--muted);
+    text-align: right; font-variant-numeric: tabular-nums; }
+  li.handoff { background: var(--handoff-bg); }
+  .tag { display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 4px;
+    background: var(--handoff); color: #fff; font-size: 13px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em; vertical-align: 2px; }
+  code { font-size: 16px; background: var(--wash); padding: 1px 5px; border-radius: 3px; }
+  footer { margin-top: 28px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="bar"><b>Team wiki</b> &nbsp;/&nbsp; Orders team &nbsp;/&nbsp; Runbooks &nbsp;/&nbsp; Release checklist</div>
+<main>
+  <h1>Release checklist: orders-service</h1>
+  <div class="meta">Owner: Pieter &middot; Last edited 7 months ago</div>
+  <p class="intro">Follow every step, in order, for every release. Don't skip steps.</p>
+  <ol>
+    <li><div>Merge the release branch into main and write down the commit.</div></li>
+    <li><div>Update <code>VERSION</code> and the changelog.</div></li>
+    <li><div>Run the full test suite on your laptop. Paste the result into the Jira ticket.</div></li>
+    <li><div>Build the package and copy it to the release share, <code>\\files\releases\orders-service</code>.</div></li>
+    <li><div>Deploy to staging with the commands in the runbook.</div></li>
+    <li><div>Open the staging page and check the version number.</div></li>
+    <li><div>Click through the smoke tests: order page, order history, checkout.</div></li>
+    <li class="handoff"><div><span class="tag">Handoff</span>Fill in the change form and email it to the change manager. Wait for approval at Thursday's change meeting.</div></li>
+    <li class="handoff"><div><span class="tag">Handoff</span>Ask Pieter to deploy. Only he has production access.</div></li>
+    <li><div>Pieter copies the package from the release share to production.</div></li>
+    <li><div>Check that the production page shows the new version.</div></li>
+    <li><div>If anything looks wrong, ask Pieter to put the previous package back.</div></li>
+    <li><div>Update the Jira ticket and the change form with the result.</div></li>
+    <li><div>Post in #releases that the release is done.</div></li>
+  </ol>
+  <footer>Fictional checklist, made for a demo.</footer>
+</main>
+</body>
+</html>
