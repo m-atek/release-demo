@@ -13,6 +13,7 @@ import app  # noqa: E402
 def env(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "staging")
     monkeypatch.setenv("POD_NAME", "catalog-7d9f8b6c5-abcde")
+    monkeypatch.setenv("CATALOG_DB_URL", f"file://{Path(app.HERE) / 'data' / 'catalog.json'}")
 
 
 def get(path):

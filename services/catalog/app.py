@@ -3,7 +3,11 @@
 A small HTTP service in a container. It serves one page with the service,
 environment, version and pod in large type, /health for the liveness probe
 and the pipeline's checks, /ready for the readiness probe, and /api/products
-with the fictional product catalog. Standard library only.
+with the fictional product catalog, searchable by name and by supplier.
+Standard library only.
+
+The catalog comes from the catalog database named by CATALOG_DB_URL, which
+each environment sets. Until it loads, the service is alive but not ready.
 """
 
 import html
@@ -20,7 +24,6 @@ from urllib.parse import parse_qs, urlparse
 
 HERE = Path(__file__).resolve().parent
 SERVICE = "catalog"
-CATALOG = HERE / "data" / "catalog.json"
 QUIET = {"/health", "/ready"}  # the probes would fill the log
 
 
@@ -43,8 +46,27 @@ def pod():
     return os.environ.get("POD_NAME") or socket.gethostname()
 
 
+class NotReady(Exception):
+    pass
+
+
+def catalog_path():
+    """The catalog database from CATALOG_DB_URL. In this demo it is a file: file:///app/data/catalog.json."""
+    url = os.environ.get("CATALOG_DB_URL", "")
+    if not url:
+        raise NotReady("CATALOG_DB_URL is not set")
+    parsed = urlparse(url)
+    if parsed.scheme != "file":
+        raise NotReady(f"CATALOG_DB_URL {url}: only file:// is supported")
+    return Path(parsed.path)
+
+
 def products():
-    return json.loads(CATALOG.read_text())["products"]
+    return json.loads(catalog_path().read_text())["products"]
+
+
+def suppliers():
+    return sorted({p["supplier"] for p in products()})
 
 
 def folded(text):
@@ -52,9 +74,10 @@ def folded(text):
     return "".join(c for c in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(c))
 
 
-def search(query=""):
-    found = [p for p in products() if folded(query) in folded(p["name"])]
-    return {"query": query, "count": len(found), "products": found}
+def search(query="", supplier=""):
+    """Products whose name holds query, from the supplier whose name holds supplier (ORD-90)."""
+    found = [p for p in products() if folded(query) in folded(p["name"]) and folded(supplier) in folded(p["supplier"])]
+    return {"query": query, "supplier": supplier, "count": len(found), "products": found}
 
 
 def health():
@@ -63,9 +86,11 @@ def health():
 
 
 def ready():
-    """Ready once the catalog loads."""
+    """Ready once the catalog database loads."""
     try:
         count = len(products())
+    except NotReady as error:
+        return False, str(error)
     except (OSError, ValueError, KeyError) as error:
         return False, f"the catalog doesn't load: {error}"
     return True, f"{count} products"
@@ -74,9 +99,11 @@ def ready():
 def page():
     items = products()
     rows = "\n".join(f"<tr><td>{html.escape(p['id'])}</td><td>{html.escape(p['name'])}</td>"
-                     f"<td>&euro; {p['price_eur']:.2f}</td></tr>" for p in items[:6])
+                     f"<td>{html.escape(p['supplier'])}</td><td>&euro; {p['price_eur']:.2f}</td></tr>"
+                     for p in items[:6])
     return PAGE.format(service=SERVICE, env=html.escape(environment()), version=html.escape(VERSION),
-                       commit=html.escape(COMMIT[:7]), pod=html.escape(pod()), count=len(items), rows=rows)
+                       commit=html.escape(COMMIT[:7]), pod=html.escape(pod()), count=len(items), rows=rows,
+                       suppliers=len(suppliers()))
 
 
 def respond(target):
@@ -89,10 +116,15 @@ def respond(target):
         ok, reason = ready()
         return (200 if ok else 503), "application/json", json.dumps(
             {"ready": ok, "reason": reason, "version": VERSION})
-    if url.path == "/api/products":
-        return 200, "application/json", json.dumps(search(query.get("q", "")))
-    if url.path == "/":
-        return 200, "text/html; charset=utf-8", page()
+    try:
+        if url.path == "/api/products":
+            return 200, "application/json", json.dumps(search(query.get("q", ""), query.get("supplier", "")))
+        if url.path == "/api/suppliers":
+            return 200, "application/json", json.dumps({"suppliers": suppliers()})
+        if url.path == "/":
+            return 200, "text/html; charset=utf-8", page()
+    except NotReady as error:
+        return 503, "application/json", json.dumps({"error": f"not ready: {error}"})
     return 404, "application/json", json.dumps({"error": "not found"})
 
 
@@ -161,6 +193,7 @@ PAGE = """<!doctype html>
   th {{ color: var(--muted); font-weight: 500; font-size: 15px; }}
   tr:last-child td {{ border-bottom: 0; }}
   h2 {{ font-size: 22px; margin: 40px 0 12px; }}
+  .note {{ font-size: 30px; font-weight: 600; margin: 8px 0 0; }}
 </style>
 </head>
 <body>
@@ -171,6 +204,7 @@ PAGE = """<!doctype html>
     <span class="demo">Demo system</span>
   </header>
   <div class="version">{version}</div>
+  <p class="note">Search by supplier: {suppliers} suppliers</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>
@@ -178,7 +212,7 @@ PAGE = """<!doctype html>
   </section>
   <h2>Products ({count})</h2>
   <table>
-    <thead><tr><th>Product</th><th>Name</th><th>Price</th></tr></thead>
+    <thead><tr><th>Product</th><th>Name</th><th>Supplier</th><th>Price</th></tr></thead>
     <tbody>
 {rows}
     </tbody>

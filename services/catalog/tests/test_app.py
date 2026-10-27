@@ -18,10 +18,40 @@ def test_ready_once_the_catalog_loads():
 
 
 def test_not_ready_when_the_catalog_is_missing(monkeypatch, tmp_path):
-    monkeypatch.setattr(app, "CATALOG", tmp_path / "missing.json")
+    monkeypatch.setenv("CATALOG_DB_URL", f"file://{tmp_path / 'missing.json'}")
     status, body = get("/ready")
     assert status == 503
     assert body["ready"] is False
+
+
+def test_not_ready_without_the_catalog_database_setting(monkeypatch):
+    monkeypatch.delenv("CATALOG_DB_URL")
+    status, body = get("/ready")
+    assert status == 503
+    assert body["reason"] == "CATALOG_DB_URL is not set"
+    # Alive all the same: the liveness probe mustn't restart it.
+    assert get("/health")[0] == 200
+    assert get("/api/products")[0] == 503
+
+
+def test_search_by_supplier():
+    status, body = get("/api/products?supplier=wadden")
+    assert status == 200
+    assert body["count"] == 4
+    assert {p["supplier"] for p in body["products"]} == {"Wadden Waterwerk"}
+
+
+def test_search_by_name_and_supplier():
+    body = get("/api/products?q=bottle&supplier=Wadden%20Waterwerk")[1]
+    assert {p["name"] for p in body["products"]} == {"Water bottle", "Insulated bottle"}
+
+
+def test_suppliers():
+    assert len(get("/api/suppliers")[1]["suppliers"]) == 6
+
+
+def test_page_shows_supplier_search():
+    assert "Search by supplier: 6 suppliers" in get("/")[1]
 
 
 def test_page_shows_service_version_and_pod():
