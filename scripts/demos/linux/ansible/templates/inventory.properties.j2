@@ -1,0 +1,8 @@
+# inventory {{ target_version }} on {{ inventory_hostname }}: this release's settings.
+# Rendered by Ansible from scripts/demos/linux/ansible/templates/inventory.properties.j2.
+# Secrets are not here: /opt/inventory/shared/secrets.properties, written at deploy.
+server.name={{ inventory_hostname }}
+server.location={{ server_location }}
+environment=production
+release={{ target_version }}
+stock.feed.url={{ settings.STOCK_FEED_URL }}

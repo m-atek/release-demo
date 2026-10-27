@@ -335,6 +335,78 @@ store-sync:
       drift:
         STORE-004: UploadEndpoint
 
+inventory:
+  # Demo 3: a legacy Java web app on Tomcat 9 and four Linux servers, two in
+  # AWS and two in a data center the cloud can't reach (Multipass virtual
+  # machines on the Mac). Ansible deploys it one server at a time. The cloud
+  # servers run from the tools-host agent through Systems Manager; the
+  # data-center servers from dc-agent, which connects out to Jenkins, over SSH.
+  platform: linux-servers
+  path: services/inventory
+  toolchain: jenkins/toolchain/java.Dockerfile
+  jcr: { shared: true }            # demos-candidates/inventory/ and demos-releases/inventory/
+
+  jira:
+    project: ORD
+
+  slack:
+    options: [standard]
+
+  scripts:
+    build: scripts/demos/linux/build.py
+    test: scripts/demos/linux/test.py
+    publish: scripts/publish.py
+    deploy: scripts/demos/linux/deploy.py
+    check: scripts/demos/linux/check.py
+    change: scripts/change.py
+    notify: scripts/notify.py
+    events: scripts/events.py
+
+  servicenow:
+    cmdb_item: inventory
+    assignment_group: Platform team
+    approvers: Change approvers
+    templates:
+      standard: Routine release of inventory
+      rollback: Rollback of inventory
+    # Linux Server CIs, made by scripts/demos/linux/servicenow_setup.py. The
+    # deploy lists them on the change with each server's result.
+    servers: [inv-cloud-01, inv-cloud-02, inv-dc-01, inv-dc-02]
+
+  sonarqube:
+    project_key: m-atek_release-demo_inventory
+    properties:
+      sonar.sources: services/inventory/src/main/java
+      sonar.tests: services/inventory/src/test/java
+      sonar.java.binaries: services/inventory/target/classes
+      sonar.java.test.binaries: services/inventory/target/test-classes
+      sonar.coverage.jacoco.xmlReportPaths: .release/reports/jacoco.xml
+      sonar.junit.reportPaths: services/inventory/target/surefire-reports
+
+  environments:
+    # Production only: the four servers, in this order, one at a time
+    # (serial 1, max_fail_percentage 0). Each is checked on its own /health;
+    # there is no load balancer. A failed check switches that server's
+    # symlink back, restarts Tomcat, checks again and stops the rollout.
+    production:
+      servers:
+        - { name: inv-cloud-01, site: cloud }
+        - { name: inv-cloud-02, site: cloud }
+        - { name: inv-dc-01, site: data-center }
+        - { name: inv-dc-02, site: data-center }
+      sites:
+        cloud:
+          location: AWS eu-west-1
+          agent: tools-host        # Ansible over Systems Manager, packages from JCR over the VPC
+        data-center:
+          location: Data center
+          agent: dc-agent          # Ansible over SSH, packages through artifactory-demo.es.nl
+          job: inventory-dc-wave
+      settings:
+        STOCK_FEED_URL: https://stock-feed.example.invalid/v1
+      check:
+        timeout_seconds: 60
+
 quote-service:
   platform: three-clouds  # AWS Lambda, Azure Container Apps and Google Cloud Run
   path: services/quote-service

@@ -1,0 +1,23 @@
+# The Jenkins agent dc-agent. It connects out to Jenkins over WebSocket,
+# through Cloudflare with its own Access service token; nothing connects in.
+# Its arguments, with the agent's secret and the service token, are in
+# /etc/jenkins-agent/agent.args, which only root can read: systemd hands this
+# service a private copy (LoadCredential), so no secret is on a command line.
+[Unit]
+Description=Jenkins agent dc-agent (connects out to Jenkins)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/jenkins-agent/agent.args
+
+[Service]
+User=jenkins
+Group=jenkins
+WorkingDirectory=/var/lib/jenkins-agent
+LoadCredential=agent-args:/etc/jenkins-agent/agent.args
+Environment=PATH=/opt/ansible/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/local/bin/jenkins-agent-start %d/agent-args
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

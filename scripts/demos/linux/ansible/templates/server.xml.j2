@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Tomcat {{ tomcat_version }} for inventory. Managed by Ansible (baseline.yml).
+     HTTP on 127.0.0.1 only: nothing listens on the network. The app is the
+     release that /opt/inventory/current points to; a restart picks up a switch. -->
+<Server port="-1" shutdown="SHUTDOWN">
+  <Listener className="org.apache.catalina.startup.VersionLoggerListener" />
+  <Listener className="org.apache.catalina.core.JreMemoryLeakPreventionListener" />
+  <Listener className="org.apache.catalina.core.ThreadLocalLeakPreventionListener" />
+  <Service name="Catalina">
+    <Connector address="127.0.0.1" port="8080" protocol="HTTP/1.1" connectionTimeout="20000" />
+    <Engine name="Catalina" defaultHost="localhost">
+      <Host name="localhost" appBase="/opt/inventory/tomcat-apps" unpackWARs="false"
+            autoDeploy="false" deployOnStartup="false">
+        <Valve className="org.apache.catalina.valves.ErrorReportValve" showReport="false" showServerInfo="false" />
+        <Context path="" docBase="/opt/inventory/current/webapp" reloadable="false" />
+      </Host>
+    </Engine>
+  </Service>
+</Server>

@@ -1,0 +1,9 @@
+#!/bin/sh
+# The video's close-up of one server: the current release, the release
+# folders, Tomcat and Java, each line under 44 characters. Run it as
+# `watch -t -n 1 closeup` in a 32 px terminal.
+u=tomcat
+echo "current  $(basename "$(readlink /opt/inventory/current)")"
+echo "releases $(ls /opt/inventory/releases | xargs)"
+echo "tomcat   $(systemctl is-active $u) since $(systemctl show -p ActiveEnterTimestamp --value $u | awk '{print $3}')"
+echo "java     $(java -version 2>&1 | awk -F'"' 'NR==1{print $2}')"

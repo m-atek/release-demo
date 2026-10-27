@@ -1,0 +1,150 @@
+# The inventory servers' baseline, the same on all four: Java 11, Tomcat 9
+# under systemd, the release folders and the helpers. Idempotent: up.sh runs
+# it on every start. The one planned exception is the drift the video shows:
+# the servers in java_drift_servers (inv-dc-01, unless reset.py --no-drift)
+# keep Java 8 instead. reset.py runs only the java tag to plant it again.
+
+- name: inventory server baseline
+  hosts: "{{ targets | default('all') }}"
+  gather_facts: false
+  become: true
+  vars:
+    tomcat_version: 9.0.123
+    tomcat_sha512: 64b1130e719399c0a409e6996081433b16af8d9c89266c7aaa9849af70a1815feca91e13896f5ccc41451dc5759716d1c84882682de955822c30509de102f290
+    tomcat_url: https://archive.apache.org/dist/tomcat/tomcat-9/v{{ tomcat_version }}/bin/apache-tomcat-{{ tomcat_version }}.tar.gz
+    java_drift: "{{ inventory_hostname in (java_drift_servers | default([])) }}"
+    java_wanted: "{{ 'openjdk-8-jre-headless' if java_drift | bool else 'openjdk-11-jre-headless' }}"
+    java_unwanted: "{{ 'openjdk-11-jre-headless' if java_drift | bool else 'openjdk-8-jre-headless' }}"
+
+  handlers:
+    - name: Restart Tomcat
+      ansible.builtin.systemd_service:
+        name: tomcat
+        state: restarted
+        daemon_reload: true
+
+  tasks:
+    - name: Java ({{ java_wanted }}), and nothing else
+      tags: [java]
+      block:
+        - name: Install {{ java_wanted }}
+          ansible.builtin.apt:
+            name: "{{ java_wanted }}"
+            update_cache: true
+            cache_valid_time: 3600
+            install_recommends: false
+          notify: Restart Tomcat
+        - name: Remove {{ java_unwanted }}
+          ansible.builtin.apt:
+            name: "{{ java_unwanted }}"
+            state: absent
+            autoremove: true
+          notify: Restart Tomcat
+
+    - name: Python for the helpers, and boto3 on the cloud servers for SSM
+      ansible.builtin.apt:
+        name: "{{ ['python3'] + (['python3-boto3'] if site == 'cloud' else []) }}"
+        install_recommends: false
+
+    - name: The tomcat user
+      ansible.builtin.user:
+        name: tomcat
+        system: true
+        home: /opt/tomcat
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: Tomcat {{ tomcat_version }}, checked by its SHA-512
+      ansible.builtin.get_url:
+        url: "{{ tomcat_url }}"
+        dest: /var/cache/apache-tomcat-{{ tomcat_version }}.tar.gz
+        checksum: sha512:{{ tomcat_sha512 }}
+        mode: "0644"
+
+    - name: Unpack Tomcat into /opt
+      ansible.builtin.unarchive:
+        src: /var/cache/apache-tomcat-{{ tomcat_version }}.tar.gz
+        dest: /opt
+        remote_src: true
+        creates: /opt/apache-tomcat-{{ tomcat_version }}/bin/catalina.sh
+
+    - name: /opt/tomcat points to this Tomcat
+      ansible.builtin.file:
+        path: /opt/tomcat
+        src: /opt/apache-tomcat-{{ tomcat_version }}
+        state: link
+        force: true
+      notify: Restart Tomcat
+
+    - name: Tomcat's configuration
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: /opt/apache-tomcat-{{ tomcat_version }}/{{ item.dest }}
+        owner: root
+        group: tomcat
+        mode: "{{ item.mode }}"
+      loop:
+        - { src: server.xml.j2, dest: conf/server.xml, mode: "0640" }
+        - { src: logging.properties.j2, dest: conf/logging.properties, mode: "0640" }
+        - { src: setenv.sh.j2, dest: bin/setenv.sh, mode: "0755" }
+      notify: Restart Tomcat
+
+    # The tarball's files are root's with no access for others: Tomcat reads
+    # and runs them through its group, and writes only these three folders.
+    - name: Tomcat can read and run its install
+      ansible.builtin.file:
+        path: /opt/apache-tomcat-{{ tomcat_version }}
+        state: directory
+        recurse: true
+        owner: root
+        group: tomcat
+        mode: "g+rX,o-rwx"
+
+    - name: Tomcat's writable folders belong to tomcat
+      ansible.builtin.file:
+        path: /opt/apache-tomcat-{{ tomcat_version }}/{{ item }}
+        state: directory
+        owner: tomcat
+        group: tomcat
+        mode: "0750"
+      loop: [logs, temp, work]
+
+    - name: The release folders
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: /opt/inventory, group: root, mode: "0755" }
+        - { path: /opt/inventory/releases, group: root, mode: "0755" }
+        - { path: /opt/inventory/shared, group: tomcat, mode: "0750" }
+        - { path: /opt/inventory/bin, group: root, mode: "0755" }
+        - { path: /opt/inventory/incoming, group: root, mode: "0700" }
+        - { path: /opt/inventory/tomcat-apps, group: root, mode: "0755" }
+
+    - name: The helpers
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - { src: inventory-release, dest: /opt/inventory/bin/inventory-release }
+        - { src: inventory-watch, dest: /opt/inventory/bin/inventory-watch }
+        - { src: closeup, dest: /usr/local/bin/closeup }
+
+    - name: Tomcat under systemd
+      ansible.builtin.template:
+        src: tomcat.service.j2
+        dest: /etc/systemd/system/tomcat.service
+        mode: "0644"
+      notify: Restart Tomcat
+
+    - name: Tomcat starts at boot
+      ansible.builtin.systemd_service:
+        name: tomcat
+        enabled: true
+        daemon_reload: true

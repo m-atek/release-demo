@@ -1,0 +1,345 @@
+#!/usr/bin/env python3
+"""The release steps Ansible runs on each inventory server, as root.
+
+    inventory-release install --version 2.8.0 --sha256 HEX --url URL [--token-ssm NAME | --env-file FILE]
+    inventory-release install --version 2.7.3 --sha256 HEX --file /opt/inventory/incoming/inventory-2.7.3.zip
+    inventory-release secrets (--from-ssm NAME | --env-file FILE)
+    inventory-release health --expect 2.8.0 [--timeout 45]
+    inventory-release status
+
+install fetches the package from JFrog Container Registry (or takes a copied
+file), checks its SHA-256 before anything is unpacked, and unpacks it into
+/opt/inventory/releases/<version>, one folder per release. A folder that
+already holds that exact package is left alone. The JCR token never leaves
+the server: the cloud servers read it from SSM with their instance role, and
+the data-center servers get it, with the Cloudflare Access service token, in
+a root-only file that Ansible copies from Jenkins credentials and removes.
+
+health waits for /health to report the expected version. Once Tomcat has
+finished starting and the app still doesn't answer, it fails at once, with
+Tomcat's own error, instead of waiting out the timeout.
+
+Python 3 standard library only, plus boto3 for SSM on the cloud servers.
+Prints no secret, ever.
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+import zipfile
+from pathlib import Path
+
+BASE = Path(os.environ.get("INVENTORY_BASE", "/opt/inventory"))
+HEALTH_URL = os.environ.get("INVENTORY_HEALTH_URL", "http://127.0.0.1:8080/health")
+TOMCAT_UNIT = "tomcat"
+MARKER = "package.sha256"
+VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+def fail(message):
+    print(f"FAIL {message}")
+    sys.exit(1)
+
+
+def read_env_file(path):
+    """KEY=value lines, as Ansible writes them from Jenkins credentials."""
+    values = {}
+    for line in Path(path).read_text().splitlines():
+        if "=" in line and not line.lstrip().startswith("#"):
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip()
+    return values
+
+
+def ssm_parameter(name):
+    import boto3  # only the cloud servers need it, from python3-boto3
+
+    region = os.environ.get("AWS_REGION", "eu-west-1")
+    return boto3.client("ssm", region_name=region).get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
+
+
+def sha256_of(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as file:
+        for chunk in iter(lambda: file.read(1 << 16), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def download(url, headers, destination, attempts=3):
+    """GET url to destination. Returns (status, error text)."""
+    for attempt in range(1, attempts + 1):
+        request = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response, open(destination, "wb") as out:
+                shutil.copyfileobj(response, out)
+            return 200, ""
+        except urllib.error.HTTPError as error:
+            if error.code < 500 or attempt == attempts:
+                return error.code, error.reason
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+            if attempt == attempts:
+                return 0, str(getattr(error, "reason", error))
+        time.sleep(2 * attempt)
+    return 0, "no answer"
+
+
+def may_send_credentials(url):
+    """Tokens go to JCR only: through Cloudflare over HTTPS, or on the tools
+    host's private address inside the VPC."""
+    import ipaddress
+    import urllib.parse
+
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme == "https" and parts.hostname == "artifactory-demo.es.nl":
+        return True
+    try:
+        return parts.scheme == "http" and ipaddress.ip_address(parts.hostname or "").is_private
+    except ValueError:
+        return False
+
+
+def release_dir(version):
+    if not VERSION_PATTERN.match(version):
+        fail(f"{version} isn't a version like 2.8.0")
+    return BASE / "releases" / version
+
+
+def unpack(package, target, expected_sha256):
+    """The zip, then the WAR inside it, into target/webapp. Atomic: a new
+    folder is built beside the old one and swapped in."""
+    releases = target.parent
+    releases.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.new-", dir=releases))
+    with zipfile.ZipFile(package) as archive:
+        archive.extractall(staging)
+    war = staging / "inventory.war"
+    if not war.exists():
+        shutil.rmtree(staging)
+        fail(f"{package.name} holds no inventory.war")
+    with zipfile.ZipFile(war) as archive:
+        archive.extractall(staging / "webapp")
+    war.unlink()
+    (staging / "conf").mkdir(exist_ok=True)
+    (staging / MARKER).write_text(expected_sha256 + "\n")
+    for path in [staging, *staging.rglob("*")]:
+        path.chmod(0o755 if path.is_dir() else 0o644)
+    if target.exists():
+        old = releases / f".{target.name}.old-{int(time.time())}"
+        target.rename(old)
+        staging.rename(target)
+        shutil.rmtree(old)
+    else:
+        staging.rename(target)
+
+
+def install(args):
+    target = release_dir(args.version)
+    marker = target / MARKER
+    if marker.exists() and marker.read_text().strip() == args.sha256:
+        print(f"ok   releases/{args.version} already holds this package (SHA-256 {args.sha256[:12]})")
+        return
+
+    incoming = BASE / "incoming"
+    incoming.mkdir(parents=True, exist_ok=True)
+    incoming.chmod(0o700)
+    if args.file:
+        package = Path(args.file)
+    else:
+        headers = {"User-Agent": "inventory-release/1.0"}
+        if not may_send_credentials(args.url):
+            fail(f"{args.url.split('/')[2]} isn't JCR: no token goes there")
+        if args.env_file:
+            values = read_env_file(args.env_file)
+            token = values.get("JCR_TOKEN", "")
+            if values.get("CF_ACCESS_CLIENT_ID"):
+                headers["CF-Access-Client-Id"] = values["CF_ACCESS_CLIENT_ID"]
+                headers["CF-Access-Client-Secret"] = values.get("CF_ACCESS_CLIENT_SECRET", "")
+        elif args.token_ssm:
+            token = ssm_parameter(args.token_ssm)
+        else:
+            token = ""
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        package = incoming / args.url.rsplit("/", 1)[-1]
+        started = time.monotonic()
+        status, error = download(args.url, headers, package)
+        if status != 200:
+            package.unlink(missing_ok=True)
+            where = args.url.split("/artifactory/")[0]
+            fail(f"JCR at {where} answered {status or 'nothing'} {error} for {args.url.split('/artifactory/')[-1]}")
+        print(f"ok   fetched {package.name} from {args.url.split('/')[2]} in {time.monotonic() - started:.1f}s")
+
+    actual = sha256_of(package)
+    if actual != args.sha256:
+        package.unlink(missing_ok=True)
+        fail(f"{package.name} has SHA-256 {actual}, the build recorded {args.sha256}. Not deploying it.")
+    print(f"ok   SHA-256 verified: {actual}")
+    unpack(package, target, actual)
+    package.unlink(missing_ok=True)
+    print(f"ok   unpacked into releases/{args.version}")
+
+
+def secrets(args):
+    """shared/secrets.properties, readable by Tomcat only."""
+    if args.from_ssm:
+        token = ssm_parameter(args.from_ssm)
+    else:
+        token = read_env_file(args.env_file).get("INVENTORY_APP_SECRET", "")
+    if not token or token == "unset":
+        fail("the app secret is empty or unset")
+    shared = BASE / "shared"
+    shared.mkdir(parents=True, exist_ok=True)
+    path = shared / "secrets.properties"
+    content = f"# Written by inventory-release at deploy. Never logged.\nstock.feed.token={token}\n"
+    if path.exists() and path.read_text() == content:
+        print("ok   secrets unchanged")
+        return
+    fd, temp = tempfile.mkstemp(dir=shared)
+    with os.fdopen(fd, "w") as file:
+        file.write(content)
+    shutil.chown(temp, "root", "tomcat")
+    os.chmod(temp, 0o640)
+    os.replace(temp, path)
+    print("ok   secrets written")
+
+
+def http_get(url, timeout=3):
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            return response.status, response.read().decode(errors="replace")
+    except urllib.error.HTTPError as error:
+        return error.code, ""
+    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
+        return 0, ""
+
+
+def tomcat_log():
+    """This run of Tomcat's log lines, from the journal: only lines since its last start."""
+    invocation = subprocess.run(["systemctl", "show", "-p", "InvocationID", "--value", TOMCAT_UNIT],
+                                capture_output=True, text=True).stdout.strip()
+    if not invocation:
+        return []
+    return subprocess.run(["journalctl", "--no-pager", "-o", "cat", f"_SYSTEMD_INVOCATION_ID={invocation}"],
+                          capture_output=True, text=True).stdout.splitlines()
+
+
+def startup_done(lines):
+    return any("Server startup in" in line for line in lines)
+
+
+def tomcat_error(lines):
+    """The line that says why the app didn't start, shortened."""
+    for line in lines:
+        match = re.search(r"(\S+) has been compiled by a more recent version of the Java Runtime "
+                          r"\(class file version ([\d.]+)\), this version of the Java Runtime only "
+                          r"recognizes class file versions up to ([\d.]+)", line)
+        if match:
+            built, runs = int(float(match.group(2))) - 44, int(float(match.group(3))) - 44
+            return (f"UnsupportedClassVersionError: built for Java {built} (class file {match.group(2)}), "
+                    f"this server runs Java {runs} (up to {match.group(3)})")
+    for line in lines:
+        if line.startswith("SEVERE") or "Exception" in line or "Error" in line:
+            return line.strip()[:200]
+    return ""
+
+
+def describe(status, body):
+    if status == 200:
+        try:
+            return f"/health reports {json.loads(body).get('version')}"
+        except ValueError:
+            return "/health answered 200 without JSON"
+    return f"/health answered {status}" if status else "no answer on /health"
+
+
+def health(args):
+    started = time.monotonic()
+    deadline = started + args.timeout
+    startup_seen = None
+    status, body = 0, ""
+    while True:
+        status, body = http_get(HEALTH_URL)
+        if status == 200:
+            try:
+                version = json.loads(body).get("version")
+            except ValueError:
+                version = None
+            if version == args.expect:
+                print(f"ok   /health reports {args.expect} after {time.monotonic() - started:.0f}s")
+                return
+        now = time.monotonic()
+        if startup_seen is None and startup_done(tomcat_log()):
+            startup_seen = now
+        # Tomcat is up but the app isn't: a few more tries, then give up early.
+        if (startup_seen is not None and now - startup_seen > args.grace) or now >= deadline:
+            break
+        time.sleep(1)
+    reason = tomcat_error(tomcat_log())
+    waited = time.monotonic() - started
+    fail(f"{describe(status, body)} after {waited:.0f}s, expected {args.expect}" + (f". Tomcat: {reason}" if reason else ""))
+
+
+def java_version():
+    output = subprocess.run(["java", "-version"], capture_output=True, text=True).stderr
+    match = re.search(r'version "([^"]+)"', output)
+    return match.group(1) if match else "none"
+
+
+def status(args):
+    releases = BASE / "releases"
+    current = BASE / "current"
+    info = {
+        "current": Path(os.readlink(current)).name if current.is_symlink() else None,
+        "releases": sorted((p.name for p in releases.iterdir() if VERSION_PATTERN.match(p.name)),
+                           key=version_key) if releases.exists() else [],
+        "java": java_version(),
+        "tomcat": subprocess.run(["systemctl", "is-active", TOMCAT_UNIT], capture_output=True, text=True).stdout.strip(),
+    }
+    # The release before the current one, for /rollback: the newest older folder.
+    older = [v for v in info["releases"] if info["current"] and version_key(v) < version_key(info["current"])]
+    info["previous"] = older[-1] if older else ""
+    status_code, body = http_get(HEALTH_URL)
+    info["health"] = describe(status_code, body)
+    print(json.dumps(info))
+
+
+def version_key(version):
+    return tuple(int(part) for part in version.split("."))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = parser.add_subparsers(dest="command", required=True)
+    installer = sub.add_parser("install")
+    installer.add_argument("--version", required=True)
+    installer.add_argument("--sha256", required=True)
+    source = installer.add_mutually_exclusive_group(required=True)
+    source.add_argument("--url")
+    source.add_argument("--file")
+    installer.add_argument("--token-ssm", help="SSM parameter holding the JCR read token")
+    installer.add_argument("--env-file", help="root-only file with JCR_TOKEN and the Access service token")
+    secret = sub.add_parser("secrets")
+    origin = secret.add_mutually_exclusive_group(required=True)
+    origin.add_argument("--from-ssm")
+    origin.add_argument("--env-file")
+    checker = sub.add_parser("health")
+    checker.add_argument("--expect", required=True)
+    checker.add_argument("--timeout", type=float, default=45)
+    checker.add_argument("--grace", type=float, default=4, help="seconds to wait once Tomcat has started")
+    sub.add_parser("status")
+    args = parser.parse_args()
+    {"install": install, "secrets": secrets, "health": health, "status": status}[args.command](args)
+
+
+if __name__ == "__main__":
+    main()

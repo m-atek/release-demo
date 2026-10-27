@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  inventory: stock levels for the stores, a legacy Java web app on Tomcat 9.
+  Demo system, not a client's.
+
+  The release pipeline builds it with scripts/demos/linux/build.py, which runs
+  mvn package in jenkins/toolchain/java.Dockerfile. The version here must match
+  the VERSION file next to this one.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>demo</groupId>
+  <artifactId>inventory</artifactId>
+  <version>2.8.0</version>
+  <packaging>war</packaging>
+  <name>inventory</name>
+  <description>Stock levels for the stores. Demo system, not a client's.</description>
+
+  <properties>
+    <!-- 2.8.0 is built for Java 11: every server's baseline. -->
+    <maven.compiler.release>11</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Fixed entry times in the WAR, so the same source gives the same checksum. -->
+    <project.build.outputTimestamp>2026-01-01T00:00:00Z</project.build.outputTimestamp>
+  </properties>
+
+  <dependencies>
+    <!-- Tomcat 9 provides the Servlet 4.0 API. -->
+    <dependency>
+      <groupId>javax.servlet</groupId>
+      <artifactId>javax.servlet-api</artifactId>
+      <version>4.0.1</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>4.13.2</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>inventory</finalName>
+    <resources>
+      <!-- inventory-build.properties carries the version, filled in here. -->
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+      </resource>
+    </resources>
+
+    <pluginManagement>
+      <plugins>
+        <plugin><artifactId>maven-clean-plugin</artifactId><version>3.5.0</version></plugin>
+        <plugin><artifactId>maven-resources-plugin</artifactId><version>3.5.0</version></plugin>
+        <plugin><artifactId>maven-compiler-plugin</artifactId><version>3.16.0</version></plugin>
+        <plugin><artifactId>maven-surefire-plugin</artifactId><version>3.6.0</version></plugin>
+        <plugin><artifactId>maven-war-plugin</artifactId><version>3.5.1</version></plugin>
+        <plugin><artifactId>maven-install-plugin</artifactId><version>3.1.4</version></plugin>
+        <plugin><artifactId>maven-deploy-plugin</artifactId><version>3.1.4</version></plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <!-- Coverage for SonarQube Cloud: target/site/jacoco/jacoco.xml after the tests. -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>0.8.15</version>
+        <executions>
+          <execution>
+            <id>agent</id>
+            <goals><goal>prepare-agent</goal></goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>test</phase>
+            <goals><goal>report</goal></goals>
+            <configuration>
+              <formats><format>XML</format></formats>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,8 @@
+# Everything to the console, which systemd puts in the journal:
+# journalctl -u tomcat shows Tomcat and the app in one place.
+handlers = java.util.logging.ConsoleHandler
+.handlers = java.util.logging.ConsoleHandler
+.level = INFO
+java.util.logging.ConsoleHandler.level = INFO
+java.util.logging.ConsoleHandler.formatter = org.apache.juli.OneLineFormatter
+java.util.logging.ConsoleHandler.encoding = UTF-8

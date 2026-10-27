@@ -1,0 +1,5 @@
+# Ansible for the inventory rollout: in jenkins/toolchain/ansible.Dockerfile on
+# the tools host and the Mac, and in a virtualenv on dc-agent.
+ansible-core==2.21.5
+boto3==1.43.113
+PyYAML==6.0.3

@@ -1,0 +1,26 @@
+# Tomcat {{ tomcat_version }} running inventory. Managed by Ansible (baseline.yml).
+# It uses whichever Java /usr/bin/java is: Java 11 by the baseline.
+[Unit]
+Description=Apache Tomcat {{ tomcat_version }} (inventory)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tomcat
+Group=tomcat
+Environment=CATALINA_HOME=/opt/tomcat
+Environment=CATALINA_BASE=/opt/tomcat
+Environment=CATALINA_PID=/run/tomcat/tomcat.pid
+RuntimeDirectory=tomcat
+ExecStart=/opt/tomcat/bin/catalina.sh run
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

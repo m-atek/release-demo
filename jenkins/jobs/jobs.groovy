@@ -99,6 +99,17 @@ pipelineJob('stage') {
     properties { disableConcurrentBuilds() }
     logRotator { numToKeep(50) }
     definition fromRepository('jenkins/stage.Jenkinsfile')
+
+// Demo 3: the data-center servers' part of an inventory rollout, on dc-agent.
+// The release on the tools host starts it as release-bot and waits for it.
+pipelineJob('inventory-dc-wave') {
+    description('Demo 3: deploys, checks and rolls back inventory on inv-dc-01 and inv-dc-02, from dc-agent. Started by the release.')
+    parameters {
+        stringParam('REQUEST', '', 'What to run, as JSON. Written by scripts/demos/linux/jenkins_job.py.')
+    }
+    properties { disableConcurrentBuilds() }
+    logRotator { numToKeep(100) }
+    definition fromRepository('jenkins/jobs/inventory-dc-wave.Jenkinsfile')
 }
 
 // Demo 7: builds and signs Store Floor, iOS on the Mac and Android on the

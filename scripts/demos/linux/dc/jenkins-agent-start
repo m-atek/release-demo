@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Starts the Jenkins agent from its argument file ($1, the systemd credential):
+# fetches agent.jar from the controller with the same Access headers, then
+# runs it. curl reads its headers from stdin and java its arguments from the
+# file (java @file), so no secret is ever on a command line.
+set -euo pipefail
+args=$1
+url=$(awk 'previous == "-url" { print; exit } { previous = $0 }' "$args")
+awk '/^-webSocketHeader$/ { getline; sub("=", ": "); printf "header = \"%s\"\n", $0 }' "$args" |
+  curl -sfL --max-time 60 -K - -o agent.jar.new "${url%/}/jnlpJars/agent.jar" &&
+  mv agent.jar.new agent.jar ||
+  { rm -f agent.jar.new; echo "Couldn't fetch agent.jar from ${url}: using the one from before" >&2; }
+[[ -s agent.jar ]] || { echo "No agent.jar yet: Jenkins at ${url} didn't answer" >&2; exit 1; }
+exec java @"$args"

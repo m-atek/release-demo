@@ -1,0 +1,139 @@
+# The inventory rollout, one server at a time: serial 1, max_fail_percentage 0.
+# scripts/demos/linux/fleet.py runs it for deploy.py, check.py and reset.py,
+# with these extra vars:
+#
+#   action          deploy | activate | back | previous | check
+#   version         the release to deploy, activate or check
+#   package         {source: jcr | file, url | file, sha256}, for deploy and activate
+#   previous        {server: version}, for back: where this run found each server
+#   results_file    one JSON line per server, on the controller
+#
+# Every release has its own folder under /opt/inventory/releases and the
+# current symlink points to one. A deploy fetches the package, checks its
+# SHA-256, unpacks it, renders its settings, switches the symlink and restarts
+# Tomcat, then checks /health. On a failed check it switches the symlink back,
+# restarts Tomcat, checks again and fails the server, which stops the play.
+
+- name: "inventory: {{ action }} {{ version | default('') }}"
+  hosts: "{{ targets | default('all') }}"
+  serial: "{{ rollout_serial | default(1) }}"
+  max_fail_percentage: "{{ rollout_max_fail | default(0) }}"
+  gather_facts: false
+  become: true
+  vars:
+    check_timeout: 45
+    jcr_token_parameter: /release-demo/jcr/inventory-read-token
+    app_secret_parameter: /release-demo/inventory/app-secret
+
+  tasks:
+    - name: Where the server is now
+      ansible.builtin.command: /opt/inventory/bin/inventory-release status
+      register: status_before
+      changed_when: false
+
+    - name: Start this server's record
+      ansible.builtin.set_fact:
+        before: "{{ status_before.stdout | from_json }}"
+        started_at: "{{ lookup('pipe', 'date +%s.%N') | float }}"
+        switched: false
+        steps: []
+
+    - name: Which release this server goes to
+      ansible.builtin.set_fact:
+        target_version: >-
+          {{ version if action in ['deploy', 'activate', 'check']
+             else previous[inventory_hostname] if action == 'back'
+             else before.previous }}
+
+    - name: Check only
+      when: action == 'check'
+      block:
+        - name: /health reports {{ target_version }}
+          ansible.builtin.command: /opt/inventory/bin/inventory-release health --expect {{ target_version | quote }} --timeout 5 --grace 1
+          register: health
+          changed_when: false
+          failed_when: false
+        - name: Record the check
+          ansible.builtin.include_tasks: tasks/result.yml
+          vars:
+            result: "{{ 'ok' if health.rc == 0 else 'failed' }}"
+            running: "{{ target_version if health.rc == 0 else before.current }}"
+            detail: "{{ health.stdout | default('') }}"
+
+    - name: Roll out
+      when: action != 'check'
+      block:
+        - name: Nothing to go back to
+          ansible.builtin.fail:
+            msg: "{{ inventory_hostname }} has no release to go back to (releases: {{ before.releases | join(', ') or 'none' }})."
+          when: not target_version or (action in ['back', 'previous'] and target_version not in before.releases)
+
+        - name: Install the release
+          ansible.builtin.include_tasks: tasks/install.yml
+
+        - name: Switch to the release
+          ansible.builtin.include_tasks: tasks/switch.yml
+          vars:
+            switch_to: "{{ target_version }}"
+            restart: >-
+              {{ (settings_file.changed | default(false)) or (secrets_file.changed | default(false))
+                 or before.tomcat != 'active' or before.health != '/health reports ' + target_version }}
+
+        - name: /health reports {{ target_version }}
+          ansible.builtin.command: /opt/inventory/bin/inventory-release health --expect {{ target_version | quote }} --timeout {{ check_timeout }}
+          register: health
+          changed_when: false
+
+        - name: Record the step
+          ansible.builtin.set_fact:
+            steps: "{{ steps + [{'at': lookup('pipe', 'date +%s.%N') | float, 'what': 'check ok', 'detail': health.stdout}] }}"
+
+        - name: Record the result
+          ansible.builtin.include_tasks: tasks/result.yml
+          vars:
+            result: ok
+            running: "{{ target_version }}"
+            detail: "{{ health.stdout }}"
+
+      rescue:
+        - name: What failed
+          ansible.builtin.set_fact:
+            failure: "{{ (ansible_failed_result.stdout | default('', true)) or (ansible_failed_result.msg | default('failed')) }}"
+            steps: "{{ steps + [{'at': lookup('pipe', 'date +%s.%N') | float, 'what': 'failed', 'detail': (ansible_failed_result.stdout | default('', true)) or (ansible_failed_result.msg | default('failed'))}] }}"
+
+        - name: Switch back, restart and check again
+          when: switched | bool and (before.current | default('', true) | length > 0)
+          block:
+            - name: Switch back to {{ before.current }}
+              ansible.builtin.include_tasks: tasks/switch.yml
+              vars:
+                switch_to: "{{ before.current }}"
+                restart: true
+            - name: /health reports {{ before.current }} again
+              ansible.builtin.command: /opt/inventory/bin/inventory-release health --expect {{ before.current | quote }} --timeout {{ check_timeout }}
+              register: health_back
+              changed_when: false
+              failed_when: false
+            - name: Record the step
+              ansible.builtin.set_fact:
+                steps: "{{ steps + [{'at': lookup('pipe', 'date +%s.%N') | float, 'what': 'check ok' if health_back.rc == 0 else 'check failed', 'detail': health_back.stdout}] }}"
+
+        - name: Record the result
+          ansible.builtin.include_tasks: tasks/result.yml
+          vars:
+            result: >-
+              {{ 'failed' if not (switched and before.current)
+                 else 'rolled-back' if health_back.rc == 0 else 'rollback-failed' }}
+            running: >-
+              {{ before.current if not switched or (health_back.rc | default(1)) == 0 else 'unknown' }}
+            detail: "{{ failure }}"
+
+        - name: Stop the rollout
+          ansible.builtin.fail:
+            msg: >-
+              {{ inventory_hostname + ' failed before the switch: ' + failure + ' Still on ' + (before.current or 'nothing') + '.'
+                 if not (switched and before.current)
+                 else inventory_hostname + ' failed its check. Rolled back to ' + before.current + '.'
+                 if health_back.rc == 0
+                 else inventory_hostname + ' failed its check, and ' + before.current + ' fails its check too.' }}
+              Rollout stopped.

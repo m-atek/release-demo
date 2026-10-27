@@ -1,0 +1,30 @@
+#cloud-config
+# inventory cloud server ${hostname}. Ansible does the rest (baseline.yml).
+hostname: ${hostname}
+preserve_hostname: false
+package_update: false
+write_files:
+  # Powers the server off 4 hours after every boot. Its shutdown behaviour
+  # is "stop", so it stops and costs nothing until scripts/demo.sh up linux.
+  - path: /etc/systemd/system/inventory-auto-stop.timer
+    content: |
+      [Unit]
+      Description=Stop this demo server 4 hours after boot
+
+      [Timer]
+      OnBootSec=4h
+      AccuracySec=1min
+
+      [Install]
+      WantedBy=timers.target
+  - path: /etc/systemd/system/inventory-auto-stop.service
+    content: |
+      [Unit]
+      Description=Stop this demo server
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/systemctl poweroff
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable --now inventory-auto-stop.timer

@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""One server's /health in large type, refreshed every second.
+
+    inventory-watch [--once]
+
+scripts/watch_inventory.sh runs it in four tmux panes, one per server:
+through Session Manager on the cloud servers and multipass exec on the
+data-center servers. It asks Tomcat on 127.0.0.1, so it needs no open port.
+The version fills about 24 columns, so it fits a 40-column pane. When the
+app doesn't answer, the pane shows ERROR and why, in small type.
+"""
+
+import json
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+URL = "http://127.0.0.1:8080/health"
+
+# 5 columns by 7 rows per glyph, "#" for a block.
+FONT = {
+    "0": [" ### ", "#   #", "#  ##", "# # #", "##  #", "#   #", " ### "],
+    "1": ["  #  ", " ##  ", "  #  ", "  #  ", "  #  ", "  #  ", " ### "],
+    "2": [" ### ", "#   #", "    #", "   # ", "  #  ", " #   ", "#####"],
+    "3": ["#####", "   # ", "  #  ", "   # ", "    #", "#   #", " ### "],
+    "4": ["   # ", "  ## ", " # # ", "#  # ", "#####", "   # ", "   # "],
+    "5": ["#####", "#    ", "#### ", "    #", "    #", "#   #", " ### "],
+    "6": ["  ## ", " #   ", "#    ", "#### ", "#   #", "#   #", " ### "],
+    "7": ["#####", "    #", "   # ", "  #  ", " #   ", " #   ", " #   "],
+    "8": [" ### ", "#   #", "#   #", " ### ", "#   #", "#   #", " ### "],
+    "9": [" ### ", "#   #", "#   #", " ####", "    #", "   # ", " ##  "],
+    ".": ["  ", "  ", "  ", "  ", "  ", "  ", "# "],
+    "E": ["#####", "#    ", "#    ", "#### ", "#    ", "#    ", "#####"],
+    "R": ["#### ", "#   #", "#   #", "#### ", "# #  ", "#  # ", "#   #"],
+    "O": [" ### ", "#   #", "#   #", "#   #", "#   #", "#   #", " ### "],
+    "-": ["     ", "     ", "     ", "#####", "     ", "     ", "     "],
+}
+BLOCK = "█"
+
+
+def big(text):
+    rows = []
+    for row in range(7):
+        rows.append(" ".join(FONT.get(c, FONT["-"])[row] for c in text).replace("#", BLOCK).rstrip())
+    return rows
+
+
+def read_health():
+    try:
+        with urllib.request.urlopen(URL, timeout=2) as response:
+            return response.status, json.loads(response.read())
+    except urllib.error.HTTPError as error:
+        return error.code, {}
+    except (urllib.error.URLError, OSError, ValueError):
+        return 0, {}
+
+
+def tomcat_state():
+    return subprocess.run(["systemctl", "is-active", "tomcat"], capture_output=True, text=True).stdout.strip()
+
+
+def frame():
+    status, health = read_health()
+    host = health.get("host") or socket.gethostname()
+    lines = ["", f"  {host}", f"  {health.get('location', '')}", ""]
+    if status == 200 and health.get("version"):
+        lines += ["  " + row for row in big(health["version"])]
+        detail = f"ok · Java {health.get('java', '?')}"
+    else:
+        lines += ["  " + row for row in big("ERROR")]
+        detail = (f"HTTP {status}" if status else "no answer") + f" · Tomcat {tomcat_state()}"
+    lines += ["", f"  {detail} · {time.strftime('%H:%M:%S')}"]
+    return lines
+
+
+def main():
+    once = "--once" in sys.argv
+    while True:
+        lines = frame()
+        # Home, then each line cleared to its end, then the rest of the screen: no flicker.
+        sys.stdout.write("\033[H" + "".join(f"{line}\033[K\n" for line in lines) + "\033[J")
+        sys.stdout.flush()
+        if once:
+            return
+        time.sleep(1)
+
+
+if __name__ == "__main__":
+    try:
+        sys.stdout.write("\033[?25l\033[2J")
+        main()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sys.stdout.write("\033[?25h\n")

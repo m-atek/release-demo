@@ -1,0 +1,26 @@
+# Point current at a release folder and restart Tomcat on it. The symlink
+# switch is atomic: Ansible makes the new link beside the old and renames it.
+
+- name: current -> releases/{{ switch_to }}
+  ansible.builtin.file:
+    path: /opt/inventory/current
+    src: /opt/inventory/releases/{{ switch_to }}
+    state: link
+    force: true
+  register: link
+
+- name: Record the switch
+  ansible.builtin.set_fact:
+    switched: "{{ switched or link.changed }}"
+    steps: "{{ steps + ([{'at': lookup('pipe', 'date +%s.%N') | float, 'what': 'switched to ' + switch_to}] if link.changed else []) }}"
+
+- name: Restart Tomcat on {{ switch_to }}
+  when: link.changed or restart | bool
+  ansible.builtin.systemd_service:
+    name: tomcat
+    state: restarted
+
+- name: Record the restart
+  when: link.changed or restart | bool
+  ansible.builtin.set_fact:
+    steps: "{{ steps + [{'at': lookup('pipe', 'date +%s.%N') | float, 'what': 'restarted Tomcat'}] }}"
