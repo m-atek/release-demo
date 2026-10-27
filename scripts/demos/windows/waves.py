@@ -150,3 +150,30 @@ def summary(results, plan_waves, target, stopped_by):
         if untouched:
             text += f" Not started: {', '.join(untouched)}."
     return text
+
+
+def names(servers):
+    """STORE-005, STORE-006 and STORE-007."""
+    return servers[0] if len(servers) == 1 else f"{', '.join(servers[:-1])} and {servers[-1]}"
+
+
+def finish_line(results, plan_waves, others, target, stopped_by):
+    """Slack's last line after the stop rule, true to what each server runs:
+    the servers not started, the ones that failed besides the one that
+    stopped the wave, and the rest on the target. others: the servers outside
+    the plan, which run it already. {total} stays for notify.py."""
+    servers = [s for wave in plan_waves for s in wave]
+    untouched = [s for s in servers if s not in results]
+    failed = [s for s in servers if s in results and s != stopped_by
+              and results[s].get("status") not in (HEALTHY, "skipped")]
+    upgraded = [s for s in [*servers, *others] if s != stopped_by and s not in untouched and s not in failed]
+    parts = []
+    if untouched:
+        parts.append(f"{names(untouched)} {'was' if len(untouched) == 1 else 'were'} not touched")
+    if failed:
+        parts.append(f"{names(failed)} failed too")
+    if upgraded:
+        parts.append(f"the others run {target}" if parts else f"The others run {target}")
+    line = f"Wave stopped at {stopped_by} after {{total}}."
+    return f"{line} {'; '.join(parts)}." if parts else line
+

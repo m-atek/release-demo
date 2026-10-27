@@ -29,7 +29,9 @@ def call() {
         try {
             rollbackStep('Roll back', 'production') {
                 // The deploy script's last error line is what Slack shows, such as "no earlier release".
-                int status = sh(returnStatus: true, script: "${deploy} ${service} production --previous 2>.release/move-error.txt")
+                int status = withServiceCredentials(cfg) {
+                    sh(returnStatus: true, script: "${deploy} ${service} production --previous 2>.release/move-error.txt")
+                }
                 String why = readFile('.release/move-error.txt').trim()
                 if (why) {
                     echo why
@@ -118,9 +120,11 @@ private void stepDone(String name, String result, long started, String environme
 // The production check, on the version the rollback put back.
 int check(Map cfg, String service, String version) {
     String url = state('deploys.production.url')
-    return withEnv(["CHECK_VERSION=${version}", "CHECK_URL=${url}"]) {
-        sh(returnStatus: true,
-            script: "${serviceConfig.command(cfg, 'check')} ${service} production --version \"\$CHECK_VERSION\" --url \"\$CHECK_URL\"")
+    return withServiceCredentials(cfg) {
+        withEnv(["CHECK_VERSION=${version}", "CHECK_URL=${url}"]) {
+            sh(returnStatus: true,
+                script: "${serviceConfig.command(cfg, 'check')} ${service} production --version \"\$CHECK_VERSION\" --url \"\$CHECK_URL\"")
+        }
     }
 }
 

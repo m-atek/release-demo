@@ -1,6 +1,7 @@
 """Print the SonarQube scanner arguments for a service, for stage 3.
 
     python scripts/sonar_args.py orders-service 1.4.0
+    python scripts/sonar_args.py store-sync 3.3.0 --organization   the organization only, for a service's own scanner
 
 One SonarQube Cloud project per service (a monorepo), analysed from CI, and
 the scanner waits for the quality gate: a failed gate fails the stage.
@@ -16,8 +17,12 @@ def main():
     name, version = sys.argv[1], sys.argv[2]
     config = service(name)
     path = config["path"]
+    organization = get_parameter(ssm_client(), "sonar/organization")
+    if "--organization" in sys.argv[3:]:
+        print(organization)
+        return
     args = {
-        "sonar.organization": get_parameter(ssm_client(), "sonar/organization"),
+        "sonar.organization": organization,
         "sonar.projectKey": config["sonarqube"]["project_key"],
         "sonar.projectName": name,
         "sonar.projectVersion": version,

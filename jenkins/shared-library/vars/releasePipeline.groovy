@@ -30,19 +30,31 @@ def call() {
         try {
             releaseStage('Build') { toolchain.build(service, params.JIRA_KEY, cfg) }
             releaseStage('Test') { toolchain.test(service, cfg) }
-            releaseStage('Quality gate') { toolchain.qualityGate(service, version) }
+            releaseStage('Quality gate') { toolchain.qualityGate(service, version, cfg) }
             releaseStage('SBOM and scan') { toolchain.sbomAndScan(service) }
             if (cfg.scripts.contract) {
                 releaseStage('Contract check') { sh "${serviceConfig.command(cfg, 'contract')} ${service}" }
             }
             archiveArtifacts artifacts: '.release/reports/*, dist/**/build-info.json', allowEmptyArchive: true
             releaseStage('Publish') { sh "${publish} ${service}" }
-            releaseStage('Staging', environment: 'staging') { sh "${deploy} ${service} staging" }
-            releaseStage('Check staging', environment: 'staging') {
-                if (check(cfg, service, 'staging', version) != 0) {
-                    sh "${deploy} ${service} staging --back"
-                    error "Staging check failed: staging is back on ${state('deploys.staging.previous_version')}."
+            if (cfg.environments?.containsKey('staging')) {
+                releaseStage('Staging', environment: 'staging') {
+                    withServiceCredentials(cfg) { sh "${deploy} ${service} staging" }
                 }
+                releaseStage('Check staging', environment: 'staging') {
+                    if (check(cfg, service, 'staging', version) != 0) {
+                        withServiceCredentials(cfg) { sh "${deploy} ${service} staging --back" }
+                        error "Staging check failed: staging is back on ${state('deploys.staging.previous_version')}."
+                    }
+                }
+            } else {
+                // Production only (demos 1 and 3): the deploy script is never called for staging.
+                releaseStage.skip('Staging', "${service} has no staging environment.")
+                releaseStage.skip('Check staging', "${service} has no staging environment.")
+            }
+            if (cfg.scripts.plan) {
+                // What the change needs from the target before it opens (demo 1: the wave plan).
+                releaseStage('Plan') { sh "${serviceConfig.command(cfg, 'plan')} ${service}" }
             }
             releaseStage('Change') { sh 'python3 scripts/change.py open' }
             if (state('change.type') == 'standard') {
@@ -57,7 +69,7 @@ def call() {
             }
             releaseStage('Production', environment: 'production', deploy: true) {
                 sh 'python3 scripts/change.py implement'
-                sh "${deploy} ${service} production"
+                withServiceCredentials(cfg) { sh "${deploy} ${service} production" }
             }
             releaseStage('Check production', environment: 'production') {
                 if (check(cfg, service, 'production', version) != 0) {
@@ -88,9 +100,11 @@ def call() {
 // The pipeline's check: /health within the environment's timeout, then the check paths.
 int check(Map cfg, String service, String environment, String version) {
     String url = state("deploys.${environment}.url")
-    return withEnv(["CHECK_VERSION=${version}", "CHECK_URL=${url}"]) {
-        sh(returnStatus: true,
-            script: "${serviceConfig.command(cfg, 'check')} ${service} ${environment} --version \"\$CHECK_VERSION\" --url \"\$CHECK_URL\"")
+    return withServiceCredentials(cfg) {
+        withEnv(["CHECK_VERSION=${version}", "CHECK_URL=${url}"]) {
+            sh(returnStatus: true,
+                script: "${serviceConfig.command(cfg, 'check')} ${service} ${environment} --version \"\$CHECK_VERSION\" --url \"\$CHECK_URL\"")
+        }
     }
 }
 
@@ -98,7 +112,7 @@ int check(Map cfg, String service, String environment, String version) {
 void rollBack(Map cfg, String service) {
     long started = System.currentTimeMillis()
     String previous = state('deploys.production.previous_version')
-    sh "${serviceConfig.command(cfg, 'deploy')} ${service} production --back"
+    withServiceCredentials(cfg) { sh "${serviceConfig.command(cfg, 'deploy')} ${service} production --back" }
     withEnv(["PREVIOUS=${previous}"]) {
         if (check(cfg, service, 'production', previous) != 0) {
             sh 'python3 scripts/notify.py line "The previous version, $PREVIOUS, fails its check too. Look now."'
@@ -119,14 +133,17 @@ void rollBack(Map cfg, String service) {
 }
 
 // Any other failure: Slack says where it stopped. Before production, the open
-// change is cancelled; after the production deploy, it closes unsuccessful.
+// change is cancelled; after the production deploy, it closes unsuccessful,
+// unless the deploy script closed it already (change.closed, demo 1's stop rule).
 void stopped(error) {
     if (state('total')) {
         return  // the rollback already told everyone
     }
     withEnv(["REASON=${(error.message ?: error.toString()).readLines().first()}"]) {
         sh(returnStatus: true, script: 'python3 scripts/notify.py finish failed')
-        if (state('deploys.production.number')) {
+        if (state('change.closed')) {
+            echo "The change is closed already: ${state('change.closed')}."
+        } else if (state('deploys.production.number')) {
             sh(returnStatus: true, script: 'python3 scripts/change.py close unsuccessful --notes "The release stopped after the production deploy: $REASON. Look at production now."')
         } else {
             sh(returnStatus: true, script: 'python3 scripts/change.py cancel --notes "The release stopped: $REASON. Nothing changed in production."')

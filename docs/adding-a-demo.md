@@ -37,6 +37,19 @@ store-sync:
     production: { ... }
 ```
 
+Optional keys, each with its default where it is missing:
+
+| Key | What it does |
+| --- | --- |
+| no `environments.staging` | Staging and Check staging show as skipped; the deploy script is never called for staging (demos 1 and 3). |
+| `scripts.plan` | A Plan stage before the change, `<plan> <service>`, for what the change needs from the target (demo 1's waves). |
+| `scripts.quality_gate` | The service's own analysis instead of the shared sonar-scanner, `<quality_gate> <service> <version>` in its toolchain, with `SONAR_TOKEN` and `SONAR_ORGANIZATION` set (demo 1's SonarScanner for .NET). |
+| `build_agents` | `{<label>: {build: <command>, test: <command>}}`: each runs first, in parallel on that agent (`sh`, or PowerShell on Windows), and hands back `dist/<service>/parts/<label>/`; then `scripts.build` and `scripts.test` run on the tools host (demo 6). |
+| `jenkins_credentials` | `{<credential id>: <variable>}`, bound around every deploy and check, in the release, the rollback and the reset job (demo 5's ID tokens). |
+| `servicenow.standard_options` | The Slack options that make a standard change; default `[standard]` (demo 7: `[stores]`). |
+| `servicenow.servers` | CI names, of any class, added to the change as affected items when it opens (demo 3). |
+| `servicenow.template_texts` | `{<template kind>: {field: text}}`, the texts `servicenow_setup.py` gives that template instead of the shared ones (demo 6). |
+
 ## 2. The stage scripts
 
 The pipeline calls each script with the same arguments as the Lambda
@@ -54,8 +67,16 @@ state through `scripts/run_state.py` (`.release/state.json`).
 | Check | `<check> <service> <environment> --version <v> --url <url>` | Exit 0 when the new version is live and working, non-zero otherwise. Print one line per check: `ok   <what>` or `FAIL <what>`. |
 
 When a release stops, Slack's last line says where. A deploy script may set
-`finish_line` in the run state (`python scripts/run_state.py set "finish_line=Wave stopped at STORE-004 after {total}. The other five stores are untouched."`)
+`finish_line` in the run state (`python scripts/run_state.py set "finish_line=Wave stopped at STORE-004 after {total}. STORE-006 was not touched; the others run 3.3.0."`)
 to say how its stop reads; `{total}` becomes the run's total time.
+
+What else a stage script may put in the run state for the shared scripts:
+
+- `change_extras`: `fields` for the change and `affected_cis` (CMDB sys_ids), which `change.py open` adds while the change is still New: ServiceNow refuses affected items once it is in Assess. Set it before the Change stage, in staging or the Plan stage.
+- `change_details`: lines added to the change's description, so the approver sees them.
+- `rows`: lines Slack's message shows under the stages (demo 1's waves).
+- `change.closed`: the deploy script closed the change itself (demo 1's stop rule), so the pipeline's stop leaves it alone.
+- `check.notes`: what the change's close notes start with after a rollback.
 
 The shared scripts (`change.py`, `notify.py`, `events.py`, `jira.py`,
 `tag.py`, `publish.py`) are the same for every service. A demo doesn't

@@ -1,6 +1,9 @@
 // reset.py from the Jenkins UI, before a take: puts a demo back to its
 // starting state. The demo's name reaches the shell as an environment
 // variable, never quoted into the script. Only admin may start it.
+// DEMO=clouds runs with quote-service's ID tokens bound (demo 5).
+
+@Library('release-demo') _
 
 pipeline {
     agent none
@@ -21,7 +24,14 @@ pipeline {
         stage('Reset') {
             agent { label 'tools-host' }
             steps {
-                sh "python3 scripts/reset.py \"\$DEMO\" --here${params.DRY_RUN ? ' --dry-run' : ''}"
+                script {
+                    String reset = "python3 scripts/reset.py \"\$DEMO\" --here${params.DRY_RUN ? ' --dry-run' : ''}"
+                    if (params.DEMO == 'clouds') {
+                        withServiceCredentials(serviceConfig('quote-service')) { sh reset }
+                    } else {
+                        sh reset
+                    }
+                }
             }
         }
     }

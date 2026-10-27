@@ -11,6 +11,11 @@ Uploads the package and build-info.json with their checksums, so JCR rejects a
 corrupted upload. --release copies the exact candidate that reached production,
 after checking its SHA-256 again. The token is release-pipeline's, which may
 deploy but not delete, so nothing published can be overwritten.
+
+A version released again from another build, with no reset in between (two
+takes of one video), keeps its first release copy: the same package is not
+copied twice, and a different one goes next to it, under
+<releases>/<version>/<build>/.
 """
 
 import argparse
@@ -103,9 +108,19 @@ def main():
     package = download(token, state["package"]["path"])
     if hashlib.sha256(package).hexdigest() != state["package"]["sha256"]:
         fail(f"{state['package']['path']} no longer matches its SHA-256: not copying it to releases.")
-    target = f"{releases_root(args.service)}/{info['version']}/{info['package']}"
+    base = f"{releases_root(args.service)}/{info['version']}"
+    existing = stored_sha256(token, f"{base}/{info['package']}")
+    if existing == state["package"]["sha256"]:
+        state["package"]["release_path"] = f"{base}/{info['package']}"
+        run_state.save(state)
+        print(f"{base}/{info['package']} is already this package (same SHA-256): nothing to copy")
+        return
+    if existing:
+        print(f"{base}/ holds an earlier build of {info['version']}: this one goes to {base}/{state['build']['number']}/")
+        base = f"{base}/{state['build']['number']}"
+    target = f"{base}/{info['package']}"
     upload(token, target, package)
-    upload(token, f"{releases_root(args.service)}/{info['version']}/build-info.json", (out / "build-info.json").read_bytes())
+    upload(token, f"{base}/build-info.json", (out / "build-info.json").read_bytes())
     state["package"]["release_path"] = target
     run_state.save(state)
     print(f"Copied to {target}")

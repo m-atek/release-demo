@@ -201,9 +201,12 @@ def setup_approvals(sn, groups):
 
 
 def template_texts(service, kind):
-    """The fields a standard change template carries. The instance requires these."""
+    """The fields a standard change template carries. The instance requires these.
+    A service may give its own per template in services.yaml
+    (servicenow.template_texts.<kind>), which replace these field by field."""
+    own = services()[service]["servicenow"].get("template_texts", {}).get(kind, {})
     if kind == "standard":
-        return {
+        texts = {
             "short_description": f"Routine release of {service}",
             "description": f"A pre-approved release of {service}, started from Slack and run by the release pipeline: "
                            "tests, quality gate, SBOM and scan, staging and its check, then production and its check. "
@@ -218,16 +221,18 @@ def template_texts(service, kind):
             "justification": f"Routine releases of {service} follow the same automated, tested path every time.",
             "risk_impact_analysis": "Low: the same package passed staging, and the rollback is automatic.",
         }
-    return {
-        "short_description": f"Rollback of {service}",
-        "description": f"Moves {service} in production back to the previous version, recorded as a pre-approved "
-                       "change. Started with /rollback in Slack, or by the pipeline after a failed production check.",
-        "implementation_plan": "Move the production live alias to the previous published version and check /health.",
-        "backout_plan": "Move the alias forward again to the version that was rolled back.",
-        "test_plan": "/health must report the previous version within 60 seconds.",
-        "justification": "Restores the service quickly after a failed release.",
-        "risk_impact_analysis": "Low: production returns to the version that ran before.",
-    }
+    else:
+        texts = {
+            "short_description": f"Rollback of {service}",
+            "description": f"Moves {service} in production back to the previous version, recorded as a pre-approved "
+                           "change. Started with /rollback in Slack, or by the pipeline after a failed production check.",
+            "implementation_plan": "Move the production live alias to the previous published version and check /health.",
+            "backout_plan": "Move the alias forward again to the version that was rolled back.",
+            "test_plan": "/health must report the previous version within 60 seconds.",
+            "justification": "Restores the service quickly after a failed release.",
+            "risk_impact_analysis": "Low: production returns to the version that ran before.",
+        }
+    return {**texts, **own}
 
 
 def encoded(values):
@@ -245,7 +250,8 @@ def setup_templates(sn, groups, items):
                 continue
             values = {**template_texts(service, kind), "assignment_group": groups["Platform team"],
                       "cmdb_ci": items[service]}
-            if kind == "standard" and config["servicenow"].get("backout_plan"):
+            own = config["servicenow"].get("template_texts", {}).get(kind, {})
+            if kind == "standard" and config["servicenow"].get("backout_plan") and "backout_plan" not in own:
                 values["backout_plan"] = config["servicenow"]["backout_plan"]
             proposal = sn.find("std_change_proposal", f"template_name={name}^state!=4", "sys_id,approval")
             if proposal is None:

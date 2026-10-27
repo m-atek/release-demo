@@ -336,7 +336,7 @@ Before a call or a take:
 2. `scripts/demo.sh up mobile`: checks demo 7's bucket, gives the stand-ins their starting state if they have none, and starts the console on http://127.0.0.1:8077 with three pages: Device management (Store Floor's scope and the pilot devices' inventory, on demo 6's Jamf stand-in page), iOS testing and Android testing (the builds, their numbers and release notes).
 3. `.venv/bin/python scripts/reset.py mobile` (it hands itself over to the tools host, like the main reset, and keeps the past the same way): every device back on 2.3.0, rebuilt with a higher build number, the scope on Pilot, 2.4.0 staged, ORD-80 and ORD-81 reopened, earlier takes archived. `--dry-run` shows what it would do. Without the Mac, `scripts/demos/mobile/reset.py --standins` resets the stand-ins alone.
 
-During the call: Slack as Sam, the console next to it, ServiceNow as Alex. A jamf release stops at the approval with the app on the pilot devices; Alex's approval widens the scope to All store devices. A stores release is a pre-approved standard change once `change.py` reads `standard_options`; until then Alex approves it too. `/rollback store-floor` rebuilds the previous release with a higher build number and gives it to Jamf, because iOS won't install an older build over a newer one. Afterwards: `scripts/demo.sh down mobile`. Nothing of demo 7 costs money by the hour.
+During the call: Slack as Sam, the console next to it, ServiceNow as Alex. A jamf release stops at the approval with the app on the pilot devices; Alex's approval widens the scope to All store devices. A stores release is a pre-approved standard change (`standard_options` in its services.yaml entry). `/rollback store-floor` rebuilds the previous release with a higher build number and gives it to Jamf, because iOS won't install an older build over a newer one. Afterwards: `scripts/demo.sh down mobile`. Nothing of demo 7 costs money by the hour.
 
 Setup once, after infra/ has the new parameter names:
 
@@ -379,19 +379,6 @@ What to say if asked: the builds, the app signature, the keychain, the checks, J
 
 After the call: `scripts/demo.sh down desktop` stops the Windows instances (USD 0.064 an hour each while they run; they also stop themselves 4 hours after boot). The Jamf stand-in costs nothing idle. `scripts/demo.sh status desktop` shows the instances, the Mac agent and the policy.
 
-## Layout
-
-```
-services.yaml            per service: platform, environments, settings, checks, ServiceNow and SonarQube keys
-people.yaml              Sam, Alex and Mateusz across Slack, ServiceNow and GitHub
-services/orders-service/ handler.py, VERSION, tests/
-demo-states/             the prepared source of every version a demo releases
-scripts/                 one Python script per stage, plus stage.py, tools.sh and the local runner
-jenkins/                 controller image, pinned plugins, casc.yaml, and jobs/
-tools-host/              docker-compose.yml for the tools host, the local override and the local agent image
-demo-data/               the fictional release checklist
-```
-
 ## Demo on a call: Windows store servers (demo 1)
 
 store-sync, a .NET Framework 4.8 Windows service, upgraded from 3.2.0 to 3.3.0 (ORD-31) on six store servers, STORE-001 to STORE-006, in waves: STORE-001 alone, then two at a time. Every step runs through AWS Systems Manager Run Command; no server has an inbound rule, RDP or WinRM. STORE-004's config lacks UploadEndpoint, planted on purpose: its check fails, it goes back to 3.2.0 by itself, the wave stops, and the change closes as "Successful with issues". The fleet costs about USD 0.41 an hour while it runs, and each server stops itself 4 hours after boot.
@@ -418,6 +405,19 @@ scripts/demo.sh status windows         # what each server runs, the drift, the c
 5. `scripts/demos/windows/fix-drift.sh` restores UploadEndpoint. Then `/release store-sync ORD-31 resume`: a new change, linked to the first, for STORE-004 and STORE-006 only.
 
 `scripts/demo.sh down windows` stops the fleet; only its disks cost, about USD 0.52 a day. `scripts/demos/windows/down.sh --destroy` removes it with Terraform.
+
+## Layout
+
+```
+services.yaml            per service: platform, environments, settings, checks, ServiceNow and SonarQube keys
+people.yaml              Sam, Alex and Mateusz across Slack, ServiceNow and GitHub
+services/orders-service/ handler.py, VERSION, tests/
+demo-states/             the prepared source of every version a demo releases
+scripts/                 one Python script per stage, plus stage.py, tools.sh and the local runner
+jenkins/                 controller image, pinned plugins, casc.yaml, and jobs/
+tools-host/              docker-compose.yml for the tools host, the local override and the local agent image
+demo-data/               the fictional release checklist
+```
 
 ## License
 

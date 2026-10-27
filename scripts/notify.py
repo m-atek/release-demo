@@ -55,6 +55,9 @@ def render(state):
     if state.get("change", {}).get("url"):
         links.append(f"<{state['change']['url']}|{state['change']['number']}>")
     lines = [head, "\n".join(rows)]
+    # A deploy script's own rows under the stages, for example demo 1's waves.
+    if state.get("rows"):
+        lines.append("\n".join(state["rows"]))
     if links:
         lines.append(" · ".join(links))
     lines += state.get("lines", [])

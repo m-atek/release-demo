@@ -1,10 +1,12 @@
 """The change side of the wave plan: what Alex approves, once, before any server is touched.
 
-    python scripts/demos/windows/plan.py store-sync      print the plan text of this run's plan
+    python scripts/demos/windows/plan.py store-sync      the pipeline's Plan stage: plan the waves, print the plan
 
-deploy.py staging makes the plan and, with this module, puts in the run state
-what scripts/change.py open adds to the change while it is still New (in
-Assess the change model makes affected items read-only):
+The fleet has no staging, so the pipeline skips Staging and runs this as its
+Plan stage, before the change: it reads what every server runs, plans the
+waves (deploy.make_plan, which deploy.py staging also runs by hand) and puts
+in the run state what scripts/change.py open adds to the change while it is
+still New (in Assess the change model makes affected items read-only):
 
     change_extras:
       fields:        implementation_plan (the waves), backout_plan, and for a
@@ -13,6 +15,7 @@ Assess the change model makes affected items read-only):
       affected_cis:  the planned servers' CMDB sys_ids
 """
 
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -73,11 +76,23 @@ def change_extras(sn, config, state, plan):
     return extras
 
 
+def demo_deploy():
+    """This folder's deploy.py, by path: scripts/ has a deploy.py of its own."""
+    spec = importlib.util.spec_from_file_location("windows_deploy", HERE / "deploy.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def main():
     config = service(sys.argv[1] if len(sys.argv) > 1 else "store-sync")
     state = run_state.load()
+    if not state.get("version"):
+        fail("No run state: this runs inside a release, after Publish.")
     if not state.get("plan"):
-        fail("No plan in the run state: run deploy.py store-sync staging first.")
+        deploy = demo_deploy()  # the plan reads the fleet through Run Command
+        release = deploy.Release(config, state)
+        deploy.make_plan(release, release.fleet.running())
     print(plan_text(state["plan"], config["environments"]["production"], state["version"]))
 
 

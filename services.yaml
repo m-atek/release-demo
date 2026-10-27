@@ -274,6 +274,8 @@ store-sync:
     test: scripts/demos/windows/test.sh
     quality_gate: scripts/demos/windows/quality_gate.sh
     publish: scripts/publish.py
+    # The Plan stage, before the change: the waves and the change's extras.
+    plan: scripts/demos/windows/plan.py
     deploy: scripts/demos/windows/deploy.py
     check: scripts/demos/windows/check.py
     change: scripts/change.py
@@ -671,7 +673,8 @@ store-assistant:
     test_instance: release-demo-desktop-test
     build_agent: release-demo-desktop-build
     product: { name: Store Assistant, folder: Expeditious Software\Store Assistant }
-    wix_sdk: WixToolset.Sdk/6.0.2
+    # WiX 5.0.2, which has no fee (Mateusz's choice).
+    wix_sdk: WixToolset.Sdk/5.0.2
 
   environments:
     staging:

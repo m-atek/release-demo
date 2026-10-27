@@ -70,9 +70,16 @@ def stage_summary(state):
 
 
 def open_change(sn, ssm, state):
+    """The change, plus what a deploy script may have put in the run state:
+    change_extras (fields for the change, and affected_cis, the sys_ids of the
+    CMDB items it touches) and change_details (lines added to the description,
+    so the approver sees them). The servers a service lists in services.yaml
+    (servicenow.servers, CI names of any class) are affected items too."""
     config = service(state["service"])
-    # A service may release as standard changes by default (services.yaml servicenow.change).
-    standard = state.get("option") == "standard" or config["servicenow"].get("change") == "standard"
+    # A service may release as standard changes by default (services.yaml servicenow.change),
+    # or name the Slack options that make one (servicenow.standard_options, by default standard).
+    standard = (state.get("option") in config["servicenow"].get("standard_options", ["standard"])
+                or config["servicenow"].get("change") == "standard")
     groups = {g: sn.find("sys_user_group", f"name={g}", "sys_id")["sys_id"] for g in ("Platform team",)}
     ci = sn.find("cmdb_ci_appl", f"name={config['servicenow']['cmdb_item']}", "sys_id")["sys_id"]
     asked_by = requester_user(sn, state.get("requested_by"))
@@ -94,6 +101,10 @@ def open_change(sn, ssm, state):
         "start_date": run_state.iso(started).replace("T", " ").rstrip("Z"),
         "end_date": run_state.iso(started + 1800).replace("T", " ").rstrip("Z"),
     }
+    extras = state.get("change_extras") or {}
+    fields.update(extras.get("fields") or {})
+    if state.get("change_details"):
+        fields["description"] += "\n\n" + "\n".join(state["change_details"])
     if standard:
         name = config["servicenow"]["templates"]["standard"]
         template = sn.find("std_change_record_producer", f"name={name}^active=true", "sys_id")
@@ -113,6 +124,16 @@ def open_change(sn, ssm, state):
             attach(sn, change_id, path)
     note(sn, state, "Evidence:\n" + "\n".join(f"{k}: {v}" for k, v in links(state, ssm).items()))
     note(sn, state, "Stages so far:\n" + stage_summary(state))
+    # Affected items go on while the change is New: in Assess ServiceNow refuses them.
+    affected = list(extras.get("affected_cis") or [])
+    for name in config["servicenow"].get("servers", []):
+        server = sn.find("cmdb_ci", f"name={name}", "sys_id")
+        if server is None:
+            print(f"No CI {name} in ServiceNow: not on the change as an affected item.")
+        elif server["sys_id"] not in affected:
+            affected.append(server["sys_id"])
+    for ci_id in affected:
+        sn.call("POST", "/api/now/table/task_ci", {"task": change_id, "ci_item": ci_id})
     if not standard:
         sn.call("PATCH", f"/api/sn_chg_rest/change/normal/{change_id}", {"state": ASSESS})
     print(f"{number}: {'standard, pre-approved' if standard else 'normal, waiting for Change approvers'}")

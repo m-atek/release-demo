@@ -72,7 +72,7 @@ if ($Step -eq 'test') {
 
 $started = Get-Date
 $standIn = (Get-Setting 'STANDIN_MICROSOFT' (Get-Setting 'STANDIN' '1')) -notin '0', 'false', 'no', ''
-$wixSdk = Get-Setting 'wix_sdk' 'WixToolset.Sdk/6.0.2'
+$wixSdk = Get-Setting 'wix_sdk' 'WixToolset.Sdk/5.0.2'
 $build = if ($env:BUILD_NUMBER) { $env:BUILD_NUMBER } else { '1' }
 Write-Host "Store Assistant $Version for Windows, build $build"
 if ($standIn) { Write-Host 'STANDIN=1: the Artifact Signing stand-in signs with this agent''s test certificate' }

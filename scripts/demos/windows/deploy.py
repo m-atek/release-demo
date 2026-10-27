@@ -1,16 +1,17 @@
 """Stages 6 and 10 for the store fleet: store-sync upgraded in waves through
 SSM Run Command, with no logins and no open ports.
 
-    python scripts/demos/windows/deploy.py store-sync staging                the plan (the fleet has no staging)
+    python scripts/demos/windows/deploy.py store-sync staging                the plan only, by hand (the fleet has no staging)
     python scripts/demos/windows/deploy.py store-sync production             the waves
     python scripts/demos/windows/deploy.py store-sync production --back      this run's servers back where they were
     python scripts/demos/windows/deploy.py store-sync production --previous  every server to the release before (/rollback)
 
 staging: the fleet has no staging environment; the first wave, one server
-alone, is the canary. This step reads what every server runs and plans the
-waves from services.yaml: all servers, or with the option resume only those
-not on the new version. The tiles in Grafana show the plan, and the run state
-gets change_extras (plan.py) for the change Alex approves.
+alone, is the canary. The pipeline skips Staging and plans in its Plan stage
+(plan.py); this step does the same by hand. It reads what every server runs
+and plans the waves from services.yaml: all servers, or with the option
+resume only those not on the new version. The tiles in Grafana show the plan,
+and the run state gets change_extras (plan.py) for the change Alex approves.
 
 production, per server in its wave, never more than `parallel` at once:
 1. pre-checks: free disk, the service running, no pending reboot, and the
@@ -236,10 +237,7 @@ def stopped(release, results, stopped_by):
     state, target = release.state, release.target
     plan = state["plan"]
     text = waves.summary(results, plan["waves"], target, stopped_by)
-    total = len(plan["servers"]) + len(plan.get("others", {}))
-    others = total - 1
-    state["finish_line"] = (f"Wave stopped at {stopped_by} after {{total}}. The other "
-                            f"{NUMBERS[others] if others < len(NUMBERS) else others} stores are untouched.")
+    state["finish_line"] = waves.finish_line(results, plan["waves"], list(plan.get("others", {})), target, stopped_by)
     release.save()
     if release.sn:
         took = run_state.duration(run_state.now() - state["started_at"])

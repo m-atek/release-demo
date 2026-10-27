@@ -171,3 +171,59 @@ def test_the_summary_counts_the_fleet():
                "STORE-004": {"status": waves.ROLLED_BACK, "after": "3.2.0", "reason": "UploadEndpoint is not set"}}
     assert waves.summary(results, WAVES, "3.3.0", "STORE-004") == (
         "4 of 6 servers on 3.3.0. STORE-004 failed (UploadEndpoint is not set) and is on 3.2.0. Not started: STORE-006.")
+
+
+def test_the_finish_line_says_what_each_server_runs():
+    results = {"STORE-001": {"status": waves.HEALTHY}, "STORE-002": {"status": waves.HEALTHY},
+               "STORE-003": {"status": waves.HEALTHY}, "STORE-005": {"status": waves.HEALTHY},
+               "STORE-004": {"status": waves.ROLLED_BACK}}
+    assert waves.finish_line(results, WAVES, [], "3.3.0", "STORE-004") == (
+        "Wave stopped at STORE-004 after {total}. STORE-006 was not touched; the others run 3.3.0.")
+
+
+def test_the_finish_line_when_the_canary_stops_the_wave():
+    line = waves.finish_line({"STORE-001": {"status": waves.ROLLED_BACK}}, WAVES, [], "3.3.0", "STORE-001")
+    assert line == ("Wave stopped at STORE-001 after {total}. STORE-002, STORE-003, STORE-004, STORE-005 and "
+                    "STORE-006 were not touched.")
+
+
+def test_the_finish_line_of_a_resume_counts_the_servers_outside_the_plan():
+    results = {"STORE-004": {"status": waves.HEALTHY}, "STORE-006": {"status": waves.FAILED}}
+    others = ["STORE-001", "STORE-002", "STORE-003", "STORE-005"]
+    assert waves.finish_line(results, [["STORE-004"], ["STORE-006"]], others, "3.3.0", "STORE-006") == (
+        "Wave stopped at STORE-006 after {total}. The others run 3.3.0.")
+    results["STORE-004"] = {"status": waves.FAILED}
+    assert waves.finish_line(results, [["STORE-004", "STORE-006"]], others, "3.3.0", "STORE-006") == (
+        "Wave stopped at STORE-006 after {total}. STORE-004 failed too; the others run 3.3.0.")
+
+
+def test_the_plan_stage_plans_once_then_prints_the_plan(tmp_path, monkeypatch, capsys):
+    import plan
+    import run_state
+
+    monkeypatch.setattr(run_state, "PATH", tmp_path / "state.json")
+    run_state.save({"service": "store-sync", "version": "3.3.0", "build": {"url": ""}})
+    planned = []
+
+    class FakeDeploy:
+        class Release:
+            def __init__(self, config, state):
+                self.state, self.fleet = state, self
+
+            def running(self):
+                return {"STORE-001": "i-1"}
+
+        @staticmethod
+        def make_plan(release, ids):
+            planned.append(ids)
+            release.state["plan"] = {"waves": [["STORE-001"]], "numbers": [1], "parallel": 2,
+                                     "servers": {"STORE-001": {"store": "Amsterdam", "before": "3.2.0"}}}
+            run_state.save(release.state)
+
+    monkeypatch.setattr(plan, "demo_deploy", lambda: FakeDeploy)
+    monkeypatch.setattr(sys, "argv", ["plan.py", "store-sync"])
+    plan.main()
+    plan.main()
+    assert planned == [{"STORE-001": "i-1"}]
+    assert capsys.readouterr().out.count("Wave 1: STORE-001 (Amsterdam, on 3.2.0)") == 2
+

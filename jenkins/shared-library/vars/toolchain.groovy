@@ -5,7 +5,10 @@
 // A service builds and tests in the image from its toolchain Dockerfile
 // (default jenkins/toolchain/python.Dockerfile) on the tools host, or, with
 // build_agent set in services.yaml, directly on that Jenkins agent (a Mac or
-// Windows machine), which hands its results back with stash.
+// Windows machine), which hands its results back with stash. With
+// build_agents (demo 6), each agent first runs its own build or test command,
+// all at once, and hands back dist/<service>/parts/<label>/; the service's
+// script then runs on the tools host as above.
 
 import groovy.transform.Field
 
@@ -42,8 +45,42 @@ private void inToolchain(Map cfg, String stashName, String includes, Closure bod
     }
 }
 
+// The build_agents commands for one step, in parallel, each on its own agent
+// and checkout: sh on a Mac or Linux agent, PowerShell on Windows. Each part
+// comes back to the tools host with stash. Nothing without build_agents.
+private void onBuildAgents(Map cfg, String service, String step) {
+    Map agents = cfg.build_agents ?: [:]
+    Map branches = [:]
+    for (String label : agents.keySet() as List) {
+        String agent = label
+        String command = agents[label][step]
+        if (!command) {
+            continue
+        }
+        branches[agent] = {
+            node(agent) {
+                checkout scm
+                if (isUnix()) {
+                    sh command
+                } else {
+                    powershell command
+                }
+                stash name: "${step}-${agent}", includes: "dist/${service}/parts/${agent}/**", allowEmpty: true
+            }
+        }
+    }
+    if (!branches) {
+        return
+    }
+    parallel branches
+    for (String agent : branches.keySet() as List) {
+        unstash "${step}-${agent}"
+    }
+}
+
 def build(String service, String jiraKey, Map cfg = null) {
     cfg = cfg ?: serviceConfig(service)
+    withEnv(["JIRA_KEY=${jiraKey}"]) { onBuildAgents(cfg, service, 'build') }
     inToolchain(cfg, 'build', "dist/${service}/**") {
         sh "${serviceConfig.command(cfg, 'build')} ${service} --jira-key ${jiraKey}"
     }
@@ -51,6 +88,7 @@ def build(String service, String jiraKey, Map cfg = null) {
 
 def test(String service, Map cfg = null) {
     cfg = cfg ?: serviceConfig(service)
+    onBuildAgents(cfg, service, 'test')
     inToolchain(cfg, 'test', '.release/reports/**') {
         if (cfg.scripts.test) {
             sh "mkdir -p .release/reports && ${serviceConfig.command(cfg, 'test')} ${service}"
@@ -66,7 +104,24 @@ def test(String service, Map cfg = null) {
     junit testResults: '.release/reports/junit.xml', allowEmptyResults: false
 }
 
-def qualityGate(String service, String version) {
+// The shared sonar-scanner, or with scripts.quality_gate in services.yaml the
+// service's own script (demo 1: SonarScanner for .NET), in its toolchain:
+// <quality_gate> <service> <version>, with SONAR_TOKEN and SONAR_ORGANIZATION
+// set. Either way the scanner waits for the gate, so a failed gate fails the stage.
+def qualityGate(String service, String version, Map cfg = null) {
+    cfg = cfg ?: serviceConfig(service)
+    if (cfg.scripts.quality_gate) {
+        String organization = sh(returnStdout: true,
+            script: "python3 scripts/sonar_args.py ${service} ${version} --organization").trim()
+        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+            withEnv(["SONAR_ORGANIZATION=${organization}"]) {
+                inToolchain(cfg, 'quality-gate', '.release/reports/**') {
+                    sh "${serviceConfig.command(cfg, 'quality_gate')} ${service} ${version}"
+                }
+            }
+        }
+        return
+    }
     String args = sh(returnStdout: true, script: "python3 scripts/sonar_args.py ${service} ${version}").trim()
     withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
         docker.image(SONAR).inside('-e SONAR_TOKEN -e SONAR_HOST_URL=https://sonarcloud.io -e SONAR_USER_HOME=/tmp/sonar') {
