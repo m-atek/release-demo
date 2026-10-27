@@ -96,6 +96,10 @@ class Reset:
 
 
 def stop_runs(reset, job):
+    # history.py started from the Mac runs as a systemd unit; between two of
+    # its releases no release run shows it.
+    if host.unit_running("history"):
+        raise HistoryRunning("history.py is running on the tools host. Reset after it ends.")
     history_keys = {key for _, key, _ in PLAN}
     running = [build for build in job.builds(limit=20) if build["building"]]
     queued = job.queued()

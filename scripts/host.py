@@ -1,5 +1,7 @@
 """Run history.py and reset.py on the tools host, and stage versions on main from there.
 
+    python scripts/host.py stage orders-service 1.4.0    stage.py from a fresh clone, as the GitHub App
+
 Both scripts need Jenkins and JFrog Container Registry, which answer on the
 tools host's localhost and, from anywhere else, only through Cloudflare
 Access. So they run on the host. From the Mac they hand themselves over
@@ -12,6 +14,7 @@ stage() runs stage.py in a fresh clone of main and pushes with the GitHub
 App's token, so the host needs no git credentials of its own.
 """
 
+import argparse
 import base64
 import os
 import re
@@ -37,6 +40,7 @@ IDENTITY = {"GIT_AUTHOR_NAME": "Release Pipeline", "GIT_AUTHOR_EMAIL": "noreply@
             "GIT_COMMITTER_NAME": "Release Pipeline", "GIT_COMMITTER_EMAIL": "noreply@es.nl"}
 # git asks this helper for the push password: the token stays in the environment, out of files and ps.
 CREDENTIALS = '!f() { echo username=x-access-token; echo "password=$STAGE_TOKEN"; }; f'
+REMOTE = "https://github.com/{repository}.git"
 
 START = """set -e
 cd {repo}
@@ -64,6 +68,14 @@ true
 def on_host():
     """True on the EC2 tools host, in a shell or a Jenkins job alike."""
     return HOST_ENV.exists()
+
+
+def unit_running(name):
+    """On the host: is release-demo-<name>, which hand_over starts, running?"""
+    try:
+        return subprocess.run(["systemctl", "is-active", "--quiet", f"release-demo-{name}"]).returncode == 0
+    except FileNotFoundError:
+        return False
 
 
 class Host:
@@ -171,7 +183,7 @@ def stage(service_name, version):
     with tempfile.TemporaryDirectory(prefix="release-demo-stage-") as temp:
         clone = Path(temp) / "release-demo"
         for command in (["git", "clone", "--quiet", "--depth", "1", "--branch", "main",
-                         f"https://github.com/{repository}.git", str(clone)],
+                         REMOTE.format(repository=repository), str(clone)],
                         ["git", "-C", str(clone), "config", "credential.helper", CREDENTIALS]):
             result = subprocess.run(command, env=env, capture_output=True, text=True)
             if result.returncode != 0:
@@ -189,3 +201,17 @@ def main_version(service_path):
     token, repository, _ = github_app_token(ssm_client())
     reply = github_api("GET", f"/repos/{repository}/contents/{service_path}/VERSION?ref=main", token, scheme="token")
     return base64.b64decode(reply["content"]).decode().strip()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = parser.add_subparsers(dest="command", required=True)
+    stager = sub.add_parser("stage", help="stage a demo state on main, pushing as the GitHub App")
+    stager.add_argument("service")
+    stager.add_argument("version")
+    args = parser.parse_args()
+    stage(args.service, args.version)
+
+
+if __name__ == "__main__":
+    main()

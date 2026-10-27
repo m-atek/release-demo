@@ -115,3 +115,25 @@ def test_the_credential_helper_answers_with_the_token_from_the_environment(tmp_p
     result = subprocess.run(["sh", "-c", script], env={"STAGE_TOKEN": "ghs_abc", "PATH": "/usr/bin:/bin"},
                             capture_output=True, text=True, check=True)
     assert result.stdout == "username=x-access-token\npassword=ghs_abc\n"
+
+
+def test_stage_commits_one_stage_commit_and_pushes_it(tmp_path, monkeypatch, capsys):
+    """The real thing against a bare copy of this repository: a shallow clone, stage.py, a push."""
+    root = host.Path(host.__file__).resolve().parents[1]
+    bare = tmp_path / "origin.git"
+    subprocess.run(["git", "clone", "--quiet", "--bare", str(root), str(bare)], check=True)
+    head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    subprocess.run(["git", "-C", str(bare), "update-ref", "refs/heads/main", head], check=True)
+    monkeypatch.setattr(host, "REMOTE", f"file://{bare}")
+    monkeypatch.setattr(host, "github_app_token", lambda ssm: ("unused", "owner/release-demo", {}))
+    monkeypatch.setattr(host, "ssm_client", lambda: None)
+
+    host.stage("orders-service", "1.2.4")
+    log = subprocess.run(["git", "-C", str(bare), "log", "-1", "--format=%an <%ae>|%s", "main"],
+                         capture_output=True, text=True).stdout.strip()
+    assert log == "Release Pipeline <noreply@es.nl>|demo: stage orders-service 1.2.4 [skip ci]"
+    version = subprocess.run(["git", "-C", str(bare), "show", "main:services/orders-service/VERSION"],
+                             capture_output=True, text=True).stdout.strip()
+    assert version == "1.2.4"
+    host.stage("orders-service", "1.2.4")  # again: nothing to commit
+    assert "Nothing changed: main already has this version" in capsys.readouterr().out

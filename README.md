@@ -176,12 +176,14 @@ Both run on the tools host, because Jenkins and JFrog Container Registry answer 
 
 ```bash
 .venv/bin/python scripts/history.py --dry-run    # the plan, and what is done already
-.venv/bin/python scripts/history.py              # the day before recording: about an hour
+.venv/bin/python scripts/history.py              # the day before recording: about 40 minutes
 .venv/bin/python scripts/reset.py --dry-run      # every action reset would take
 .venv/bin/python scripts/reset.py                # before each take: under two minutes
 ```
 
 `history.py` releases 1.2.0 to 1.3.0 as eleven standard changes under ORD-1 to ORD-11, one at a time: it stages each version on main with `stage.py` (from a fresh clone, pushing with the GitHub App's token), starts the release job as release-bot with the parameters the Slack handler sends, as if Sam asked, and waits for it. 1.2.4 and 1.2.8 fail the production check on purpose and roll back. It ends with production on 1.3.0, and Grafana, Jira, ServiceNow, Splunk and #releases have a real past. Run it again after an interruption: it skips what ran as planned and waits for a run still going. A run that ends any other way, a failing gate or a new critical finding, stops it a day before a take.
+
+Signed in to Jenkins as admin, the jobs `history`, `reset` and `stage` run the same scripts on the tools host, with no AWS sign-in on the Mac. Each stops at once unless admin started it.
 
 `reset.py` puts the main demo back where `history.py` left it: it stops release runs a take left going, cancels open orders-service changes, deletes the tags, GitHub releases and JFrog release copies of versions after 1.3.0, un-releases their Jira versions and reopens ORD-12 and ORD-13, stages 1.3.0 on main, moves both live aliases to the newest Lambda version of 1.3.0, and calls both functions once. A second run finds nothing to do. `reset.py <demo>` runs `scripts/demos/<demo>/reset.py`. The scripts' own tests: `.venv/bin/python -m pytest tests`.
 

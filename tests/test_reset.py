@@ -181,6 +181,7 @@ def world(monkeypatch):
     monkeypatch.setattr(reset, "wait_for_version", lambda url, version, timeout: (True, version))
     monkeypatch.setattr(reset, "http_get", lambda url, timeout=5: (200, "<html>"))
     monkeypatch.setattr(reset.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(reset.host, "unit_running", lambda name: False)
     return world
 
 
@@ -228,6 +229,13 @@ def test_refuses_while_history_runs(world, capsys):
     assert reset.reset_main(dry_run=False) == 1
     assert world.writes == []
     assert "history.py is running" in capsys.readouterr().out
+
+
+def test_refuses_while_the_history_unit_runs_between_two_releases(world, monkeypatch, capsys):
+    monkeypatch.setattr(reset.host, "unit_running", lambda name: name == "history")
+    world.builds = []
+    assert reset.reset_main(dry_run=False) == 1
+    assert world.writes == []
 
 
 def test_cancels_queued_runs(world):

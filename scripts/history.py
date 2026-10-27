@@ -9,7 +9,7 @@ the version on main, then the release job starts as release-bot with the
 parameters the Slack handler sends, as if Sam asked in #releases, and this
 waits for it. 1.2.4 and 1.2.8 fail the production check on purpose and roll
 back, each for its own reason (see demo-states/orders-service/). It takes
-about an hour and ends with production on 1.3.0, so the dashboard, Jira,
+about 40 minutes and ends with production on 1.3.0, so the dashboard, Jira,
 ServiceNow, Splunk and Slack have a real past. A failing gate or a new
 critical finding shows here a day before a take.
 
@@ -23,6 +23,7 @@ stops the printing, not the run. --here runs it where you are.
 """
 
 import argparse
+import os
 import sys
 import time
 
@@ -120,7 +121,7 @@ def production_version():
 def run(job, requester, dry_run=False):
     started = time.monotonic()
     print(f"History: {SERVICE} {PLAN[0][0]} to {BASELINE}, {len(PLAN)} standard changes"
-          f"{' (dry run: nothing changes)' if dry_run else ', about an hour'}.")
+          f"{' (dry run: nothing changes)' if dry_run else ', about 40 minutes'}.")
     todo = False
     for index, (version, key, expect) in enumerate(PLAN, 1):
         label = f"[{index}/{len(PLAN)}] {SERVICE} {version} for {key}"
@@ -180,6 +181,8 @@ def main():
                               follow_only=args.follow, interval=10)
     if args.follow:
         fail("--follow is for the Mac. Here, read /var/log/release-demo-history.log.")
+    if os.environ.get("BUILD_NUMBER") and host.unit_running("history") and not args.dry_run:
+        fail("history.py is running on the tools host already, started from the Mac. Follow it: history.py --follow")
     sys.stdout.reconfigure(line_buffering=True)
     requester = get_parameter(ssm_client(), "slack/member-id/sam")
     try:

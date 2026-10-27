@@ -65,6 +65,42 @@ pipelineJob('ci') {
     definition fromRepository('jenkins/ci.Jenkinsfile')
 }
 
+// Mateusz's jobs: the scripts he runs from the Mac, from the Jenkins UI. They
+// push to main and delete tags and releases, so each Jenkinsfile stops at once
+// unless admin started it: under Matrix-based security release-bot, whose
+// token the Slack handler holds, may start every job.
+pipelineJob('history') {
+    description('history.py: releases orders-service 1.2.0 to 1.3.0 under ORD-1 to ORD-11 as standard changes, the day before recording. About 40 minutes.')
+    parameters {
+        booleanParam('DRY_RUN', true, 'Print the plan and what is done already; change nothing.')
+    }
+    properties { disableConcurrentBuilds() }
+    logRotator { numToKeep(20) }
+    definition fromRepository('jenkins/history.Jenkinsfile')
+}
+
+pipelineJob('reset') {
+    description('reset.py: puts a demo back to its starting state before a take. main: orders-service 1.3.0 everywhere, nothing released after it.')
+    parameters {
+        stringParam('DEMO', 'main', 'main, or a folder in scripts/demos/.')
+        booleanParam('DRY_RUN', false, 'Print every action; change nothing.')
+    }
+    properties { disableConcurrentBuilds() }
+    logRotator { numToKeep(50) }
+    definition fromRepository('jenkins/reset.Jenkinsfile')
+}
+
+pipelineJob('stage') {
+    description('stage.py: puts a demo state on main with one commit, pushed as the GitHub App.')
+    parameters {
+        stringParam('SERVICE', 'orders-service', 'A service from services.yaml.')
+        stringParam('VERSION', '1.3.0', 'A folder in demo-states/<service>/.')
+    }
+    properties { disableConcurrentBuilds() }
+    logRotator { numToKeep(50) }
+    definition fromRepository('jenkins/stage.Jenkinsfile')
+}
+
 // Views next to All: a release dashboard with the latest builds and test
 // trends, and a monitor with one big tile per job for a second screen.
 List<String> demoJobs = ['release', 'rollback', 'ci', 'tools-smoke']
