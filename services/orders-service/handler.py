@@ -84,7 +84,7 @@ def todays_orders(today=None):
             {
                 "id": f"{today:%y%m%d}-{number:03d}",
                 "items": [name for name, _ in lines],
-                "total_eur": sum(price for _, price in lines),
+                "total_eur": round(sum(price for _, price in lines), 2),
                 "status": STATUSES[pick(len(STATUSES))],
             }
         )
