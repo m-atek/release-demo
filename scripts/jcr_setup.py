@@ -104,10 +104,14 @@ class Client:
 
 
 def wanted_repositories():
+    """Each service's own pair, or the shared pair for services with jcr: {shared: true}."""
     keys = []
-    for name in services():
-        keys += [(f"{name}-candidates", "Generic"), (f"{name}-releases", "Generic")]
-    return keys + [("docker-local", "Docker"), ("helm-local", "Helm")]
+    for name, config in services().items():
+        if config.get("jcr", {}).get("shared"):
+            keys += [("demos-candidates", "Generic"), ("demos-releases", "Generic")]
+        else:
+            keys += [(f"{name}-candidates", "Generic"), (f"{name}-releases", "Generic")]
+    return list(dict.fromkeys(keys)) + [("docker-local", "Docker"), ("helm-local", "Helm")]
 
 
 def missing_repositories(jcr):

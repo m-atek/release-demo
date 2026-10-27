@@ -62,6 +62,13 @@ The shared scripts (`change.py`, `notify.py`, `events.py`, `jira.py`,
 change them; if it needs something new from them, keep it optional and
 backward compatible.
 
+JFrog: add `jcr: { shared: true }` to the entry. Its packages then go to
+`demos-candidates/<service>/<version>/<build>/` and
+`demos-releases/<service>/<version>/` (use `publish.candidates_root(service)`
+and `publish.releases_root(service)` in your scripts), because JCR's free
+edition creates repositories only in its UI, and one shared pair is created
+once.
+
 ## 3. Its infrastructure
 
 - Terraform in `infra/demos/<n>-<name>/`, its own root and state:
