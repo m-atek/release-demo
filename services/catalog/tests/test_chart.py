@@ -67,3 +67,8 @@ def test_settings_become_environment_variables(tmp_path):
 
 def test_no_pod_disruption_budget():
     assert "PodDisruptionBudget" not in render("--set", f"image.digest={DIGEST}")
+
+
+def test_every_environment_gets_the_catalog_database():
+    container = render("--set", f"image.digest={DIGEST}")["Deployment"]["spec"]["template"]["spec"]["containers"][0]
+    assert {"name": "CATALOG_DB_URL", "value": "file:///app/data/catalog.json"} in container["env"]

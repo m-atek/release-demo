@@ -3,5 +3,5 @@ name: catalog
 description: The catalog service of the release demo. Demo system, not a client's.
 type: application
 # Both follow the service's VERSION file; the build stops if they don't.
-version: 1.9.0
-appVersion: "1.9.0"
+version: 1.9.1
+appVersion: "1.9.1"
