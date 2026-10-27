@@ -34,7 +34,6 @@ PRODUCTS = [
     ("Sports socks, 3 pairs", 14.99),
 ]
 STATUSES = ["received", "picking", "packed", "shipped"]
-DELIVERY_ESTIMATE_DAYS = 2
 
 _deployed_at = None
 
@@ -78,6 +77,11 @@ def _lambda_last_modified():
         return modified.strftime("%d %b %Y, %H:%M UTC")
     except Exception:
         return "unknown"
+
+
+def delivery_estimate_days():
+    """The regional setting for this environment."""
+    return int(os.environ["DELIVERY_ESTIMATE_DAYS"])
 
 
 def todays_orders(today=None):
@@ -137,7 +141,7 @@ def page():
         version=html.escape(VERSION),
         commit=html.escape(COMMIT[:7]),
         deployed=html.escape(deployed_at()),
-        delivery_days=DELIVERY_ESTIMATE_DAYS,
+        delivery_days=delivery_estimate_days(),
         order_count=len(orders),
         rows=rows,
     )
