@@ -2,4 +2,5 @@
 # standard library only, so its package has no dependencies.
 boto3==1.43.113
 pytest==9.1.1
+pytest-cov==7.1.0
 PyYAML==6.0.3

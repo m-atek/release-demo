@@ -66,6 +66,17 @@ unclassified:
     url: ${JENKINS_URL}
   timestamper:
     allPipelines: true
+  globalLibraries:
+    libraries:
+      - name: release-demo
+        defaultVersion: main
+        allowVersionOverride: false
+        retriever:
+          modernSCM:
+            libraryPath: jenkins/shared-library/
+            scm:
+              git:
+                remote: "https://github.com/${github-repository:-m-atek/release-demo}.git"
 
 credentials:
   system:
@@ -78,18 +89,14 @@ credentials:
               secret: ${splunk-hec-token}
           - string:
               scope: GLOBAL
+              id: sonar-token
+              description: SonarQube Cloud token, for the scanner in the quality gate stage
+              secret: ${sonar-token:-not-set}
+          - string:
+              scope: GLOBAL
               id: jcr-token
               description: JFrog Container Registry token for the release pipeline (scripts/jcr_setup.py)
               secret: ${jcr-token:-not-set}
 
 jobs:
-  - script: >
-      pipelineJob('tools-smoke') {
-        description('Checks the tools host: the agent, a pinned toolchain container, JFrog Container Registry and Splunk.')
-        definition {
-          cps {
-            sandbox(true)
-            script(new File('/var/jenkins_casc/jobs/tools-smoke.Jenkinsfile').text)
-          }
-        }
-      }
+  - file: /var/jenkins_casc/jobs/jobs.groovy
