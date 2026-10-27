@@ -29,6 +29,15 @@ def service(name):
     return config
 
 
+def people(client=None):
+    """people.yaml, with each person's Slack member id from SSM, or None without Slack."""
+    everyone = yaml.safe_load((ROOT / "people.yaml").read_text())
+    client = client or ssm_client()
+    for key, person in everyone.items():
+        person["slack_user_id"] = get_parameter(client, f"slack/member-id/{key}") if person.get("slack") else None
+    return everyone
+
+
 def version_of(directory):
     return (Path(directory) / "VERSION").read_text().strip()
 

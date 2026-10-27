@@ -20,10 +20,8 @@ import time
 import urllib.parse
 import urllib.request
 
-import yaml
-
 import run_state
-from common import ROOT, fail, get_parameter, service, ssm_client
+from common import ROOT, fail, get_parameter, people, service, ssm_client
 from servicenow_setup import ServiceNow
 
 ASSESS, IMPLEMENT, REVIEW, CLOSED, CANCELED = "-4", "-1", "0", "3", "4"
@@ -38,8 +36,7 @@ def connect():
 
 def requester_user(sn, slack_id):
     """Sam's ServiceNow user from his Slack id, through people.yaml."""
-    people = yaml.safe_load((ROOT / "people.yaml").read_text())
-    for person in people.values():
+    for person in people().values():
         if slack_id and person.get("slack_user_id") == slack_id and person.get("servicenow_user"):
             return sn.find("sys_user", f"user_name={person['servicenow_user']}", "sys_id,first_name")
     return sn.find("sys_user", "user_name=release.pipeline", "sys_id,first_name")

@@ -45,7 +45,7 @@ Install the tools first: `brew install hashicorp/tap/terraform awscli gh gitleak
 1. A free workspace with a neutral name, the channel `#releases`, and Sam on a second address of yours, accepted in a separate browser profile, with the full name Sam Developer.
 2. api.slack.com/apps, Create New App, From a manifest: paste [slack/manifest.yml](slack/manifest.yml). Install to Workspace. In `#releases`: `/invite @Release Bot`.
 3. `secrets.py set slack`. The signing secret is under Basic Information, App Credentials, Signing Secret, Show: 32 characters. Not the App-Level Token (`xapp-`) further down the page, which the demo doesn't use. The channel id, or a link to the channel, is at the bottom of the channel's About tab.
-4. Put both member ids (profile, the three dots, Copy member ID) in [people.yaml](people.yaml).
+4. `secrets.py set slack` also asks for both member ids (profile, the three dots, Copy member ID). They go to SSM, not [people.yaml](people.yaml), so the public repository holds no workspace ids.
 
 ### 4. ServiceNow
 

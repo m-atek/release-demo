@@ -13,14 +13,13 @@ build and the change, and the lines the video quotes.
 
 import argparse
 import json
+import re
 import sys
 import urllib.parse
 import urllib.request
 
-import yaml
-
 import run_state
-from common import ROOT, get_parameter, ssm_client
+from common import get_parameter, ssm_client
 
 ICON = {"waiting": "○", "running": ":hourglass_flowing_sand:", "ok": ":white_check_mark:",
         "failed": ":x:", "skipped": ":heavy_minus_sign:"}
@@ -37,10 +36,9 @@ def slack(method, token, **fields):
 
 
 def requester(slack_id):
-    people = yaml.safe_load((ROOT / "people.yaml").read_text())
-    for person in people.values():
-        if person.get("slack_user_id") == slack_id:
-            return f"<@{slack_id}>"
+    """A Slack mention for a member id, which is all the Slack handler passes."""
+    if re.fullmatch(r"[UW][A-Z0-9]{8,}", slack_id or ""):
+        return f"<@{slack_id}>"
     return slack_id or "the Jenkins UI"
 
 

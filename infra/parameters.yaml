@@ -40,6 +40,18 @@ slack/channel-id:
   help: "#releases: click the channel name, the Channel ID at the bottom (C...). A channel link works too."
   pattern: "^[CG][A-Z0-9]{8,}$"
   hint: "a channel id starts with C and has 9 or more capitals and digits"
+slack/member-id/mateusz:
+  source: you
+  secure: false
+  help: "Your Slack member id: your profile, the three dots, Copy member ID (U...)."
+  pattern: "^[UW][A-Z0-9]{8,}$"
+  hint: "a member id starts with U and has 9 or more capitals and digits"
+slack/member-id/sam:
+  source: you
+  secure: false
+  help: "Sam Developer's Slack member id: his profile, the three dots, Copy member ID (U...)."
+  pattern: "^[UW][A-Z0-9]{8,}$"
+  hint: "a member id starts with U and has 9 or more capitals and digits"
 
 servicenow/instance-url:
   source: you
