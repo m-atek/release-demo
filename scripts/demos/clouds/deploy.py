@@ -85,12 +85,12 @@ def package_layout(state, workspace):
         fail(f"{state['package']['path']} has SHA-256 {actual}, but the build recorded {state['package']['sha256']}. "
              f"Not deploying a package that changed after it was published.")
     print(f"Package {state['package']['name']} from JFrog, SHA-256 verified: {actual}")
-    directory = workspace / ".release" / "image"
+    directory = workspace / ".release" / "deploy-package"
     if directory.exists():
         for path in sorted(directory.rglob("*"), reverse=True):
             path.unlink() if path.is_file() else path.rmdir()
     zipfile.ZipFile(io.BytesIO(package)).extractall(directory)
-    layout = Layout(directory)
+    layout = Layout(directory / "image")
     digest = layout.image()["digest"]
     layout.manifest("", digest)  # reads the manifest blob and checks it against its digest
     return layout, digest

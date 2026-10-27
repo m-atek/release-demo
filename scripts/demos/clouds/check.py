@@ -118,11 +118,16 @@ def main():
                            env["check"]["timeout_seconds"]):
             failed.append(cloud)
 
-    clouds = state.get("deploys", {}).get(args.environment, {}).get("clouds", {})
+    deployed = state.get("deploys", {}).get(args.environment, {})
+    clouds = deployed.get("clouds", {})
     for cloud, *_ in steps:
         if cloud in clouds:
             clouds[cloud]["check"] = "failed" if cloud in failed else "ok"
     if clouds:
+        # The change's close notes after a rollback start with check.notes:
+        # which version each cloud runs, as this check found it.
+        if args.environment == "production" and not failed and deployed.get("summary"):
+            state.setdefault("check", {})["notes"] = f"Each cloud now runs: {deployed['summary']}."
         run_state.save(state)
 
     label = args.environment.capitalize()

@@ -276,7 +276,7 @@ What to say if asked: every tool is real, on a real AWS stack. The plan role rea
 
 After the call: nothing to stop. The stack has nothing that runs by the hour; the bucket and queue cost cents a month until reset removes them. `scripts/demo.sh status terraform` shows what exists.
 
-## Demo 5 on a call: one release, three clouds
+## Demo on a call: one release, three clouds (demo 5)
 
 quote-service goes to AWS Lambda, Azure Container Apps and Google Cloud Run from one pipeline, as one image checked by its digest, with one change and no stored cloud keys: Jenkins signs an ID token per build (OpenID Connect Provider plugin), and each cloud trusts it. Its code is in `services/quote-service/`, its scripts in `scripts/demos/clouds/`, its Terraform in `infra/demos/5-three-clouds/` (AWS and the Jenkins issuer), `azure/` and `gcp/`.
 

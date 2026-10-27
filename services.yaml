@@ -364,6 +364,12 @@ quote-service:
 
   servicenow:
     cmdb_item: quote-service
+    backout_plan: >-
+      Automatic, cloud by cloud: production goes to Google Cloud, Azure and AWS in
+      turn, each checked before the next. If a cloud's check fails, the pipeline moves
+      that cloud's traffic back to its previous revision or version, checks it, and
+      releases to no further cloud. This change then closes as unsuccessful and lists
+      the version each cloud runs.
     # One item per cloud, listed on the change as affected items.
     cloud_items:
       aws: quote-service on AWS

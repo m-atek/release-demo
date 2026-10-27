@@ -18,7 +18,8 @@ rejects an image index. Layers have fixed timestamps and owners, so the same
 source and commit give the same image digest.
 
 Writes dist/<service>/<service>-<version>.zip, which holds the image as an OCI
-image layout, and build-info.json with the zip's SHA-256 and the image digest.
+image layout in image/ (so SBOM and scan reads it as the image), and
+build-info.json with the zip's SHA-256 and the image digest.
 The deploy stage pushes that exact image to JFrog and copies it by digest to
 each cloud's registry.
 """
@@ -204,11 +205,11 @@ def build_image(config, source, version, commit, created, out_dir):
 
 
 def write_zip(directory, destination):
-    """The layout's files in a fixed order with fixed times. Stored, not
-    compressed again: the layers are gzip already."""
+    """The layout's files under image/, in a fixed order with fixed times.
+    Stored, not compressed again: the layers are gzip already."""
     with zipfile.ZipFile(destination, "w", zipfile.ZIP_STORED) as archive:
         for path in sorted(p for p in Path(directory).rglob("*") if p.is_file()):
-            info = zipfile.ZipInfo(path.relative_to(directory).as_posix(), ZIP_TIME)
+            info = zipfile.ZipInfo("image/" + path.relative_to(directory).as_posix(), ZIP_TIME)
             info.external_attr = 0o644 << 16
             archive.writestr(info, path.read_bytes())
 
