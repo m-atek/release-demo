@@ -17,6 +17,9 @@ def call() {
             if (services[service].pipeline == 'pull-request') {
                 continue  // built by its own pull request job (demo 2)
             }
+            if (services[service].build_agent || services[service].build_agents) {
+                continue  // needs the Mac or Windows agent, which may be off: built by releases only
+            }
             String version = readFile("${services[service].path}/VERSION").trim()
             sh 'rm -rf .release dist'
             stage("${service}: Build") { toolchain.build(service, 'CI') }
