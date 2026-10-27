@@ -87,8 +87,9 @@ def open_change(sn, ssm, state):
         "implementation_plan": "The release pipeline runs: build, tests, quality gate, SBOM and scan, publish to "
                                "JFrog Container Registry, staging and its check, this change, production with the "
                                f"same package verified by its SHA-256, and the production check.\nBuild: {state['build'].get('url', '')}",
-        "backout_plan": "Automatic: if the production check fails, the pipeline moves the live alias back to the "
-                        "previous version, checks it, and closes this change as unsuccessful with the rollback in its notes.",
+        "backout_plan": config["servicenow"].get("backout_plan") or (
+            "Automatic: if the production check fails, the pipeline moves the live alias back to the "
+            "previous version, checks it, and closes this change as unsuccessful with the rollback in its notes."),
         "test_plan": "Before this change:\n" + stage_summary(state),
         "start_date": run_state.iso(started).replace("T", " ").rstrip("Z"),
         "end_date": run_state.iso(started + 1800).replace("T", " ").rstrip("Z"),

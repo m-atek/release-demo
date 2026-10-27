@@ -83,9 +83,12 @@ def sbomAndScan(String service) {
     sh """
         rm -rf .release/package && mkdir -p .release/package .release/reports ${cache}/syft ${cache}/grype
         python3 -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" dist/${service}/*.zip .release/package
+        # A package that holds a container image as an OCI layout (demo 8) is scanned as that image.
+        source=dir:/work/.release/package
+        [ -f .release/package/image/index.json ] && source=oci-dir:/work/.release/package/image
         docker run --rm --user \$(id -u):\$(id -g) -v "\$PWD:/work" -v ${cache}/syft:/cache \\
             -e SYFT_CACHE_DIR=/cache -e TMPDIR=/cache ${SYFT} \\
-            dir:/work/.release/package --source-name ${service} -o cyclonedx-json=/work/.release/reports/sbom.cdx.json
+            \$source --source-name ${service} -o cyclonedx-json=/work/.release/reports/sbom.cdx.json
         docker run --rm --user \$(id -u):\$(id -g) -v "\$PWD:/work" -v ${cache}/grype:/cache \\
             -e GRYPE_DB_CACHE_DIR=/cache -e TMPDIR=/cache ${GRYPE} sbom:/work/.release/reports/sbom.cdx.json \\
             --fail-on critical -o table -o json=/work/.release/reports/grype.json

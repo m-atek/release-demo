@@ -162,13 +162,17 @@ def setup_groups(sn, users):
 
 
 def setup_cmdb(sn, groups):
+    """The CMDB item each change names, plus one per environment where services.yaml gives one."""
     items = {}
     for name, config in services().items():
         item = config["servicenow"]["cmdb_item"]
-        record = sn.ensure("cmdb_ci_appl", f"name={item}", {
-            "name": item, "short_description": f"{name}: released by the release demo pipeline. Demo system.",
-            "support_group": groups["Platform team"], "operational_status": "1"}, f"CMDB item {item}")
-        items[name] = record["sys_id"]
+        extra = [env["cmdb_item"] for env in config.get("environments", {}).values() if env.get("cmdb_item")]
+        for each in dict.fromkeys([item, *extra]):
+            record = sn.ensure("cmdb_ci_appl", f"name={each}", {
+                "name": each, "short_description": f"{name}: released by the release demo pipeline. Demo system.",
+                "support_group": groups["Platform team"], "operational_status": "1"}, f"CMDB item {each}")
+            if each == item:
+                items[name] = record["sys_id"]
     return items
 
 
@@ -241,6 +245,8 @@ def setup_templates(sn, groups, items):
                 continue
             values = {**template_texts(service, kind), "assignment_group": groups["Platform team"],
                       "cmdb_ci": items[service]}
+            if kind == "standard" and config["servicenow"].get("backout_plan"):
+                values["backout_plan"] = config["servicenow"]["backout_plan"]
             proposal = sn.find("std_change_proposal", f"template_name={name}^state!=4", "sys_id,approval")
             if proposal is None:
                 proposal = sn.call("POST", "/api/now/table/std_change_proposal", {

@@ -127,6 +127,16 @@ EOF
   systemctl restart jenkins-agent
 }
 
+# Demo 8: the helper that gives each Jenkins build step a 10-minute token for
+# the k3s cluster, root-owned, and the one sudo rule that lets the agent run it.
+kube_token_helper() {
+  install -o root -g root -m 0755 "$REPO_DIR/scripts/demos/kubernetes/host/kube-token" /usr/local/sbin/release-demo-kube-token
+  # "" in the rule: sudo allows the helper only without arguments.
+  printf 'jenkins-agent ALL=(root) NOPASSWD: /usr/local/sbin/release-demo-kube-token ""\n' > /etc/sudoers.d/release-demo-kube-token
+  chmod 0440 /etc/sudoers.d/release-demo-kube-token
+  visudo -cf /etc/sudoers.d/release-demo-kube-token >/dev/null || rm -f /etc/sudoers.d/release-demo-kube-token
+}
+
 release_bot_token() {
   "$VENV/bin/python" "$HERE/release_bot_token.py" "$SECRETS" || echo "release-bot token: will retry at next boot"
 }
@@ -163,6 +173,7 @@ secrets_to_tmpfs
 start_stack
 wait_for_jenkins
 start_agent
+kube_token_helper
 release_bot_token
 arm_idle_stop
 echo "== boot done"
