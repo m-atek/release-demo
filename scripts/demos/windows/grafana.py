@@ -3,15 +3,16 @@
     python scripts/demos/windows/grafana.py            save it when it changed, then check
     python scripts/demos/windows/grafana.py --check    only the check
 
-store-fleet.dashboard.json: the wave progress, and below it one tile per
+grafana/store-fleet.json: the wave progress, and below it one tile per
 server, two columns and three rows, with the version and the status (waiting,
 upgrading, healthy, failed, rolled back) in type of 40 px and more, so it reads
 in a 960 px browser pane at 125%. It refreshes every 10 seconds. The rows
 follow the waves: STORE-001 and STORE-006 (the one-server waves), STORE-002
 and STORE-003, STORE-004 and STORE-005. The data comes from fleet_events.py.
 
-Uses grafana_setup.py's client, folder and check, with the pipeline's Editor
-token or the setup token. Prints no token.
+scripts/grafana_setup.py saves it with the other dashboards in grafana/; this
+saves and checks it alone. Uses grafana_setup.py's client, folder and check,
+with the pipeline's Editor token or the setup token. Prints no token.
 """
 
 import argparse
@@ -24,7 +25,7 @@ sys.path.insert(0, str(HERE.parents[1]))
 import grafana_setup  # noqa: E402
 from common import get_parameter, ssm_client  # noqa: E402
 
-DASHBOARD = HERE / "store-fleet.dashboard.json"
+DASHBOARD = HERE.parents[2] / "grafana" / "store-fleet.json"
 
 
 def main():

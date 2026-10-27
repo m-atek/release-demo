@@ -5,12 +5,15 @@ import re
 import sys
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import grafana_setup  # noqa: E402
 
 DASHBOARDS = sorted((ROOT / "grafana").glob("*.json"))
+SERVICES = yaml.safe_load((ROOT / "services.yaml").read_text())
 LONG_DASHES = "[" + chr(0x2013) + chr(0x2014) + "]"  # en and em dash, never used here
 
 
@@ -45,8 +48,11 @@ class FakeGrafana:
         return self.call(method, path, body)
 
 
-def test_there_is_a_dashboard():
-    assert [path.name for path in DASHBOARDS] == ["releases.json"]
+def test_the_releases_dashboard_and_each_demo_dashboard_have_their_own_uid():
+    # releases.json is the shared one; a demo may add its own next to it.
+    uids = [load(path)["uid"] for path in DASHBOARDS]
+    assert "releases.json" in [path.name for path in DASHBOARDS]
+    assert len(uids) == len(set(uids)) and all(uid.startswith("release-demo") for uid in uids)
 
 
 def test_dashboards_never_name_dora():
@@ -56,9 +62,13 @@ def test_dashboards_never_name_dora():
 
 
 def test_dashboards_carry_the_demo_label():
+    # The shared dashboard says it in a text panel. A demo's own dashboard,
+    # made to be read at a glance in its video, carries the release-demo tag.
+    texts = [panel["options"]["content"] for panel in panels(load(ROOT / "grafana" / "releases.json"))
+             if panel["type"] == "text"]
+    assert any("Demo system, not a client's." in text for text in texts)
     for path in DASHBOARDS:
-        texts = [panel["options"]["content"] for panel in panels(load(path)) if panel["type"] == "text"]
-        assert any("Demo system, not a client's." in text for text in texts), path.name
+        assert "release-demo" in load(path).get("tags", []) or path.name == "releases.json", path.name
 
 
 def test_files_have_no_long_dashes():
@@ -81,23 +91,40 @@ def test_panel_ids_are_unique_and_annotations_mark_existing_panels():
 
 
 def test_marks_follow_the_tags_events_py_sends():
+    # Every service row marks its releases and rollbacks, with the tags the pipeline sends.
     dashboard = load(ROOT / "grafana" / "releases.json")
     marks = [a for a in dashboard["annotations"]["list"] if a.get("target", {}).get("type") == "tags"]
     tags = sorted(tuple(a["target"]["tags"]) for a in marks)
-    assert tags == [("release-demo", "release", "orders-service"), ("release-demo", "rollback", "orders-service")]
+    marked = sorted({service for _, _, service in tags})
+    assert "orders-service" in marked and set(marked) <= set(SERVICES)
+    assert tags == sorted(("release-demo", kind, service) for service in marked for kind in ("release", "rollback"))
     pipeline = (ROOT / "jenkins" / "shared-library" / "vars" / "releasePipeline.groovy").read_text()
     assert '--tags "release,$SERVICE"' in pipeline and '--tags "rollback,$SERVICE"' in pipeline
 
 
+def kind_senders(kind):
+    """The demo scripts that send log lines of this kind, such as demo 5's probes."""
+    return [path.read_text() for path in (ROOT / "scripts" / "demos").glob("*/*.py")
+            if f'"kind": "{kind}"' in path.read_text()]
+
+
 def test_queries_read_only_release_events_with_fields_the_pipeline_sends():
+    # Release events come from events.py with the pipeline's stage names. A demo's
+    # own lines carry a kind label, and their fields come from the script that sends them.
     dashboard = load(ROOT / "grafana" / "releases.json")
     events = (ROOT / "scripts" / "events.py").read_text()
     pipeline = (ROOT / "jenkins" / "shared-library" / "vars" / "releasePipeline.groovy").read_text()
     for expr in loki_queries(dashboard):
         selectors = re.findall(r"\{source=[^}]*\}", expr)
-        assert selectors and all('source="release-demo", service="orders-service"' in s for s in selectors), expr
+        assert selectors, expr
+        for selector in selectors:
+            service = re.search(r'service="([^"]+)"', selector)
+            assert selector.startswith('{source="release-demo", service=') and service.group(1) in SERVICES, expr
+        kinds = {kind for s in selectors for kind in re.findall(r'kind="([^"]+)"', s)}
+        senders = [text for kind in kinds for text in kind_senders(kind)]
+        assert all(kind_senders(kind) for kind in kinds), expr
         for field in re.findall(r"unwrap (\w+)", expr):
-            assert f'"{field}"' in events, field
+            assert any(f'"{field}"' in text for text in (senders or [events])), field
         for stage in re.findall(r'stage="([^"]+)"', expr):
             assert f"'{stage}'" in pipeline or f"--stage {stage} " in pipeline, stage
 

@@ -22,7 +22,8 @@ no value from SSM except the dashboard's address.
 
 A demo adds its service as a row to grafana/releases.json: copy the
 orders-service row's panels, change service="orders-service" in the queries,
-the panel ids and the annotation tags.
+the panel ids and the annotation tags. A demo that needs a view of its own
+(demo 1's Store fleet) adds a dashboard next to it, uid release-demo-<name>.
 """
 
 import argparse
