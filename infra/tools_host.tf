@@ -72,6 +72,12 @@ data "aws_iam_policy_document" "tools_host" {
     actions   = ["sts:AssumeRole"]
     resources = ["arn:aws:iam::${local.account_id}:role/release-demo-deploy-*"]
   }
+  # reset.py warms the Slack handler before a take; it needs only its address.
+  statement {
+    sid       = "FindTheSlackHandler"
+    actions   = ["lambda:GetFunctionUrlConfig"]
+    resources = [local.slack_handler_arn]
+  }
 }
 
 resource "aws_iam_role_policy" "tools_host" {
