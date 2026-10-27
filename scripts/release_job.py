@@ -37,8 +37,11 @@ class ReleaseJob:
         self.opener = urllib.request.build_opener(NoRedirect)
 
     @classmethod
-    def as_release_bot(cls):
-        return cls(get_parameter(ssm_client(), "jenkins/release-bot-api-token"))
+    def as_release_bot(cls, job=JOB):
+        return cls(get_parameter(ssm_client(), "jenkins/release-bot-api-token"), job=job)
+
+    def exists(self):
+        return self.call("GET", f"/job/{self.job}/api/json?tree=name")[0] == 200
 
     def call(self, method, path, form=None):
         """Returns (status, headers, body). Requests signed with an API token

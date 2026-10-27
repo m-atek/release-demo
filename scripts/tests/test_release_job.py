@@ -2,13 +2,17 @@
 
 import base64
 import json
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from release_job import ReleaseJob, version_of, with_parameters
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from release_job import ReleaseJob, version_of, with_parameters  # noqa: E402
 
 
 class FakeJenkins(BaseHTTPRequestHandler):

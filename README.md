@@ -168,7 +168,7 @@ Jenkins is configured only through `jenkins/casc.yaml` and the pinned `jenkins/p
 | 1.4.0-broken-gate | | Untested code with a bug and code smells | Quality gate |
 | 1.4.0-broken-scan | | Declares urllib3 1.22 (CVE-2018-20060, critical) | SBOM and scan |
 
-`history.py` releases 1.2.0 to 1.3.0, the three broken 1.4.0 variants are for the acceptance checks only, and `tests/test_demo_states.py` checks that each history version passes or fails production's check as planned.
+`history.py` releases 1.2.0 to 1.3.0, the three broken 1.4.0 variants are for the acceptance checks only, and `scripts/tests/test_demo_states.py` checks that each history version passes or fails production's check as planned.
 
 ## History and reset
 
@@ -183,9 +183,9 @@ Both run on the tools host, because Jenkins and JFrog Container Registry answer 
 
 `history.py` releases 1.2.0 to 1.3.0 as eleven standard changes under ORD-1 to ORD-11, one at a time: it stages each version on main with `stage.py` (from a fresh clone, pushing with the GitHub App's token), starts the release job as release-bot with the parameters the Slack handler sends, as if Sam asked, and waits for it. 1.2.4 and 1.2.8 fail the production check on purpose and roll back. It ends with production on 1.3.0, and Grafana, Jira, ServiceNow, Splunk and #releases have a real past. Run it again after an interruption: it skips what ran as planned and waits for a run still going. A run that ends any other way, a failing gate or a new critical finding, stops it a day before a take.
 
-Signed in to Jenkins as admin, the jobs `history`, `reset` and `stage` run the same scripts on the tools host, with no AWS sign-in on the Mac. Each stops at once unless admin started it.
+Signed in to Jenkins as admin, the jobs `history`, `reset` and `stage` run the same scripts on the tools host, with no AWS sign-in on the Mac. Each stops at once unless admin started it. The `reset` job skips the Slack handler's warm-up, because the tools host may not look up the handler's URL; from the Mac, reset.py looks it up and passes it on.
 
-`reset.py` puts the main demo back where `history.py` left it: it stops release runs a take left going, cancels open orders-service changes, deletes the tags, GitHub releases and JFrog release copies of versions after 1.3.0, un-releases their Jira versions and reopens ORD-12 and ORD-13, stages 1.3.0 on main, moves both live aliases to the newest Lambda version of 1.3.0, and calls both functions once. A second run finds nothing to do. `reset.py <demo>` runs `scripts/demos/<demo>/reset.py`. The scripts' own tests: `.venv/bin/python -m pytest tests`.
+`reset.py` puts the main demo back where `history.py` left it, and keeps the past: everything `history.py` made, and the changes, Jira comments, Slack messages and events of earlier takes, stay. It frees only what a take must create again, and archives instead of deleting. It stops release and rollback runs a take left going and cancels open orders-service changes (closed ones stay). Each tag after 1.3.0 is tagged again as `takes/<tag>-<UTC time>` on the same commit, its GitHub release moves onto that tag as the pre-release "<name> (earlier take)", and only then is the tag's own name removed. Each release copy after 1.3.0 in JFrog moves to `orders-service-releases/takes/<version>-<UTC time>/`: JCR's free edition has no move or copy API, so reset copies each file as admin, checks its SHA-256 and only then deletes the original. It un-releases the Jira versions after 1.3.0 and reopens ORD-12 and ORD-13, stages 1.3.0 on main, moves both live aliases to the newest Lambda version of 1.3.0 and calls both functions once, and warms the Slack handler with one signed request as Mateusz, who isn't a releaser, so it answers "You can't start releases here." and starts nothing. A second run finds nothing to do. `reset.py <demo>` runs `scripts/demos/<demo>/reset.py`. The scripts' own tests: `.venv/bin/python -m pytest -q scripts/tests`.
 
 ## Demo on a call: APIs, a contract check and a canary
 

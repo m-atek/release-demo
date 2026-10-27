@@ -1,10 +1,15 @@
 """history.py against a fake Jenkins: it releases the plan in order, resumes,
 and stops on a run that ends other than planned."""
 
+import sys
+from pathlib import Path
+
 import pytest
 
-import history
-from history import LIVE, PLAN, ROLLED_BACK
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import history  # noqa: E402
+from history import LIVE, PLAN, ROLLED_BACK  # noqa: E402
 
 SAM = "U0SAMSAMSAM"
 

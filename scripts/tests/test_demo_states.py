@@ -2,11 +2,15 @@
 one passes or fails the pipeline's checks in each environment as planned."""
 
 import importlib.util
+import sys
+from pathlib import Path
 
 import pytest
 
-from common import ROOT, service, version_of
-from history import BASELINE, LIVE, PLAN, SERVICE
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from common import ROOT, service, version_of  # noqa: E402
+from history import BASELINE, LIVE, PLAN, SERVICE  # noqa: E402
 
 STATES = ROOT / "demo-states" / SERVICE
 

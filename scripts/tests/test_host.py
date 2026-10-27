@@ -2,10 +2,14 @@
 staging on main with the GitHub App's token, with SSM and git faked."""
 
 import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
-import host
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import host  # noqa: E402
 
 
 class FakeHost:

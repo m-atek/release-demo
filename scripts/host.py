@@ -111,7 +111,7 @@ class Host:
         fail("The tools host didn't answer through SSM in time.")
 
 
-def hand_over(name, script, args, follow_only=False, interval=3, host=None):
+def hand_over(name, script, args, follow_only=False, interval=3, host=None, title=None):
     """From the Mac: run scripts/<script> --here <args> on the host as the unit
     release-demo-<name>, print its log until it ends, and return its exit code.
     If that unit is already running, follow it instead of starting another."""
@@ -124,7 +124,7 @@ def hand_over(name, script, args, follow_only=False, interval=3, host=None):
             print(f"{script} on the tools host: {'running' if state == 'active' else 'not running'}. Its log:")
             return follow(host, unit, log, max(0, int(size) - 4000), skip_partial=True, interval=interval)
         inner = " ".join(shlex.quote(part) for part in [PYTHON, "-u", f"scripts/{script}", "--here", *args])
-        title = re.sub(r"[^\w .-]", "", " ".join([script, *args]))
+        title = re.sub(r"[^\w .-]", "", title or " ".join([script, *args]))
         code, out, err = host.shell(START.format(repo=REPO_DIR, unit=unit, log=log, title=title,
                                                  command=shlex.quote(f'{inner}; echo "{EXIT}$?"')))
         if code != 0 or not out.strip():

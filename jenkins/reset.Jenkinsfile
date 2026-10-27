@@ -13,7 +13,7 @@ pipeline {
                 script {
                     def started = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
                     if (!started || started[0].userId != 'admin') {
-                        error "Only admin runs ${env.JOB_NAME}: it deletes tags and releases."
+                        error "Only admin runs ${env.JOB_NAME}: it moves tags, GitHub releases and release copies."
                     }
                 }
             }

@@ -66,9 +66,9 @@ pipelineJob('ci') {
 }
 
 // Mateusz's jobs: the scripts he runs from the Mac, from the Jenkins UI. They
-// push to main and delete tags and releases, so each Jenkinsfile stops at once
-// unless admin started it: under Matrix-based security release-bot, whose
-// token the Slack handler holds, may start every job.
+// push to main and move tags, releases and release copies, so each
+// Jenkinsfile stops at once unless admin started it: under Matrix-based
+// security release-bot, whose token the Slack handler holds, may start every job.
 pipelineJob('history') {
     description('history.py: releases orders-service 1.2.0 to 1.3.0 under ORD-1 to ORD-11 as standard changes, the day before recording. About 40 minutes.')
     parameters {
@@ -80,7 +80,7 @@ pipelineJob('history') {
 }
 
 pipelineJob('reset') {
-    description('reset.py: puts a demo back to its starting state before a take. main: orders-service 1.3.0 everywhere, nothing released after it.')
+    description('reset.py: puts a demo back to its starting state before a take, keeping the past. main: orders-service 1.3.0 everywhere, earlier takes archived under takes/.')
     parameters {
         stringParam('DEMO', 'main', 'main, or a folder in scripts/demos/.')
         booleanParam('DRY_RUN', false, 'Print every action; change nothing.')
