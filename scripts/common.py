@@ -62,15 +62,16 @@ def aws_session():
 
 
 def ssm_client():
-    """SSM, checked with one call, or a clear message to sign in."""
+    """SSM, after checking the credentials work, or a clear message to sign in.
+    The check is sts:GetCallerIdentity, which every identity may call."""
     from botocore.exceptions import BotoCoreError, ClientError
 
+    session = aws_session()
     try:
-        client = aws_session().client("ssm")
-        client.describe_parameters(MaxResults=1)
-        return client
+        session.client("sts").get_caller_identity()
     except (BotoCoreError, ClientError) as error:
-        fail(f"Can't reach SSM ({error.__class__.__name__}). On the Mac, sign in: aws sso login --profile release-demo")
+        fail(f"No AWS credentials ({error.__class__.__name__}). On the Mac, sign in: aws sso login --profile release-demo")
+    return session.client("ssm")
 
 
 def put_parameter(client, name, value, secure=True):
