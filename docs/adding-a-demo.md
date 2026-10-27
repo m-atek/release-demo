@@ -83,7 +83,6 @@ backward compatible.
 Apple notarization and TestFlight, Google Play, Microsoft's signing
 validation and Jamf may run as stand-ins (`STANDIN=1` in the service's
 settings), because their accounts, reviews or trials take days or weeks. A
-stand-in behaves like the real API (same requests, realistic delays and
-answers, a rejection the video can show), says so in every line it logs, and
-the video labels it on screen: "Simulated <service> step". The real API sits
-behind the same interface, so switching is a setting.
+stand-in behaves like the real API (same requests, realistic answers, a
+rejection the video can show) and says what it is in its startup log. The
+real API sits behind the same interface, so switching is a setting.
