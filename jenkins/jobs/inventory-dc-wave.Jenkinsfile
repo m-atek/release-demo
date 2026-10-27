@@ -13,7 +13,7 @@ node('dc-agent') {
         withEnv(["COMMIT=${commit}"]) { sh 'git checkout --quiet --detach "$COMMIT"' }
     }
     // readJSON gives a JSONArray, whose own join the sandbox refuses: a plain list joins.
-    List<String> names = (request.names ?: []).collect { it as String }
+    List<String> names = (request.names ?: []).collect { it.toString() }
     currentBuild.description = "${request.extra_vars?.rollout_action ?: request.playbook} ${request.extra_vars?.version ?: ''} on ${names.join(', ')}"
     try {
         withCredentials([
