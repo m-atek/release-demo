@@ -22,7 +22,6 @@ import getpass
 import http.cookiejar
 import json
 import os
-import secrets
 import sys
 import urllib.error
 import urllib.request
@@ -107,7 +106,7 @@ def ensure_user(jcr):
         print(f"  user {USER}: already there")
         return
     # Nobody signs in as this user. Its password is random and never stored.
-    body = {"username": USER, "email": "release-pipeline@example.invalid", "password": secrets.token_urlsafe(24) + "A1!",
+    body = {"username": USER, "email": "release-pipeline@example.invalid", "password": base64.urlsafe_b64encode(os.urandom(18)).decode() + "A1!",
             "admin": False, "disable_ui_access": True, "internal_password_disabled": False}
     status, _ = jcr.call("POST", "/access/api/v2/users", body)
     if status in (200, 201) and exists():

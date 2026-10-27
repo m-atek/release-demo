@@ -1,0 +1,161 @@
+# Every SSM parameter the platform reads, under /release-demo/<name>.
+#
+# source: you        you type it into scripts/secrets.py
+#         script     a setup script writes it (named in the help)
+#         host       the tools host writes it at boot
+#         terraform  Terraform generates it or gets it from a provider
+#
+# Terraform creates the names of everything except the "terraform" ones with
+# the value "unset" and never touches the value again. secure: false means a
+# plain String: not secret, but still kept out of the public repository.
+
+github/repository:
+  source: script
+  secure: false
+  help: "owner/release-demo. Written by scripts/github_app.py."
+github/app-id:
+  source: script
+  secure: false
+  help: "The GitHub App's id. Written by scripts/github_app.py."
+github/app-private-key:
+  source: script
+  secure: true
+  help: "The GitHub App's private key (PEM). Written by scripts/github_app.py."
+
+slack/bot-token:
+  source: you
+  secure: true
+  help: "Slack app, OAuth & Permissions, Bot User OAuth Token (xoxb-...)."
+  pattern: "^xoxb-"
+slack/signing-secret:
+  source: you
+  secure: true
+  help: "Slack app, Basic Information, App Credentials, Signing Secret."
+slack/channel-id:
+  source: you
+  secure: false
+  help: "#releases, channel details, the id at the bottom (C...)."
+  pattern: "^C[A-Z0-9]+$"
+
+servicenow/instance-url:
+  source: you
+  secure: true
+  help: "Your PDI's URL, https://devNNNNNN.service-now.com."
+  pattern: "^https://dev[0-9]+\\.service-now\\.com$"
+servicenow/release-pipeline-password:
+  source: script
+  secure: true
+  help: "Password of the ServiceNow user release.pipeline. Written by scripts/servicenow_setup.py."
+
+jira/site-url:
+  source: you
+  secure: true
+  help: "Your Jira Cloud site, https://<site>.atlassian.net."
+  pattern: "^https://[a-z0-9-]+\\.atlassian\\.net$"
+jira/email:
+  source: you
+  secure: true
+  help: "The email of the Jira user Release Pipeline (your third address)."
+jira/api-token:
+  source: you
+  secure: true
+  help: "Signed in as Release Pipeline: id.atlassian.com, Security, API tokens, Create API token."
+
+grafana/stack-url:
+  source: you
+  secure: true
+  help: "Your Grafana Cloud stack, https://<stack>.grafana.net."
+  pattern: "^https://[a-z0-9-]+\\.grafana\\.net$"
+grafana/logs-url:
+  source: you
+  secure: true
+  help: "Loki details page: the URL, https://logs-prod-...grafana.net."
+grafana/logs-user:
+  source: you
+  secure: true
+  help: "Loki details page: the User (a number)."
+  pattern: "^[0-9]+$"
+grafana/logs-token:
+  source: you
+  secure: true
+  help: "Access policy token with logs:write (glc_...)."
+grafana/service-account-token:
+  source: you
+  secure: true
+  help: "Stack, Administration, Service accounts, Editor role, token (glsa_...)."
+  pattern: "^glsa_"
+grafana/external-id:
+  source: you
+  secure: true
+  help: "CloudWatch data source, Grafana Assume Role: the External ID it shows."
+
+sonar/organization:
+  source: you
+  secure: false
+  help: "Your SonarQube Cloud organization key."
+sonar/token:
+  source: you
+  secure: true
+  help: "SonarQube Cloud, My Account, Security, Generate token."
+
+cloudflare/api-token:
+  source: you
+  secure: true
+  help: "API token limited to es.nl with Zone DNS, Account Cloudflare Tunnel and Account Access edit."
+cloudflare/account-id:
+  source: you
+  secure: true
+  help: "Cloudflare dashboard, es.nl overview, right column: Account ID."
+  pattern: "^[0-9a-f]{32}$"
+cloudflare/zone-id:
+  source: you
+  secure: true
+  help: "Cloudflare dashboard, es.nl overview, right column: Zone ID."
+  pattern: "^[0-9a-f]{32}$"
+cloudflare/access-email:
+  source: you
+  secure: true
+  help: "The email Cloudflare Access lets into Jenkins, JCR and Splunk."
+
+jcr/token:
+  source: script
+  secure: true
+  help: "Access token of the JCR user release-pipeline. Written by scripts/jcr_setup.py."
+
+jenkins/release-bot-api-token:
+  source: host
+  secure: true
+  help: "API token of the Jenkins user release-bot, for the Slack handler. Written by the tools host."
+
+jenkins/admin-password:
+  source: terraform
+  secure: true
+  help: "Jenkins user admin. Sign in with it through Cloudflare Access."
+jenkins/release-bot-password:
+  source: terraform
+  secure: true
+  help: "Jenkins user release-bot."
+jcr/db-password:
+  source: terraform
+  secure: true
+  help: "JCR's PostgreSQL user."
+splunk/password:
+  source: terraform
+  secure: true
+  help: "Splunk's admin password (Splunk Free has no login, the CLI uses it)."
+splunk/hec-token:
+  source: terraform
+  secure: true
+  help: "Splunk HTTP Event Collector token."
+cloudflare/tunnel-token:
+  source: terraform
+  secure: true
+  help: "Token cloudflared runs the tunnel with."
+cloudflare/slack-handler-client-id:
+  source: terraform
+  secure: true
+  help: "Cloudflare Access service token for the Slack handler: client id."
+cloudflare/slack-handler-client-secret:
+  source: terraform
+  secure: true
+  help: "Cloudflare Access service token for the Slack handler: client secret."
