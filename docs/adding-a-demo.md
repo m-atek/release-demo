@@ -53,6 +53,10 @@ state through `scripts/run_state.py` (`.release/state.json`).
 | Deploy previous | `<deploy> <service> <environment> --previous` | Return to the release before the live one (the Slack /rollback command). |
 | Check | `<check> <service> <environment> --version <v> --url <url>` | Exit 0 when the new version is live and working, non-zero otherwise. Print one line per check: `ok   <what>` or `FAIL <what>`. |
 
+When a release stops, Slack's last line says where. A deploy script may set
+`finish_line` in the run state (`python scripts/run_state.py set "finish_line=Wave stopped at STORE-004 after {total}. The other five stores are untouched."`)
+to say how its stop reads; `{total}` becomes the run's total time.
+
 The shared scripts (`change.py`, `notify.py`, `events.py`, `jira.py`,
 `tag.py`, `publish.py`) are the same for every service. A demo doesn't
 change them; if it needs something new from them, keep it optional and

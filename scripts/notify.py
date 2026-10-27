@@ -100,7 +100,10 @@ def main():
         total = run_state.duration(run_state.now() - state["started_at"])
         state["total"] = total
         text = {"live": f"Live in {total}.",
-                "failed": (f"Stopped after {total}, after the production deploy. Look at production now."
+                # A demo's deploy script may set finish_line in the run state for how
+                # its stop reads (for example a wave that stopped at one server).
+                "failed": (state["finish_line"].format(total=total) if state.get("finish_line") else
+                           f"Stopped after {total}, after the production deploy. Look at production now."
                            if "production" in state.get("deploys", {}) else f"Stopped after {total}. Nothing reached production."),
                 "rolled-back": f"Production check failed. Rolled back to {args.previous}.",
                 "cancelled": f"Cancelled after {total}."}[args.result]
