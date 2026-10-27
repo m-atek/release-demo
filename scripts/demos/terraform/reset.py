@@ -92,10 +92,13 @@ def baseline(dry_run):
         print("  couldn't fetch main from GitHub: applying this checkout's stack instead")
     subprocess.run(["rm", "-rf", str(folder / "code")], check=True)
     (folder / "code").mkdir(parents=True)
-    archive = subprocess.run(["git", "archive", "--format=tar", ref, "--", path], cwd=ROOT, capture_output=True,
-                             check=True)
-    subprocess.run(["tar", "-x", "-C", str(folder / "code")], input=archive.stdout, check=True)
+    archive = subprocess.run(["git", "archive", "--format=tar", ref, "--", path], cwd=ROOT, capture_output=True)
     code = folder / "code" / path
+    if archive.returncode == 0:
+        subprocess.run(["tar", "-x", "-C", str(folder / "code")], input=archive.stdout, check=True)
+    # An empty folder would make Terraform destroy the whole stack: never apply one.
+    if not (code / "network.tf").exists():
+        fail(f"main has no network stack in {path} yet: nothing applied. Merge demo 2 first.")
     if (code / "exports.tf").exists() and not dry_run:
         fail("main still has exports.tf: the reset commit didn't land. Run reset.py again.")
 

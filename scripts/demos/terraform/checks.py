@@ -22,7 +22,8 @@ CHECKS = ["terraform fmt", "terraform validate", "tflint", "Checkov", "Conftest"
 # The house rules in infra/demos/2-terraform/checks/policy/house.rego, by the
 # name each message starts with.
 HOUSE_RULES = ["Required tags", "S3 bucket must not be public", "Allowed regions", "Allowed instance types"]
-OUT = stack.WORK / "checks"
+def out():
+    return stack.WORK / "checks"
 
 
 def slug(name):
@@ -30,7 +31,7 @@ def slug(name):
 
 
 def result_path(name):
-    return OUT / f"{slug(name)}.json"
+    return out() / f"{slug(name)}.json"
 
 
 def record(name, ok, title, summary, text="", failures=()):
@@ -155,7 +156,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("which", choices=["static", "conftest"])
     args = parser.parse_args()
-    OUT.mkdir(parents=True, exist_ok=True)
+    out().mkdir(parents=True, exist_ok=True)
     if args.which == "static":
         for check in (fmt, validate, tflint, checkov):
             check()

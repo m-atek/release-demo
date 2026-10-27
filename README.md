@@ -214,6 +214,41 @@ On the call: `/release catalog ORD-90`. 1.9.0 passes staging. In production, Jen
 
 Afterwards: `scripts/demo.sh down kubernetes`. `scripts/demo.sh status kubernetes` shows the pods, their versions and the memory in use.
 
+## Demo on a call: infrastructure changes with Terraform
+
+An infrastructure change goes through the same gates as a release. The network stack in `infra/demos/2-terraform/network` (a VPC, two subnets and a security group, no NAT gateway and no instances) changes only through pull requests. Jenkins' multibranch job `network-stack` scans GitHub every minute and builds pull requests from this repository's own branches, never from forks. Each one gets five GitHub check runs, which the ruleset on main requires: terraform fmt, terraform validate, tflint, Checkov, and Conftest with the house rules in `infra/demos/2-terraform/checks/policy/` (required tags, "S3 bucket must not be public", allowed regions, allowed instance types). Then a plan saved to a file, with its summary and the monthly cost difference on the pull request, a normal change in ServiceNow, and after Alex approves it, the apply of exactly that file, a check that the bucket and queue exist and the bucket blocks public access, and the merge. Terraform refuses a saved plan when the state changed since the plan; the build then stops and says so.
+
+| Commit | What changes | What happens |
+| --- | --- | --- |
+| 1 | ORD-22 adds `exports.tf`: an S3 bucket for store exports, made public, and an SQS queue | Checkov and "S3 bucket must not be public" fail, by name, on the pull request and in Slack. The merge is blocked |
+| 2 | The bucket blocks public access; the public policy is gone | All checks pass, then "8 to add, 0 to change, 0 to destroy" and the cost difference on the pull request, the change, the apply, the merge. Slack: "Applied" |
+
+The two commits are in `demo-states/network-stack/`. Infracost prices the bucket and queue with the expected use in `network/infracost-usage.yml` (200 GB stored, 5 million queue requests a month), so the cost shows a real number.
+
+Once, after the merge:
+
+1. GitHub App: in its settings, Permissions, set Checks, Pull requests and Commit statuses to Read and write, then accept the new permissions on the installation (Settings, Applications, the app, Review request).
+2. `scripts/demo.sh up terraform` applies `infra/demos/2-terraform` (the plan and apply roles the tools host assumes) and the network stack's baseline. Terraform shows each plan and asks first.
+3. `.venv/bin/python scripts/demos/terraform/ruleset.py --apply`, with your own `gh` login: the ruleset "main: infrastructure checks". The GitHub App and repository admins may go past it, so `stage.py`, `reset.py` and your own pushes still reach main.
+4. `.venv/bin/python scripts/servicenow_setup.py` adds the CMDB item network-stack.
+5. Infracost: a free account and a CI token, then `.venv/bin/python scripts/secrets.py set infracost`. Without it the pull request says "not priced" and everything else runs.
+6. Open a pull request once and let it fail, so the tools host builds the toolchain image (`jenkins/toolchain/terraform.Dockerfile`, a few minutes) before a take; then reset.
+
+Before each call or take: `scripts/demos/terraform/reset.sh` (or `scripts/reset.py terraform`, once that dispatcher exists). It closes the demo's pull request, points `demo-2/store-exports` back at main, removes `exports.tf` from main with one commit, cancels open network-stack changes, resolves the drift incident, and applies main's stack, which removes the bucket, the queue and any rule added by hand. `--dry-run` shows what it would do. Open the Jenkins job `network-stack`, Slack `#releases`, and ServiceNow's change list for network-stack.
+
+On the call:
+
+1. `scripts/demos/terraform/open-pr.sh`: the first commit and the pull request "ORD-22 Store exports bucket and queue". The checks finish about 2 minutes after the push.
+2. `scripts/demos/terraform/fix-pr.sh`: the second commit. The checks pass, and the plan and cost reach the pull request about 3 minutes after the push.
+3. Approve the change in ServiceNow as Alex. Jenkins applies within 20 seconds, checks the bucket, merges, and Slack says "Applied".
+4. In the AWS console, add an inbound rule to the security group `network-stack-app`, then run the Jenkins job `network-drift` by hand. Slack shows the rule and the incident it opened. The job also runs at 07:00 on weekdays when the tools host is up.
+
+Rollback is a revert: GitHub's Revert button on the merged pull request opens one, and the same flow plans, prices, approves and applies it.
+
+What to say if asked: every tool is real, on a real AWS stack. The plan role reads only; the apply role changes only the stack's resources, and neither can change its own permissions, which live in `infra/demos/2-terraform/main.tf`, applied from the Mac. The change gets `terraform show -no-color`, which masks sensitive values; the plan file itself never leaves the build.
+
+After the call: nothing to stop. The stack has nothing that runs by the hour; the bucket and queue cost cents a month until reset removes them. `scripts/demo.sh status terraform` shows what exists.
+
 ## Layout
 
 ```

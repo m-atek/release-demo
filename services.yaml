@@ -221,6 +221,8 @@ network-stack:
   pipeline: pull-request
   path: infra/demos/2-terraform/network
   toolchain: jenkins/toolchain/terraform.Dockerfile
+  # Publishes nothing to JFrog; shared, so jcr_setup.py asks for no repositories of its own.
+  jcr: { shared: true }
 
   jira:
     project: ORD
