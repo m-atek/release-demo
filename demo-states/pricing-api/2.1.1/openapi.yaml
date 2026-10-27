@@ -1,0 +1,132 @@
+openapi: 3.0.3
+info:
+  title: pricing-api
+  version: 2.1.1
+  description: >-
+    Shelf prices for every store. Called by orders-service and the store app.
+    Demo system, not a client's. The release pipeline compares this file with
+    production's and stops a release that would break those apps.
+servers:
+  - url: https://pricing-api.example.invalid
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Status and version, for the pipeline's checks
+      responses:
+        "200":
+          description: The service answers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /products:
+    get:
+      operationId: listProducts
+      summary: Every product with its SKU
+      responses:
+        "200":
+          description: The products
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Products"
+  /prices/{sku}:
+    get:
+      operationId: getPrice
+      summary: The shelf price of one product in one store
+      parameters:
+        - name: sku
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Z]{2}-[0-9]{3}$"
+            example: RS-100
+        - name: store
+          in: query
+          required: true
+          schema:
+            type: string
+            example: NL-UTR-01
+      responses:
+        "200":
+          description: The price
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Price"
+        "400":
+          description: No store given
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Unknown product or store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status, service, environment, version, commit]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+        environment:
+          type: string
+        version:
+          type: string
+        commit:
+          type: string
+    Products:
+      type: object
+      required: [products]
+      properties:
+        products:
+          type: array
+          items:
+            type: object
+            required: [sku, name]
+            properties:
+              sku:
+                type: string
+              name:
+                type: string
+    Price:
+      type: object
+      required: [sku, name, store, price, currency, price_list]
+      properties:
+        sku:
+          type: string
+          example: RS-100
+        name:
+          type: string
+          example: Running shoes
+        store:
+          type: string
+          example: NL-UTR-01
+        price:
+          type: number
+          description: Shelf price, VAT included
+          example: 89.95
+        currency:
+          type: string
+          description: ISO 4217 code
+          example: EUR
+        price_list:
+          type: string
+          description: national, or regional where the store's region has its own list
+          example: national
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string

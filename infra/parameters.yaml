@@ -203,3 +203,12 @@ cloudflare/slack-handler-client-secret:
   source: terraform
   secure: true
   help: "Cloudflare Access service token for the Slack handler: client secret."
+
+pricing-api/staging/api-url:
+  source: terraform
+  secure: false
+  help: "pricing-api's API Gateway address in staging. Written by infra/demos/4-apis."
+pricing-api/production/api-url:
+  source: terraform
+  secure: false
+  help: "pricing-api's API Gateway address in production. Written by infra/demos/4-apis."

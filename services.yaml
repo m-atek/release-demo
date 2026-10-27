@@ -57,3 +57,82 @@ orders-service:
       check:
         timeout_seconds: 60
         paths: [/, /api/orders]
+
+pricing-api:
+  # Demo 4: an API with a contract check and a canary. Fictional consumers:
+  # orders-service and the store app (demo 7).
+  platform: aws-lambda-api
+  path: services/pricing-api
+  runtime: python3.13
+  handler: handler.handler
+
+  jira:
+    project: ORD
+
+  slack:
+    # /release pricing-api ORD-52 call: the shorter canary, for live calls.
+    options: [call]
+
+  scripts:
+    build: scripts/build.py
+    publish: scripts/publish.py
+    # Right after SBOM and scan: compare openapi.yaml with production's.
+    contract: scripts/demos/apis/contract.py
+    deploy: scripts/demos/apis/deploy.py
+    check: scripts/demos/apis/check.py
+    change: scripts/change.py
+    notify: scripts/notify.py
+    events: scripts/events.py
+
+  servicenow:
+    cmdb_item: pricing-api
+    assignment_group: Platform team
+    approvers: Change approvers
+    # Every release that passes the contract check gets the pre-approved
+    # standard change, without the word standard after the Jira key.
+    change: standard
+    templates:
+      standard: Routine release of pricing-api
+      rollback: Rollback of pricing-api
+
+  sonarqube:
+    project_key: m-atek_release-demo_pricing-api
+
+  contract:
+    # The OpenAPI file in the package, compared with the one in production's
+    # release in JFrog Container Registry. oasdiff's ERR level stops the run.
+    openapi: openapi.yaml
+    fail_on: ERR
+
+  canary:
+    # Production only. The production check gives the new version this share
+    # of live for this long, while two CloudWatch alarms watch that version
+    # alone (dimension ExecutedVersion). On an alarm its share goes back to 0.
+    weight_percent: 10
+    minutes: 5
+    minutes_on_calls: 3
+    poll_seconds: 5
+    alarms:
+      errors_per_minute: 3        # Errors, sum over one minute, at or above
+      p95_duration_ms: 800        # Duration, p95 over one minute, above
+    load:
+      requests_per_second: 10
+      belgian_share: 0.33         # a third of the requests ask for Belgian prices
+      tail_seconds: 30            # after the decision, so Grafana shows 0% or 100%
+
+  environments:
+    staging:
+      function: pricing-api-staging
+      alias: live
+      api_url_parameter: pricing-api/staging/api-url
+      check:
+        timeout_seconds: 30
+        paths: [/products, "/prices/RS-100?store=NL-UTR-01", "/prices/RS-100?store=BE-ANT-01"]
+
+    production:
+      function: pricing-api-production
+      alias: live
+      api_url_parameter: pricing-api/production/api-url
+      check:
+        timeout_seconds: 60
+        paths: [/products, "/prices/RS-100?store=NL-UTR-01", "/prices/RS-100?store=BE-ANT-01"]
