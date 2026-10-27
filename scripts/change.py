@@ -47,7 +47,8 @@ def links(state, ssm):
     org = get_parameter(ssm, "sonar/organization")
     config = service(state["service"])
     change = state.get("change", {}).get("number", "")
-    search = urllib.parse.quote(f'search sourcetype="release:event" change="{change}"')
+    search = urllib.parse.quote(f'search sourcetype="release:event" change="{change}" '
+                                '| table _time stage result seconds environment | sort _time')
     return {
         "Jira": f"{jira}/browse/{state['jira_key']}",
         "Jenkins build": state["build"].get("url", ""),
