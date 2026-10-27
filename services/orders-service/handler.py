@@ -132,7 +132,7 @@ def page():
     )
     return PAGE.format(
         service=SERVICE,
-        title=html.escape(os.environ["BRAND_TITLE"]),
+        title=html.escape(os.environ.get("BRAND_TITLE", SERVICE)),
         env=html.escape(env),
         version=html.escape(VERSION),
         commit=html.escape(COMMIT[:7]),
