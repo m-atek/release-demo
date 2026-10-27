@@ -334,3 +334,79 @@ store-sync:
       # scripts/demo.sh fix-drift windows restores it.
       drift:
         STORE-004: UploadEndpoint
+
+quote-service:
+  platform: three-clouds  # AWS Lambda, Azure Container Apps and Google Cloud Run
+  path: services/quote-service
+  runtime: python3.13     # the image's Python, for SonarQube
+
+  jira:
+    project: ORD
+
+  slack:
+    options: [standard]
+
+  scripts:
+    build: scripts/demos/clouds/build.py
+    publish: scripts/publish.py
+    deploy: scripts/demos/clouds/deploy.py
+    check: scripts/demos/clouds/check.py
+
+  # Bound around deploy and check, so the pipeline stores no cloud keys: one
+  # Jenkins OpenID Connect credential per cloud, each with that cloud's
+  # audience. Every binding mints a fresh ID token for the build, and each
+  # cloud trades it for access that expires on its own.
+  jenkins_credentials:
+    oidc-aws: OIDC_AWS_TOKEN
+    oidc-azure: OIDC_AZURE_TOKEN
+    oidc-gcp: OIDC_GCP_TOKEN
+
+  servicenow:
+    cmdb_item: quote-service
+    # One item per cloud, listed on the change as affected items.
+    cloud_items:
+      aws: quote-service on AWS
+      azure: quote-service on Azure
+      gcp: quote-service on Google Cloud
+    assignment_group: Platform team
+    approvers: Change approvers
+    templates:
+      standard: Routine release of quote-service
+      rollback: Rollback of quote-service
+
+  sonarqube:
+    project_key: m-atek_release-demo_quote-service
+
+  # One image for all three clouds, built by scripts/demos/clouds/build.py.
+  image:
+    base: public.ecr.aws/docker/library/python:3.13.17-alpine3.24@sha256:fa0bb0d0cd7c7d6cef30a69094d32ac2b71c7304c87c6107fec100e1ee4eda02
+    adapter: public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0@sha256:17cfd08eff1dfea3f6a9a1e9c65fdac80aa4919b6085e746615530f43f57d2f1
+    port: 8080
+
+  # Staging goes to all three, then production cloud by cloud in this order.
+  # A failed check moves that cloud back and stops the rest.
+  clouds:
+    - {key: gcp, name: Google Cloud, region: europe-west4}
+    - {key: azure, name: Azure, region: westeurope}
+    - {key: aws, name: AWS, region: eu-west-1}
+
+  environments:
+    staging:
+      check:
+        timeout_seconds: 90
+        paths: ["/", "/api/quote?amount=120.00&currency=EUR"]
+      targets:
+        gcp: {name: quote-service-staging, settings: {QUOTE_GBP_RATE: "0.86"}}
+        azure: {name: quote-service-staging, settings: {QUOTE_GBP_RATE: "0.86"}}
+        aws: {name: quote-service-staging, settings: {QUOTE_GBP_RATE: "0.86"}}
+
+    production:
+      check:
+        timeout_seconds: 90
+        paths: ["/", "/api/quote?amount=120.00&currency=EUR"]
+      targets:
+        gcp: {name: quote-service-production, settings: {QUOTE_GBP_RATE: "0.86"}}
+        # Azure's production app never got QUOTE_GBP_RATE. 1.2.1 reads it,
+        # passes staging in every cloud, and fails here: drift in one cloud.
+        azure: {name: quote-service-production, settings: {}}
+        aws: {name: quote-service-production, settings: {QUOTE_GBP_RATE: "0.86"}}
