@@ -101,6 +101,22 @@ pipelineJob('stage') {
     definition fromRepository('jenkins/stage.Jenkinsfile')
 }
 
+// Demo 7: builds and signs Store Floor, iOS on the Mac and Android on the
+// tools host in parallel. Started by store-floor's build, rollback and reset scripts.
+pipelineJob('store-floor-build') {
+    description('Builds and signs Store Floor for iOS (Mac agent) and Android (tools host) in parallel. Started as release-bot by scripts/demos/mobile.')
+    parameters {
+        stringParam('VERSION', '', 'The version in services/store-floor/VERSION of the code built.')
+        stringParam('STORE_BUILD', '', 'The store build number: the release build number, or a higher one such as 57.1 for a rebuild.')
+        stringParam('SOURCE', '', 'A commit, or demo-state:<version>.')
+        stringParam('PLATFORMS', 'ios,android', 'ios, android, or both.')
+        stringParam('ORDERS_URL', '', "orders-service's production URL, for the app's order list.")
+        stringParam('REQUESTED_BY', '', 'The run that asked for the build.')
+    }
+    logRotator { numToKeep(30) }
+    definition fromRepository('scripts/demos/mobile/build.Jenkinsfile')
+}
+
 // Views next to All: a release dashboard with the latest builds and test
 // trends, and a monitor with one big tile per job for a second screen.
 List<String> demoJobs = ['release', 'rollback', 'ci', 'tools-smoke']

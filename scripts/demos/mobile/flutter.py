@@ -44,7 +44,7 @@ def cache_dir():
     return path
 
 
-def in_container(command, cwd, env_names=(), mounts=(), check=True):
+def in_container(command, cwd, env_names=(), mounts=(), check=True, capture=False):
     """A shell command in the toolchain container, as the calling user.
 
     The repository is mounted at its own path, so paths inside and outside
@@ -59,7 +59,7 @@ def in_container(command, cwd, env_names=(), mounts=(), check=True):
     for source, target in mounts:
         args += ["-v", f"{source}:{target}:ro"]
     args += [image(), "bash", "-c", f"mkdir -p \"$HOME\" && {command}"]
-    return subprocess.run(args, check=check)
+    return subprocess.run(args, check=check, capture_output=capture, text=capture)
 
 
 def native(args, cwd, env=None):

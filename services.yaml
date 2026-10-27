@@ -461,6 +461,9 @@ store-floor:
   google_play:
     track: internal
 
+  jcr:
+    shared: true
+
   jira:
     project: ORD
 

@@ -24,7 +24,7 @@ ROOT = HERE.parents[2]
 # Appended, not prepended: scripts/secrets.py must not hide the standard library's secrets.
 sys.path.append(str(ROOT / "scripts"))
 
-from common import aws_session, fail, get_parameter, service, ssm_client  # noqa: E402
+from common import SSM_PREFIX, aws_session, fail, get_parameter, service, ssm_client  # noqa: E402
 
 SERVICE = "store-floor"
 STANDINS = ("apple", "google-play", "jamf")

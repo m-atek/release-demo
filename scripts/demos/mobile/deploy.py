@@ -36,7 +36,7 @@ from standin import ServiceError
 
 import run_state  # noqa: E402  (scripts/, through mobile)
 from common import get_parameter, ssm_client  # noqa: E402
-from publish import download, request as jcr_request, upload  # noqa: E402
+from publish import candidates_root, download, releases_root, request as jcr_request, upload  # noqa: E402
 
 
 def package_files(state):
@@ -104,7 +104,7 @@ def source_of(version):
     """Where the code of an earlier release is: its commit, from the release copy
     in JCR, or the demo state of that version."""
     token = get_parameter(ssm_client(), "jcr/token")
-    status, body = jcr_request("GET", f"{SERVICE}-releases/{version}/build-info.json", token)
+    status, body = jcr_request("GET", f"{releases_root(SERVICE)}/{version}/build-info.json", token)
     if status == 200:
         commit = json.loads(body).get("commit", "")
         if commit and not commit.endswith("-dirty") and commit != "uncommitted":
@@ -124,8 +124,9 @@ def rebuild(version, number):
     parts = jenkins.build(version, number, source, ["ios"], build_orders_url())
     name = f"{SERVICE}-{version}-{number}-adhoc.ipa"
     data = (parts / "ios" / name if (parts / "ios" / name).exists() else parts / name).read_bytes()
-    upload(get_parameter(ssm_client(), "jcr/token"), f"{SERVICE}-candidates/{version}/{number}/{name}", data)
-    print(f"Stored {SERVICE}-candidates/{version}/{number}/{name}")
+    path = f"{candidates_root(SERVICE)}/{version}/{number}/{name}"
+    upload(get_parameter(ssm_client(), "jcr/token"), path, data)
+    print(f"Stored {path}")
     return name, data
 
 
@@ -151,9 +152,9 @@ def jamf_deploy(state, environment, config, back, previous):
         else:
             target_version = previous_release(app["version"])
             deploys[environment] = {"previous_number": app["build"], "previous_version": app["version"]}
-        run_number = str(state.get("build", {}).get("number", ""))
-        number = next_rebuild_number(app["build"], deploys[environment].get("number"),
-                                     run_number if run_number.isdigit() else None)
+        # Above what Jamf holds and what this run uploaded. Not the job's own
+        # number: a rollback job's count has nothing to do with store builds.
+        number = next_rebuild_number(app["build"], deploys[environment].get("number"))
         name, data = rebuild(target_version, number)
         client.upload_ipa(app["id"], name, data)
         deploys[environment].update({"rolled_back_to": target_version, "rolled_back_number": number, "url": app["url"]})
@@ -198,7 +199,7 @@ def previous_release(live):
     from jamf_apps import build_key
 
     token = get_parameter(ssm_client(), "jcr/token")
-    status, body = jcr_request("GET", f"api/storage/{SERVICE}-releases", token)
+    status, body = jcr_request("GET", f"api/storage/{releases_root(SERVICE)}", token)
     versions = set()
     if status == 200:
         versions |= {c["uri"].strip("/") for c in json.loads(body).get("children", []) if c.get("folder")}

@@ -282,3 +282,67 @@ clouds/gcp:
   source: terraform
   secure: false
   help: "quote-service on Google Cloud: project, identity provider, deploy account, registry, addresses. Terraform, infra/demos/5-three-clouds/gcp."
+
+# Demo 7, store-floor (scripts/demos/mobile). Signing values reach the build
+# job as Jenkins credentials, which JCasC loads from these at the host's boot.
+store-floor/bucket:
+  source: terraform
+  secure: false
+  help: "Demo 7's bucket: fastlane match under match/, the stand-ins' state under standins/. Written by infra/demos/7-mobile."
+store-floor/orders-url:
+  source: terraform
+  secure: false
+  help: "orders-service's production URL, for Store Floor's order list. Written by infra/demos/7-mobile."
+store-floor/android-upload-keystore:
+  source: script
+  secure: true
+  help: "The Android upload key, a PKCS12 keystore in base64. Written by scripts/demos/mobile/signing_setup.py android-upload-key."
+store-floor/android-upload-key-password:
+  source: script
+  secure: true
+  help: "The upload keystore's password. Written by scripts/demos/mobile/signing_setup.py android-upload-key."
+store-floor/match-password:
+  source: you
+  secure: true
+  help: "The password fastlane match encrypts the iOS certificates with: the one you chose for fastlane match init."
+store-floor/apple-team-id:
+  source: you
+  secure: false
+  help: "Your Apple Developer Team ID: developer.apple.com, Account, Membership details (10 characters)."
+  pattern: "^[A-Z0-9]{10}$"
+  hint: "a Team ID has 10 capitals and digits"
+store-floor/asc-key-id:
+  source: script
+  secure: true
+  help: "App Store Connect API key id. Written by scripts/demos/mobile/signing_setup.py app-store-connect-key."
+store-floor/asc-private-key:
+  source: script
+  secure: true
+  help: "App Store Connect API key (.p8, App Manager). Written by scripts/demos/mobile/signing_setup.py app-store-connect-key."
+store-floor/asc-issuer-id:
+  source: you
+  secure: true
+  help: "App Store Connect, Users and Access, Integrations, App Store Connect API: the Issuer ID above the keys."
+  pattern: "^[0-9a-f-]{36}$"
+  hint: "an issuer id is a UUID, 36 characters"
+store-floor/play-service-account-json:
+  source: script
+  secure: true
+  help: "Fallback for Google Play: the service account's JSON key. Written by scripts/demos/mobile/signing_setup.py play-service-account-key."
+store-floor/play-federation:
+  source: you
+  secure: false
+  help: "Google Play through demo 5's Workload Identity Federation, as JSON: {\"audience\": \"//iam.googleapis.com/projects/.../providers/...\", \"service_account\": \"...@....iam.gserviceaccount.com\"}."
+store-floor/jamf-url:
+  source: you
+  secure: true
+  help: "Your Jamf Pro instance, https://<name>.jamfcloud.com."
+  pattern: "^https://[a-z0-9-]+\\.jamfcloud\\.com$"
+store-floor/jamf-client-id:
+  source: you
+  secure: true
+  help: "Jamf Pro, Settings, API roles and clients: the client id of the store-floor API client."
+store-floor/jamf-client-secret:
+  source: you
+  secure: true
+  help: "That API client's secret, shown once when you generate it."

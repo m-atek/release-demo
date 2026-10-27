@@ -1,0 +1,5 @@
+# Flutter's recommended lints, checked by flutter analyze in the test stage.
+include: package:flutter_lints/flutter.yaml
+
+formatter:
+  page_width: 120

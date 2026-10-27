@@ -1,0 +1,3 @@
+#include "Generated.xcconfig"
+// Signing for the pipeline, written by scripts/demos/mobile/build.py and never committed.
+#include? "Signing.xcconfig"

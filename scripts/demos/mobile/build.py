@@ -94,7 +94,7 @@ def build_android(version, number, url):
     mobile_flutter().in_container(command, cwd=source)
     target = out / names(version, number)["aab"]
     shutil.copyfile(source / "build/app/outputs/bundle/release/app-release.aab", target)
-    print(f"Built {target.relative_to(ROOT)} (unsigned; the job signs it with the upload key)")
+    print(f"Built {shown(target)} (unsigned; the job signs it with the upload key)")
     return target
 
 
@@ -288,10 +288,16 @@ def assemble(version, number, jira_key, commit, platforms):
         "files": sums, "checks": checks, "signing": signing, "standins": sorted(mobile.standins()),
     }
     write_json(DIST / "build-info.json", info)
-    print(f"Built {package.relative_to(ROOT)}")
+    print(f"Built {shown(package)}")
     for name, digest in sums.items():
         print(f"  {digest}  {name}")
     print(f"sha256 {info['sha256']}")
+
+
+def shown(path):
+    """A path from the repository root where it is inside it."""
+    path = Path(path)
+    return path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
 
 
 def mobile_flutter():
@@ -357,7 +363,7 @@ def assemble_unsigned(version, number, jira_key, commit):
         "service": SERVICE, "version": version, "commit": commit, "jira_key": jira_key,
         "build_url": os.environ.get("BUILD_URL"), "package": package.name, "sha256": mobile.file_sha256(package),
         "size_bytes": package.stat().st_size, "store_builds": {"ios": None, "android": None}, "signed": False})
-    print(f"Built {package.relative_to(ROOT)} (CI, unsigned)")
+    print(f"Built {shown(package)} (CI, unsigned)")
 
 
 if __name__ == "__main__":

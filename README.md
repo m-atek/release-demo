@@ -303,6 +303,33 @@ If a cloud refuses the ID token with "published keys are out of date": Jenkins m
 
 The scripts' tests: `.venv/bin/python -m pytest -q scripts/demos/clouds/tests`.
 
+## Demo on a call: mobile apps (demo 7)
+
+Store Floor, a Flutter app for iPhone, iPad and Android, released two ways from one pipeline. `/release store-floor ORD-80 jamf` puts 2.4.0 on the store devices through Jamf: the pilot devices first, every store after Alex approves the change. `/release store-floor ORD-81 stores` puts it in front of the testers on TestFlight and Google Play's internal track, with the release notes from the Jira version "store-floor 2.4.0". The code is in `scripts/demos/mobile/`; the app in `services/store-floor/`, with 2.3.0 and 2.4.0 in `demo-states/store-floor/`.
+
+Jamf, the Apple Developer Program, TestFlight and Google Play run as stand-ins (`STANDIN` in the store-floor entry of `services.yaml`): they answer the same API calls from state in demo 7's bucket, refuse what the real services refuse, and say what they are in their startup log. The Android signing is real: the upload key comes from SSM through Jenkins' credentials, and the log shows it as `****`.
+
+Before a call or a take:
+
+1. `scripts/tools.sh up`, and the Mac agent (demo 6) connected to Jenkins.
+2. `scripts/demo.sh up mobile`: checks demo 7's bucket, gives the stand-ins their starting state if they have none, and starts the console on http://127.0.0.1:8077 with three pages: Device management (Store Floor's scope and the pilot devices' inventory), iOS testing and Android testing (the builds, their numbers and release notes).
+3. `scripts/reset.py mobile` (on the tools host): every device back on 2.3.0, rebuilt with a higher build number, the scope on Pilot, 2.4.0 staged, ORD-80 and ORD-81 reopened. Without the Mac, `scripts/demos/mobile/reset.py --standins` resets the stand-ins alone.
+
+During the call: Slack as Sam, the console next to it, ServiceNow as Alex. A jamf release stops at the approval with the app on the pilot devices; Alex's approval widens the scope to All store devices. A stores release is a pre-approved standard change once `change.py` reads `standard_options`; until then Alex approves it too. `/rollback store-floor` rebuilds the previous release with a higher build number and gives it to Jamf, because iOS won't install an older build over a newer one. Afterwards: `scripts/demo.sh down mobile`. Nothing of demo 7 costs money by the hour.
+
+Setup once, after infra/ has the new parameter names:
+
+1. `scripts/demos/mobile/tf.sh init` and `apply`: the bucket, the deploy role and two SSM values.
+2. `.venv/bin/python scripts/demos/mobile/signing_setup.py android-upload-key`: the upload key into SSM. It prints the certificate's fingerprint, never the key.
+3. In JFrog Container Registry's UI, the shared repositories `demos-candidates` and `demos-releases` if no other demo made them.
+4. On the Mac agent: Xcode 26 or later (the Mac needs macOS 15.6 or later for it), Flutter 3.44.0 on the PATH, and `python3 -m pip install --user PyYAML`.
+
+For the real services, set `STANDIN` to `0` (or name only the stand-ins to keep), and:
+
+1. Apple: the bundle id `nl.es.demo.storefloor` and the app in App Store Connect; an App Store Connect API key with the App Manager role (`signing_setup.py app-store-connect-key`, then `secrets.py set store-floor/asc-issuer-id`); `fastlane match init` with S3 storage in demo 7's bucket under `match/`, then `fastlane match adhoc` and `fastlane match appstore` once; `secrets.py set store-floor` for the match password and the team id; the internal TestFlight group "Store team" with yourself in it.
+2. Google Play: the app `nl.es.demo.storefloor` in the Play Console, the first bundle uploaded there by hand to the internal track, yourself on its testers list, and the service account invited with release rights: through demo 5's federation (`store-floor/play-federation`) or a JSON key (`signing_setup.py play-service-account-key`).
+3. Jamf: the in-house app "Store Floor", the mobile device groups Pilot and All store devices, automatic updates on in In-House App Maintenance, and an API client allowed to read and update mobile device apps, read mobile devices and groups, and send mobile device commands (`secrets.py set store-floor` for its URL, id and secret). A supervised iPad or iPhone enrolled in Pilot, its UDID in the ad hoc profile.
+
 ## Layout
 
 ```

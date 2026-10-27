@@ -144,11 +144,38 @@ def page(path, store):
             f"<style>{STYLE}</style></head><body><nav>{links}</nav><main>{body}</main></body></html>")
 
 
+def summary(store):
+    """Three lines for scripts/demo.sh status mobile."""
+    config = mobile.config()
+    bundle = config["app"]["bundle_id"]
+    jamf, flight, play = (store.read(k) for k in ("jamf.json", "testflight.json", "google-play.json"))
+    if not jamf:
+        print("  stand-ins: no state yet (scripts/demos/mobile/reset.py --standins)")
+        return
+    app = next(iter(jamf["apps"].values()))
+    pilots = [jamf["devices"][str(i)] for i in jamf["groups"][config["jamf"]["pilot_group"]]]
+    seen = ", ".join(f"{(d['apps'].get(bundle) or {}).get('version')} ({(d['apps'].get(bundle) or {}).get('build')})"
+                     for d in pilots)
+    print(f"  device management: {app['name']} {app['version']} ({app['build']}), scope {', '.join(app['scope'])}; "
+          f"pilot devices on {seen}")
+    latest = flight["builds"][0] if flight and flight["builds"] else None
+    if latest:
+        print(f"  iOS testing: {latest['version']} ({latest['build']}) {latest['internal_state'].lower()}")
+    release = (play or {}).get("tracks", {}).get(config["google_play"]["track"], {}).get("releases", [])
+    if release:
+        print(f"  Android testing: {release[0]['name']}, version code {', '.join(release[0]['versionCodes'])}, "
+              f"{release[0]['status']}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--port", type=int, default=8077)
+    parser.add_argument("--summary", action="store_true", help="print the stand-ins' state and exit")
     args = parser.parse_args()
     store = mobile.state_store()
+    if args.summary:
+        summary(store)
+        return
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
@@ -172,7 +199,7 @@ def main():
             pass
 
     print(f"Stand-in console for Jamf Pro, TestFlight and Google Play: their state in {store.where()}, "
-          f"on http://127.0.0.1:{args.port}/jamf, /testflight and /play. Ctrl-C stops it.")
+          f"on http://127.0.0.1:{args.port}/jamf, /testflight and /play. Ctrl-C stops it.", flush=True)
     try:
         http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler).serve_forever()
     except KeyboardInterrupt:
