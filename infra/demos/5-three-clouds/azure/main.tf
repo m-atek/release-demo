@@ -47,11 +47,6 @@ variable "apps" {
   default     = false
 }
 
-variable "budget_email" {
-  description = "Who gets the budget alert. From infra/local.auto.tfvars, through tf.sh."
-  type        = string
-}
-
 data "aws_ssm_parameter" "issuer" {
   name = "/release-demo/jenkins/oidc-issuer"
 }
@@ -112,34 +107,8 @@ resource "azurerm_role_assignment" "deployer_assigns_pull_identity" {
   principal_id         = azurerm_user_assigned_identity.deployer.principal_id
 }
 
-resource "azurerm_consumption_budget_subscription" "monthly" {
-  name            = "release-demo-monthly"
-  subscription_id = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
-  amount          = 10
-  time_grain      = "Monthly"
-
-  time_period {
-    start_date = formatdate("YYYY-MM-01'T'00:00:00Z", timestamp())
-  }
-
-  notification {
-    operator       = "GreaterThan"
-    threshold      = 100
-    threshold_type = "Actual"
-    contact_emails = [var.budget_email]
-  }
-
-  notification {
-    operator       = "GreaterThan"
-    threshold      = 100
-    threshold_type = "Forecasted"
-    contact_emails = [var.budget_email]
-  }
-
-  lifecycle {
-    ignore_changes = [time_period]
-  }
-}
+# The subscription's budget alert (USD 10 a month, to Mateusz) is set on the
+# subscription itself, not here, so tearing down the demo never removes it.
 
 # Up -------------------------------------------------------------------------
 

@@ -2,7 +2,7 @@
 # One-time setup of each cloud's trust in Jenkins, with your own short-lived login.
 #
 #   scripts/demos/clouds/bootstrap.sh aws     the Jenkins issuer bucket, AWS's trust in it, ECR with 1.1.0, both functions
-#   scripts/demos/clouds/bootstrap.sh azure   the deploy identity with its federated credential, and the USD 10 budget alert
+#   scripts/demos/clouds/bootstrap.sh azure   the deploy identity with its federated credential
 #   scripts/demos/clouds/bootstrap.sh gcp     the workload identity pool and provider, the deploy service account, the budget alert
 #
 # After that the pipeline needs no login of yours: each cloud trusts the
