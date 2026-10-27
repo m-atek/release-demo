@@ -126,7 +126,8 @@ def page():
     orders = todays_orders()["orders"]
     rows = "\n".join(
         f"<tr><td>{html.escape(o['id'])}</td><td>{html.escape(o['store'])}</td>"
-        f"<td>{len(o['items'])}</td><td>&euro; {o['total_eur']:.2f}</td></tr>"
+        f"<td>{len(o['items'])}</td><td>&euro; {o['total_eur']:.2f}</td>"
+        f"<td>{html.escape(o['status'])}</td></tr>"
         for o in orders[:5]
     )
     return PAGE.format(
@@ -222,7 +223,7 @@ PAGE = """<!doctype html>
   </section>
   <h2>Today's orders ({order_count})</h2>
   <table>
-    <thead><tr><th>Order</th><th>Store</th><th>Items</th><th>Total</th></tr></thead>
+    <thead><tr><th>Order</th><th>Store</th><th>Items</th><th>Total</th><th>Status</th></tr></thead>
     <tbody>
 {rows}
     </tbody>
