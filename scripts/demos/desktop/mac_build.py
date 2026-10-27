@@ -299,10 +299,11 @@ def compile_app(package, config, work):
     log(f"Building with swift build for arm64 and x86_64: Xcode isn't installed, only the Command Line Tools ({swift})")
     slices = []
     for arch in ("arm64", "x86_64"):
-        scratch = work / f"build-{arch}"
-        run(["swift", "build", "-c", "release", "--product", executable, "--scratch-path", str(scratch),
-             "--triple", f"{arch}-apple-macosx{config['minimum_macos']}"], cwd=package, quiet=True)
-        slices.append(str(next(scratch.glob(f"*/release/{executable}"))))
+        command = ["swift", "build", "-c", "release", "--product", executable, "--scratch-path", str(work / f"build-{arch}"),
+                   "--triple", f"{arch}-apple-macosx{config['minimum_macos']}"]
+        run(command, cwd=package, quiet=True)
+        # Where the binary lands differs between Swift versions: ask.
+        slices.append(str(Path(run([*command, "--show-bin-path"], cwd=package, quiet=True).stdout.strip()) / executable))
     universal = work / executable
     run(["lipo", "-create", *slices, "-output", str(universal)], quiet=True)
     return universal, swift
