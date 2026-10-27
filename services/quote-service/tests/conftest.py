@@ -14,6 +14,7 @@ def env(monkeypatch):
     monkeypatch.setenv("SERVICE_CLOUD", "azure")
     monkeypatch.setenv("SERVICE_ENVIRONMENT", "staging")
     monkeypatch.setenv("SERVICE_REGION", "westeurope")
+    monkeypatch.setenv("QUOTE_GBP_RATE", "0.86")
 
 
 def request(target, method="GET"):

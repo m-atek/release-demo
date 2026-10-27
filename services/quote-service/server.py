@@ -11,7 +11,8 @@ Standard library only.
     GET /api/quote?amount=120.00&currency=GBP  one quote
 
 Settings come from the environment: SERVICE_CLOUD (aws, azure or gcp),
-SERVICE_ENVIRONMENT, SERVICE_REGION and PORT.
+SERVICE_ENVIRONMENT, SERVICE_REGION and PORT, and the GBP rate from
+QUOTE_GBP_RATE.
 """
 
 import datetime
@@ -31,9 +32,9 @@ CLOUDS = {
     "gcp": ("Google Cloud", "Google Cloud Run"),
     "local": ("Local", "this computer"),
 }
-# EUR is the stores' own currency. ORD-60: quotes in GBP too, for the UK stores.
+# EUR is the stores' own currency. ORD-60: quotes in GBP too, for the UK stores,
+# at the rate the stores set.
 CURRENCIES = ("EUR", "GBP")
-GBP_PER_EUR = 0.86
 QUOTE_DAYS = 30
 EXAMPLE_BASKET_EUR = 120.00
 
@@ -83,8 +84,18 @@ def rate(currency):
     if currency == "EUR":
         return 1.0
     if currency == "GBP":
-        return GBP_PER_EUR
+        return gbp_rate()
     raise QuoteError(400, f"No quotes in {currency}. Quotes come in {' and '.join(CURRENCIES)}.")
+
+
+def gbp_rate():
+    setting = os.environ.get("QUOTE_GBP_RATE", "").strip()
+    if not setting:
+        raise QuoteError(500, "QUOTE_GBP_RATE is not set")
+    try:
+        return float(setting)
+    except ValueError:
+        raise QuoteError(500, f"QUOTE_GBP_RATE is not a number: {setting!r}")
 
 
 def quote(amount_eur, currency, today=None):
