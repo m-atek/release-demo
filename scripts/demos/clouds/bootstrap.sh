@@ -28,6 +28,11 @@ case ${1:-} in
     echo "  sudo /opt/release-demo-venv/bin/python scripts/demos/clouds/oidc_issuer.py publish"
     ;;
   azure | gcp)
+    if [[ $1 == gcp ]]; then
+      # Reading the project needs the Resource Manager API, which this root
+      # turns on: on a new project the APIs go first, or the plan stops.
+      "$HERE/tf.sh" gcp apply -var apps=false -target=google_project_service.apis
+    fi
     "$HERE/tf.sh" "$1" apply -var apps=false
     echo
     echo "$1 trusts the Jenkins issuer. Its registry and apps: scripts/demo.sh up clouds"
