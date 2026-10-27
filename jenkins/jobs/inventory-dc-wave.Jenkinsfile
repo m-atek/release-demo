@@ -12,7 +12,9 @@ node('dc-agent') {
     if (commit ==~ /[0-9a-f]{40}/) {
         withEnv(["COMMIT=${commit}"]) { sh 'git checkout --quiet --detach "$COMMIT"' }
     }
-    currentBuild.description = "${request.extra_vars?.rollout_action ?: request.playbook} ${request.extra_vars?.version ?: ''} on ${(request.names ?: []).join(', ')}"
+    // readJSON gives a JSONArray, whose own join the sandbox refuses: a plain list joins.
+    List<String> names = (request.names ?: []).collect { it as String }
+    currentBuild.description = "${request.extra_vars?.rollout_action ?: request.playbook} ${request.extra_vars?.version ?: ''} on ${names.join(', ')}"
     try {
         withCredentials([
             string(credentialsId: 'jcr-inventory-read-token', variable: 'JCR_TOKEN'),

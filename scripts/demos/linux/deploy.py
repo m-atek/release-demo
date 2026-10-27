@@ -143,6 +143,8 @@ def deploy(args, state, deploys, reporting):
         if reporting:
             report.post_line(report.slack_line(table))
         sys.exit(1)
+    if any(row["result"] == "not-started" for row in table):
+        sys.exit(1)
 
 
 def back(args, state, deploys, reporting):

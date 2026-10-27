@@ -55,3 +55,11 @@ def test_a_failure_before_the_switch_says_the_server_kept_its_release():
                         "2.8.0")
     assert report.slack_line(table) == "inv-cloud-01 failed before the switch. Still on 2.7.3. Rollout stopped."
     assert "the build recorded y." in report.line(table[0])
+
+
+def test_a_site_whose_run_failed_before_its_servers_is_no_clean_rollout():
+    table = report.rows(fleet.servers(), [result("inv-cloud-01", "ok", "2.8.0"), result("inv-cloud-02", "ok", "2.8.0")],
+                        "2.8.0")
+    assert report.stopped_at(table) is None
+    assert report.summary(table, "2.8.0").endswith(
+        "Rollout stopped before inv-dc-01: its run failed before reaching it (see above).")

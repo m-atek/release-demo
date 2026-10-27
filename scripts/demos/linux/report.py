@@ -81,7 +81,14 @@ def summary(table, version):
     head = f"Rollout of inventory {version}, one server at a time:"
     body = [f"{i}. {line(row)}" for i, row in enumerate(table, 1)]
     row = stopped_at(table)
-    tail = f"Rollout stopped at {row['server']}." if row else f"All {len(table)} servers run {version}."
+    unreached = next((r for r in table if r["result"] == "not-started"), None)
+    if row:
+        tail = f"Rollout stopped at {row['server']}."
+    elif unreached:
+        # A site's run failed before its first server, such as the data-center job on dc-agent.
+        tail = f"Rollout stopped before {unreached['server']}: its run failed before reaching it (see above)."
+    else:
+        tail = f"All {len(table)} servers run {version}."
     return "\n".join([head, *body, tail])
 
 
