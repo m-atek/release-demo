@@ -118,6 +118,7 @@ pricing-api:
     load:
       requests_per_second: 10
       belgian_share: 0.33         # a third of the requests ask for Belgian prices
+      lead_seconds: 15            # before the canary, so Grafana shows its share step up from 0
       tail_seconds: 30            # after the decision, so Grafana shows 0% or 100%
 
   environments:

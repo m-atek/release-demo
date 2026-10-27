@@ -1,0 +1,219 @@
+{
+  "uid": "release-demo-pricing-api",
+  "title": "pricing-api: contract check and canary",
+  "description": "Demo 4. The load generator's results per version, pushed every 5 seconds. CloudWatch's alarms decide; this dashboard only shows. Demo system, not a client's.",
+  "tags": ["release-demo", "pricing-api"],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": { "refresh_intervals": ["5s", "10s", "30s", "1m"] },
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      {
+        "name": "logs",
+        "label": "Logs",
+        "type": "datasource",
+        "query": "loki",
+        "regex": "/-logs$/",
+        "hide": 2
+      },
+      {
+        "name": "cloudwatch",
+        "label": "CloudWatch",
+        "type": "datasource",
+        "query": "cloudwatch",
+        "hide": 2
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Canary window",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "iconColor": "rgba(31, 96, 196, 0.35)",
+        "target": { "type": "tags", "tags": ["pricing-api", "canary-window"], "matchAny": false, "limit": 100 }
+      },
+      {
+        "name": "Alarm",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "iconColor": "rgba(224, 47, 68, 0.45)",
+        "target": { "type": "tags", "tags": ["pricing-api", "canary-alarm"], "matchAny": false, "limit": 100 }
+      },
+      {
+        "name": "Releases",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "iconColor": "green",
+        "target": { "type": "tags", "tags": ["pricing-api", "release"], "matchAny": false, "limit": 100 }
+      },
+      {
+        "name": "Rollbacks",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "iconColor": "orange",
+        "target": { "type": "tags", "tags": ["pricing-api", "rollback"], "matchAny": false, "limit": 100 }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "pricing-api",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 1 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Demo system, not a client's.** Live calls to pricing-api in production, per version. The blue band is the canary window; red is a CloudWatch alarm on the new version, which takes its share back to 0%."
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Request share",
+      "description": "Each version's share of the load generator's calls, over 10 seconds.",
+      "datasource": { "type": "loki", "uid": "${logs}" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 3 },
+      "interval": "5s",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${logs}" },
+          "queryType": "range",
+          "expr": "(100 * sum by (version) (count_over_time({source=\"release-demo-loadgen\", service=\"pricing-api\", environment=\"production\"} [10s])) / ignoring(version) group_left sum(count_over_time({source=\"release-demo-loadgen\", service=\"pricing-api\", environment=\"production\"} [10s]))) or (0 * sum by (version) (count_over_time({source=\"release-demo-loadgen-versions\", service=\"pricing-api\", environment=\"production\"} [10s])))",
+          "legendFormat": "{{version}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 3, "fillOpacity": 0, "showPoints": "never", "spanNulls": false }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "right", "showLegend": true, "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Error rate",
+      "description": "Share of each version's calls that failed (HTTP 5xx: the function raised), over 30 seconds.",
+      "datasource": { "type": "loki", "uid": "${logs}" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 12 },
+      "interval": "5s",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${logs}" },
+          "queryType": "range",
+          "expr": "100 * avg_over_time({source=\"release-demo-loadgen\", service=\"pricing-api\", environment=\"production\"} | json failed=\"failed\" | unwrap failed [30s]) by (version)",
+          "legendFormat": "{{version}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "decimals": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 3, "fillOpacity": 0, "showPoints": "never", "spanNulls": false }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "right", "showLegend": true, "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "p95 latency",
+      "description": "95th percentile of each version's call time as the load generator saw it, over 30 seconds.",
+      "datasource": { "type": "loki", "uid": "${logs}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "interval": "5s",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "${logs}" },
+          "queryType": "range",
+          "expr": "quantile_over_time(0.95, {source=\"release-demo-loadgen\", service=\"pricing-api\", environment=\"production\"} | json latency_ms=\"latency_ms\" | unwrap latency_ms [30s]) by (version)",
+          "legendFormat": "{{version}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "never", "spanNulls": false }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "right", "showLegend": true, "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Lambda errors per version, as the alarm reads them",
+      "description": "CloudWatch's Errors metric of pricing-api-production by executed Lambda version, per minute. The canary's alarm watches the new version's series.",
+      "datasource": { "type": "cloudwatch", "uid": "${cloudwatch}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "cloudwatch", "uid": "${cloudwatch}" },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "region": "eu-west-1",
+          "namespace": "AWS/Lambda",
+          "metricName": "Errors",
+          "statistic": "Sum",
+          "period": "60",
+          "dimensions": {
+            "FunctionName": "pricing-api-production",
+            "Resource": "pricing-api-production:live",
+            "ExecutedVersion": "*"
+          },
+          "matchExact": true,
+          "label": "Lambda version ${PROP('Dim.ExecutedVersion')}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 60, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "right", "showLegend": true, "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    }
+  ]
+}
