@@ -5,8 +5,11 @@
 
 Run it once after the first start, when you have accepted JCR's licence in its
 UI and set the admin password there. --local asks for that password; --host
-reads it from SSM (jcr/admin-password). Then it creates:
+reads it from SSM (jcr/admin-password). Then it sets, or creates:
 
+- the Custom Base URL, https://artifactory-demo.es.nl on the host. Behind the
+  Cloudflare tunnel JCR only sees plain HTTP, and without the base URL its UI
+  stalls right after a successful login;
 - per service in services.yaml, the Generic repositories <service>-candidates
   and <service>-releases, plus docker-local and helm-local;
 - the user release-pipeline, with read and deploy rights on those repositories
@@ -52,10 +55,14 @@ class Client:
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
     def call(self, method, path, body=None, headers=None):
-        """Returns (status, parsed JSON or text). Never raises on HTTP errors."""
+        """Returns (status, parsed JSON or text). Never raises on HTTP errors.
+        A str body goes as text/plain, anything else as JSON."""
         data = None
         headers = {"Authorization": self.auth, **(headers or {})}
-        if body is not None:
+        if isinstance(body, str):
+            data = body.encode()
+            headers["Content-Type"] = "text/plain"
+        elif body is not None:
             data = json.dumps(body).encode()
             headers["Content-Type"] = "application/json"
         request = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
@@ -84,6 +91,13 @@ def by_hand(steps, check):
         if check():
             return
         print("Not there yet.")
+
+
+def ensure_base_url(jcr, url):
+    status, reply = jcr.call("PUT", "/artifactory/api/system/configuration/baseUrl", url)
+    if status != 200:
+        fail(f"JCR didn't take the base URL ({status}): {str(reply)[:200]}")
+    print(f"  base URL: {url}")
 
 
 def repositories():
@@ -200,6 +214,7 @@ def main():
     if status != 200:
         fail(f"JCR answered {status}. Open {ui}, accept the licence and finish the setup wizard first.")
 
+    ensure_base_url(jcr, ui)
     keys = repositories()
     for key, package_type in keys:
         ensure_repository(jcr, key, package_type)
