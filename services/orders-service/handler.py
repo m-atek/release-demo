@@ -164,7 +164,7 @@ def handler(event, context):
 def _json(status, body):
     return {
         "statusCode": status,
-        "headers": {"content-type": "application/json"},
+        "headers": {"content-type": "application/json", "cache-control": "no-store"},
         "body": json.dumps(body),
     }
 
