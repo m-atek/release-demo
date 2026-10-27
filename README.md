@@ -49,9 +49,10 @@ Install the tools first: `brew install hashicorp/tap/terraform awscli gh gitleak
 
 ### 4. ServiceNow
 
-1. developer.servicenow.com: sign up (the Developer Program Agreement is the checkbox on the form), then Request Instance with the release it offers.
-2. Log in to the instance directly as admin and keep the password; `servicenow_setup.py` asks for it. Log in directly at least once a week, or the instance is reclaimed.
-3. `secrets.py set servicenow/instance-url`.
+1. developer.servicenow.com: sign up (the Developer Program Agreement is the checkbox on the form), then Request Instance with the release it offers. Log in to the instance directly at least once a week, or it is reclaimed.
+2. New instances refuse password sign-in on the REST API ("Basic Auth Restriction") unless the user has the role `snc_basic_auth_api_access`. As admin, create a setup user: Users, New, User ID `release-demo.setup`; Set Password; Roles: `admin` and `snc_basic_auth_api_access`.
+3. `secrets.py set servicenow`: the instance URL, the setup user's password (`servicenow/admin-password`), and the passwords you choose for Sam and Alex. Passwords must meet the instance's policy (upper and lower case, a digit, a special character); ServiceNow silently drops one that doesn't.
+4. `.venv/bin/python scripts/servicenow_setup.py --test`. It creates Sam, Alex and `release.pipeline` (web service access only, its password generated into SSM), the groups Platform team and Change approvers, the CMDB items, and the two standard change templates. It points the Normal Change Policy at Change approvers once, at Assess, and switches off its Authorize approvals. `--test` then proves it: a normal change asks only Alex and is Scheduled after his approval, and a standard change comes out approved with no approver. Both test changes are cancelled.
 
 ### 5. Jira
 

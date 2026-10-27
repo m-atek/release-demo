@@ -49,7 +49,7 @@ servicenow/instance-url:
 servicenow/admin-password:
   source: you
   secure: true
-  help: "The PDI admin password, only while servicenow_setup.py is being built and tested. Change it in ServiceNow afterwards and set this back to unset."
+  help: "Password of the ServiceNow setup user release-demo.setup (roles admin and snc_basic_auth_api_access), which servicenow_setup.py signs in as."
 servicenow/sam-password:
   source: you
   secure: true
