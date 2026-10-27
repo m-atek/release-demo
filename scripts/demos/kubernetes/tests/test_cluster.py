@@ -94,3 +94,20 @@ def test_back_after_helms_own_rollback_confirms_it(monkeypatch, tmp_path):
     record = json.loads((tmp_path / "state.json").read_text())["deploys"]["production"]
     assert record["rolled_back_to"] == "1.8.2" and record["rolled_back_by"] == "Helm"
     assert "sha256:aa" in notes[0]
+
+
+def test_check_fails_at_once_after_helms_rollback_with_the_notes(monkeypatch, tmp_path, capsys):
+    import sys
+    import run_state
+
+    monkeypatch.setattr(run_state, "PATH", tmp_path / "state.json")
+    run_state.save({"version": "1.9.0", "deploys": {"production": {
+        "helm_rolled_back_to": "1.8.2", "helm_rollback_number": "3",
+        "helm_rollback_reason": "Not ready after 3 minutes.", "rollback_notes": "Helm rolled back: image sha256:aa."}}})
+    monkeypatch.setattr(sys, "argv", ["check.py", "catalog", "production", "--version", "1.9.0",
+                                      "--url", "http://127.0.0.1:9"])
+    with pytest.raises(SystemExit) as stop:
+        check.main()
+    assert stop.value.code == 1
+    assert "FAIL 1.9.0 isn't live: Not ready after 3 minutes. Helm rolled back to 1.8.2" in capsys.readouterr().out
+    assert json.loads((tmp_path / "state.json").read_text())["check"]["notes"] == "Helm rolled back: image sha256:aa."

@@ -7,7 +7,10 @@ version within the environment's timeout from services.yaml, then each check
 path must answer 200. In the cluster, with the build's 10-minute token: every
 desired pod ready on that version, and, for the version this run released,
 every pod running the image digest from build-info.json, the one the change
-names. Prints one line per check and exits 1 if any fails.
+names. Prints one line per check and exits 1 if any fails, with what failed in
+check.notes, which the pipeline puts first in the change's close notes. After
+Helm rolled back by itself (the deploy says so in the run state), it fails at
+once, and check.notes carries Helm's rollback with both image digests.
 """
 
 import argparse
@@ -60,6 +63,12 @@ def cluster_checks(api, namespace, release, desired, version, digest):
     return results
 
 
+def save_notes(state, notes):
+    """What the change's close notes start with if the pipeline rolls back (check.notes)."""
+    state.setdefault("check", {})["notes"] = notes
+    run_state.save(state)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("service")
@@ -75,9 +84,11 @@ def main():
     state = run_state.load()
     record = state.get("deploys", {}).get(args.environment, {})
     if state.get("version") == args.version and record.get("helm_rolled_back_to"):
-        # The deploy saw Helm roll back: no need to wait for a version that won't come.
+        # The deploy saw Helm roll back: no need to wait for a version that won't come. The
+        # pipeline starts the change's close notes with check.notes: the digests and Helm's rollback.
         print(f"FAIL {args.version} isn't live: {record['helm_rollback_reason']} Helm rolled back to "
               f"{record['helm_rolled_back_to']} (revision {record['helm_rollback_number']})")
+        save_notes(state, record["rollback_notes"])
         print(f"{args.environment.capitalize()} check failed")
         raise SystemExit(1)
 
@@ -102,6 +113,8 @@ def main():
     for ok, line in results:
         print(f"{'ok  ' if ok else 'FAIL'} {line}")
     if not all(ok for ok, _ in results):
+        save_notes(state, f"{args.environment.capitalize()} check of {args.version}: "
+                          + "; ".join(line for ok, line in results if not ok) + ".")
         print(f"{args.environment.capitalize()} check failed")
         raise SystemExit(1)
     print(f"{args.environment.capitalize()} check passed")
