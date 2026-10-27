@@ -150,15 +150,40 @@ Jenkins is configured only through `jenkins/casc.yaml` and the pinned `jenkins/p
 
 | State | Jira | What changes | Where it stops |
 | --- | --- | --- | --- |
-| 1.1.0 | | What Terraform's first apply deploys | |
-| 1.3.0 | | Production before the recording | |
+| 1.1.0 | | What Terraform's first apply deploys: the page before ORD-1 | |
+| 1.2.0 | ORD-1 | Shows the order count on the page | |
+| 1.2.1 | ORD-2 | Rounds the API's order totals to two decimals | |
+| 1.2.2 | ORD-3 | Adds the store to each order | |
+| 1.2.3 | ORD-4 | Lists today's orders by order number, not newest first | |
+| 1.2.4 | ORD-5 | Production reads its store list from a regional setting, `STORES`, that it doesn't have. Staging keeps the list in code, so staging never runs the new path | Production check (`/` and `/api/orders` answer 502), then rolls back to 1.2.3 |
+| 1.2.5 | ORD-6 | Keeps the store list in code, as in 1.2.3 | |
+| 1.2.6 | ORD-7 | Adds the status column to the orders table | |
+| 1.2.7 | ORD-8 | Adds `cache-control: no-store` to the API | |
+| 1.2.8 | ORD-9 | Reads the page title from a brand setting, `BRAND_TITLE`, that no environment has. The tests set it, and staging's check only asks /health | Production check (`/` answers 502), then rolls back to 1.2.7 |
+| 1.2.9 | ORD-10 | Falls back to the service name when the brand setting is missing | |
+| 1.3.0 | ORD-11 | Shows the environment in the page title. Production before the recording | |
 | 1.4.0 | ORD-12 | Adds "Delivery estimate: 2 days" to the page. Normal change | |
 | 1.4.1 | ORD-13 | Reads the estimate from the regional setting. Standard change | Production check, then rolls back to 1.4.0 |
 | 1.4.0-broken-test | | /health reports the version with a "v" prefix | Tests |
 | 1.4.0-broken-gate | | Untested code with a bug and code smells | Quality gate |
 | 1.4.0-broken-scan | | Declares urllib3 1.22 (CVE-2018-20060, critical) | SBOM and scan |
 
-The versions 1.2.0 to 1.3.0 that `history.py` releases come with that script.
+`history.py` releases 1.2.0 to 1.3.0, the three broken 1.4.0 variants are for the acceptance checks only, and `tests/test_demo_states.py` checks that each history version passes or fails production's check as planned.
+
+## History and reset
+
+Both run on the tools host, because Jenkins and JFrog Container Registry answer only there (anywhere else they sit behind Cloudflare Access). From the Mac each starts itself there through SSM Run Command, as `scripts/tools.sh` does, and prints the host's log as it grows: `/var/log/release-demo-history.log` and `/var/log/release-demo-reset.log`. Ctrl-C stops the printing, not the run; `--follow` shows it again. Start the tools host first: `scripts/tools.sh up`.
+
+```bash
+.venv/bin/python scripts/history.py --dry-run    # the plan, and what is done already
+.venv/bin/python scripts/history.py              # the day before recording: about an hour
+.venv/bin/python scripts/reset.py --dry-run      # every action reset would take
+.venv/bin/python scripts/reset.py                # before each take: under two minutes
+```
+
+`history.py` releases 1.2.0 to 1.3.0 as eleven standard changes under ORD-1 to ORD-11, one at a time: it stages each version on main with `stage.py` (from a fresh clone, pushing with the GitHub App's token), starts the release job as release-bot with the parameters the Slack handler sends, as if Sam asked, and waits for it. 1.2.4 and 1.2.8 fail the production check on purpose and roll back. It ends with production on 1.3.0, and Grafana, Jira, ServiceNow, Splunk and #releases have a real past. Run it again after an interruption: it skips what ran as planned and waits for a run still going. A run that ends any other way, a failing gate or a new critical finding, stops it a day before a take.
+
+`reset.py` puts the main demo back where `history.py` left it: it stops release runs a take left going, cancels open orders-service changes, deletes the tags, GitHub releases and JFrog release copies of versions after 1.3.0, un-releases their Jira versions and reopens ORD-12 and ORD-13, stages 1.3.0 on main, moves both live aliases to the newest Lambda version of 1.3.0, and calls both functions once. A second run finds nothing to do. `reset.py <demo>` runs `scripts/demos/<demo>/reset.py`. The scripts' own tests: `.venv/bin/python -m pytest tests`.
 
 ## Demo on a call: APIs, a contract check and a canary
 
