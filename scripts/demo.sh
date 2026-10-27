@@ -6,6 +6,7 @@
 #   scripts/demo.sh down <demo>     stop it
 #   scripts/demo.sh status [<demo>] what runs, for one demo or all of them
 #   scripts/demo.sh <action> <demo> any other step a demo has, for example open-pr
+#   Anything after the demo goes to its script: scripts/demo.sh up desktop --yes
 #
 # Each demo implements these in scripts/demos/<demo>/<action>.sh.
 
@@ -27,7 +28,7 @@ export AWS_PROFILE=${AWS_PROFILE:-release-demo} AWS_REGION=${AWS_REGION:-eu-west
 case $action in
   up|down)
     [[ -n $demo && -x $DEMOS/$demo/$action.sh ]] || usage
-    exec "$DEMOS/$demo/$action.sh"
+    exec "$DEMOS/$demo/$action.sh" "${@:3}"
     ;;
   status)
     if [[ -n $demo ]]; then
@@ -41,6 +42,6 @@ case $action in
     ;;
   *)
     [[ -n $demo && -x $DEMOS/$demo/$action.sh ]] || usage
-    exec "$DEMOS/$demo/$action.sh"
+    exec "$DEMOS/$demo/$action.sh" "${@:3}"
     ;;
 esac
