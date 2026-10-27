@@ -1,0 +1,149 @@
+{
+  "note": "Fictional products for the release demo. Demo system, not a client's.",
+  "products": [
+    {
+      "id": "P-1001",
+      "name": "Running shoes",
+      "supplier": "Kempen Schoenmakers",
+      "price_eur": 89.95
+    },
+    {
+      "id": "P-1002",
+      "name": "Trail running shoes",
+      "supplier": "Kempen Schoenmakers",
+      "price_eur": 119.0
+    },
+    {
+      "id": "P-1003",
+      "name": "Walking boots",
+      "supplier": "Kempen Schoenmakers",
+      "price_eur": 139.5
+    },
+    {
+      "id": "P-1004",
+      "name": "Rain jacket",
+      "supplier": "Noordkaap Outdoor",
+      "price_eur": 74.5
+    },
+    {
+      "id": "P-1005",
+      "name": "Softshell jacket",
+      "supplier": "Noordkaap Outdoor",
+      "price_eur": 99.0
+    },
+    {
+      "id": "P-1006",
+      "name": "Fleece pullover",
+      "supplier": "Noordkaap Outdoor",
+      "price_eur": 44.95
+    },
+    {
+      "id": "P-1007",
+      "name": "Day backpack",
+      "supplier": "Brabant Bagage",
+      "price_eur": 49.0
+    },
+    {
+      "id": "P-1008",
+      "name": "Hiking backpack, 40 litres",
+      "supplier": "Brabant Bagage",
+      "price_eur": 94.0
+    },
+    {
+      "id": "P-1009",
+      "name": "Hip bag",
+      "supplier": "Brabant Bagage",
+      "price_eur": 19.95
+    },
+    {
+      "id": "P-1010",
+      "name": "Water bottle",
+      "supplier": "Wadden Waterwerk",
+      "price_eur": 12.95
+    },
+    {
+      "id": "P-1011",
+      "name": "Insulated bottle",
+      "supplier": "Wadden Waterwerk",
+      "price_eur": 24.5
+    },
+    {
+      "id": "P-1012",
+      "name": "Hydration bladder",
+      "supplier": "Wadden Waterwerk",
+      "price_eur": 29.95
+    },
+    {
+      "id": "P-1013",
+      "name": "Training shirt",
+      "supplier": "Veluwe Textiel",
+      "price_eur": 24.99
+    },
+    {
+      "id": "P-1014",
+      "name": "Running tights",
+      "supplier": "Veluwe Textiel",
+      "price_eur": 39.95
+    },
+    {
+      "id": "P-1015",
+      "name": "Sports socks, 3 pairs",
+      "supplier": "Veluwe Textiel",
+      "price_eur": 14.99
+    },
+    {
+      "id": "P-1016",
+      "name": "Base layer shirt",
+      "supplier": "Veluwe Textiel",
+      "price_eur": 34.5
+    },
+    {
+      "id": "P-1017",
+      "name": "Yoga mat",
+      "supplier": "Delta Sportgoed",
+      "price_eur": 29.0
+    },
+    {
+      "id": "P-1018",
+      "name": "Resistance bands",
+      "supplier": "Delta Sportgoed",
+      "price_eur": 17.5
+    },
+    {
+      "id": "P-1019",
+      "name": "Foam roller",
+      "supplier": "Delta Sportgoed",
+      "price_eur": 22.95
+    },
+    {
+      "id": "P-1020",
+      "name": "Skipping rope",
+      "supplier": "Delta Sportgoed",
+      "price_eur": 9.95
+    },
+    {
+      "id": "P-1021",
+      "name": "Cycling gloves",
+      "supplier": "Noordkaap Outdoor",
+      "price_eur": 21.0
+    },
+    {
+      "id": "P-1022",
+      "name": "Head torch",
+      "supplier": "Noordkaap Outdoor",
+      "price_eur": 27.95
+    },
+    {
+      "id": "P-1023",
+      "name": "Gym bag",
+      "supplier": "Brabant Bagage",
+      "price_eur": 34.95
+    },
+    {
+      "id": "P-1024",
+      "name": "Swim goggles",
+      "supplier": "Wadden Waterwerk",
+      "price_eur": 15.5
+    }
+  ]
+}

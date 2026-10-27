@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Prints a kubeconfig for the Jenkins service account, jenkins/release-pipeline,
+# with a token from kubectl create token that lasts 10 minutes. Nothing is
+# stored: each build step asks again.
+#
+# Installed root-owned as /usr/local/sbin/release-demo-kube-token. The Jenkins
+# agent runs it through sudo; it takes no arguments, so sudo allows exactly
+# this and nothing else. The cluster's admin kubeconfig stays root's.
+
+set -euo pipefail
+export PATH=/usr/local/bin:/usr/bin:/bin KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+[[ $# -eq 0 ]] || { echo "usage: $0 (no arguments)" >&2; exit 2; }
+ca=$(kubectl config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
+echo "kube-token: kubectl create token release-pipeline --namespace jenkins --duration 10m" >&2
+token=$(kubectl create token release-pipeline --namespace jenkins --duration 10m)
+
+cat <<CONFIG
+apiVersion: v1
+kind: Config
+clusters:
+  - name: tools-host
+    cluster:
+      server: https://127.0.0.1:6443
+      certificate-authority-data: $ca
+users:
+  - name: release-pipeline
+    user:
+      token: $token
+contexts:
+  - name: release-pipeline
+    context: { cluster: tools-host, user: release-pipeline }
+current-context: release-pipeline
+CONFIG

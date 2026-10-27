@@ -1,0 +1,17 @@
+# The deploy script sets image.digest and the environment's values from
+# services.yaml. The image is always pinned by digest, never by a tag.
+image:
+  repository: artifactory-demo.es.nl/docker-local/catalog
+  digest: ""
+
+environment: local
+replicas: 2
+# The Service's port on the node, so the pipeline's check reaches it.
+nodePort: null
+
+# Environment variables for the service, merged with the environment's settings.
+settings: {}
+
+resources:
+  requests: { cpu: 10m, memory: 32Mi }
+  limits: { cpu: 250m, memory: 64Mi }

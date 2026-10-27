@@ -138,3 +138,73 @@ pricing-api:
       check:
         timeout_seconds: 60
         paths: [/products, "/prices/RS-100?store=NL-UTR-01", "/prices/RS-100?store=BE-ANT-01"]
+
+catalog:
+  # Demo 8: a container on a single-node k3s cluster on the tools host,
+  # released with Helm 4. See scripts/demos/kubernetes/.
+  platform: kubernetes
+  path: services/catalog
+  runtime: python3.13
+  toolchain: jenkins/toolchain/kubernetes.Dockerfile
+
+  jira:
+    project: ORD
+
+  slack:
+    options: [standard]
+
+  scripts:
+    build: scripts/demos/kubernetes/build.py
+    publish: scripts/publish.py
+    deploy: scripts/demos/kubernetes/deploy.py
+    check: scripts/demos/kubernetes/check.py
+
+  servicenow:
+    # One CI per namespace. The change names production's: that is what it changes.
+    cmdb_item: catalog-production
+    # Every catalog release is a pre-approved standard change, without the option word.
+    change: standard
+    templates:
+      standard: Routine release of catalog
+      rollback: Rollback of catalog
+    backout_plan: >-
+      Automatic: Helm releases with --rollback-on-failure and waits up to 3 minutes for the new pods
+      to be ready. If they aren't, Helm rolls back to the previous revision by itself, the old pods
+      having served throughout, and the pipeline closes this change as unsuccessful with the rollback
+      in its notes. If the production check fails after a release, the pipeline rolls back with helm rollback.
+
+  sonarqube:
+    project_key: m-atek_release-demo_catalog
+
+  kubernetes:
+    # Where the cluster pulls from: k3s mirrors this name to JCR on the host
+    # (registries.yaml), so pulls stay on the host's local network.
+    image: artifactory-demo.es.nl/docker-local/catalog
+    chart: helm-local/catalog
+    registry: http://127.0.0.1:8082
+    release: catalog
+
+  environments:
+    staging:
+      namespace: staging
+      cmdb_item: catalog-staging
+      replicas: 2
+      node_port: 30081
+      helm_timeout: 3m
+      settings:
+        # Set in staging while 1.9.0 was built. Production doesn't have it yet.
+        CATALOG_DB_URL: file:///app/data/catalog.json
+      check:
+        timeout_seconds: 30
+        paths: [/ready, /api/products]
+
+    production:
+      namespace: production
+      cmdb_item: catalog-production
+      replicas: 3
+      node_port: 30082
+      helm_timeout: 3m
+      settings: {}
+      check:
+        timeout_seconds: 60
+        paths: [/ready, /api/products]
