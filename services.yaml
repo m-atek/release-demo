@@ -504,6 +504,7 @@ store-floor:
 store-assistant:
   platform: desktop-macos-windows
   path: services/store-assistant
+  jcr: { shared: true }
 
   settings:
     # 1: Apple (Developer ID, notarization), Microsoft (Artifact Signing) and

@@ -1,0 +1,8 @@
+{
+  "name": "Store Assistant",
+  "executable": "StoreAssistant",
+  "bundle_id": "nl.es.StoreAssistant",
+  "minimum_macos": "14.0",
+  "package_prefix": "StoreAssistant",
+  "copyright": "Expeditious Software. Demo system, not a client's."
+}

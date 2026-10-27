@@ -1,0 +1,18 @@
+<powershell>
+# The Windows test instance's boot, at every start: stop 4 hours from now,
+# and once, the .NET 10 desktop runtime Store Assistant runs on. The pipeline
+# installs the MSI through Run Command.
+$ErrorActionPreference = 'Continue'
+New-Item -ItemType Directory -Force -Path C:\ProgramData\release-demo | Out-Null
+Start-Transcript -Append -Path C:\ProgramData\release-demo\boot.log
+shutdown.exe /a 2>$null
+shutdown.exe /s /t 14400 /c "release-demo: this test instance stops 4 hours after boot"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+if (-not (Test-Path C:\ProgramData\release-demo\runtime-v1)) {
+  Invoke-WebRequest -UseBasicParsing https://dot.net/v1/dotnet-install.ps1 -OutFile C:\ProgramData\release-demo\dotnet-install.ps1
+  & C:\ProgramData\release-demo\dotnet-install.ps1 -Runtime windowsdesktop -Channel 10.0 -InstallDir 'C:\Program Files\dotnet'
+  if ($LASTEXITCODE -eq 0 -or $?) { New-Item -ItemType File C:\ProgramData\release-demo\runtime-v1 | Out-Null }
+}
+Stop-Transcript
+</powershell>
+<persist>true</persist>

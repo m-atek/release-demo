@@ -76,16 +76,22 @@ def run(command, cwd=None, check=True, quiet=False, env=None):
     return result
 
 
-def standin_mode():
-    """STANDIN from the environment, else from services.yaml, else on."""
-    if os.environ.get("STANDIN") is not None:
-        return os.environ["STANDIN"] not in ("0", "false", "no", "")
-    try:
-        import yaml  # not on the Mac agent's system Python; fine without it
-        config = yaml.safe_load((ROOT / "services.yaml").read_text())["store-assistant"]
-        return str(config.get("settings", {}).get("STANDIN", "1")) not in ("0", "false", "no", "")
-    except Exception:
-        return True
+def setting(service, name, default):
+    """A value from the service's settings in services.yaml, read without PyYAML,
+    which the Mac agent's system Python doesn't have. The environment wins."""
+    if os.environ.get(name) is not None:
+        return os.environ[name]
+    text = (ROOT / "services.yaml").read_text()
+    block = re.search(rf"^{re.escape(service)}:\n((?:[ #].*\n|\n)*)", text, re.M)
+    match = re.search(rf"^\s+{name}:\s*\"?([^\"\n#]*)\"?", block.group(1), re.M) if block else None
+    return match.group(1).strip() if match else default
+
+
+def standin_mode(service):
+    """STANDIN_APPLE or STANDIN: 1 for the Apple stand-ins, 0 for Apple's own services."""
+    value = setting(service, "STANDIN_APPLE", None)
+    value = setting(service, "STANDIN", "1") if value is None else value
+    return value not in ("0", "false", "no", "")
 
 
 def service_dir(service):
@@ -484,7 +490,8 @@ def build(service, jira_key):
     config = app_config(service)
     version = version_of(service)
     build_number = os.environ.get("BUILD_NUMBER", "1")
-    standin = standin_mode()
+    standin = standin_mode(service)
+    os.environ.setdefault("STANDIN_NOTARY_SECONDS", setting(service, "STANDIN_NOTARY_SECONDS", "150"))
     out = parts_dir(service)
     for stale in out.glob("*.pkg"):
         stale.unlink()

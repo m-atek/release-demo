@@ -87,26 +87,9 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder private var orders: some View {
-        Text("Today's orders")
-            .font(.title3.weight(.semibold))
-        if let day = model.day, !day.orders.isEmpty {
-            List(day.orders) { order in
-                HStack {
-                    Text(order.id).monospacedDigit().frame(width: 110, alignment: .leading)
-                    Text(order.store).frame(maxWidth: .infinity, alignment: .leading)
-                    Text("\(order.items.count) items").foregroundStyle(.secondary).frame(width: 70, alignment: .trailing)
-                    Text(euros(order.totalEur)).monospacedDigit().frame(width: 90, alignment: .trailing)
-                    Text(order.status).foregroundStyle(.secondary).frame(width: 80, alignment: .trailing)
-                }
-                .font(.title3)
-            }
-            .listStyle(.inset(alternatesRowBackgrounds: true))
-        } else if model.day != nil {
-            Text("No orders to show.")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, minHeight: 160)
-        }
+    private var orders: some View {
+        Label("Open today 08:00 to 21:00", systemImage: "clock")
+            .font(.title3)
+            .foregroundStyle(.secondary)
     }
 }

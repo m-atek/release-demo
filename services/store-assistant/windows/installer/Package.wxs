@@ -14,14 +14,12 @@
         <Directory Id="INSTALLFOLDER" Name="Store Assistant" />
       </Directory>
     </StandardDirectory>
-    <StandardDirectory Id="ProgramMenuFolder" />
 
     <Feature Id="Main">
       <Files Directory="INSTALLFOLDER" Include="$(var.PublishDir)\**">
         <Exclude Files="$(var.PublishDir)\**\*.pdb" />
       </Files>
-      <Component Id="StartMenuShortcut" Directory="ProgramMenuFolder">
-        <Shortcut Name="Store Assistant" Target="[INSTALLFOLDER]StoreAssistant.exe" WorkingDirectory="INSTALLFOLDER" />
+      <Component Id="VersionKey" Directory="INSTALLFOLDER">
         <RegistryValue Root="HKLM" Key="SOFTWARE\Expeditious Software\Store Assistant" Name="Version" Type="string"
                        Value="$(var.Version)" KeyPath="yes" />
       </Component>

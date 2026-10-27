@@ -1,0 +1,6 @@
+<!-- The orders model and its parsing, shared by the app and the tests. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+</Project>

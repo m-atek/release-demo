@@ -11,6 +11,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\StoreAssistant.Core\StoreAssistant.Core.csproj" />
-    <None Include="..\..\mac\Tests\StoreAssistantCoreTests\Fixtures\orders-2026-10-27.json" Link="orders-2026-10-27.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="orders-2026-10-27.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Runs as root after the install: open Store Assistant again for the person
+# signed in, if preinstall quit it.
+marker=/private/tmp/nl.es.StoreAssistant.reopen
+[ -f "$marker" ] || exit 0
+rm -f "$marker"
+user=$(/usr/bin/stat -f %Su /dev/console)
+[ -n "$user" ] && [ "$user" != root ] || exit 0
+/bin/launchctl asuser "$(/usr/bin/id -u "$user")" /usr/bin/sudo -u "$user" /usr/bin/open -a "/Applications/Store Assistant.app"
+exit 0

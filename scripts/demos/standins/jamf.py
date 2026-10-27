@@ -293,10 +293,13 @@ class Jamf:
 
     # Stand-in only
 
-    def add_simulated_device(self, kind, name, applications=()):
-        """A computer or mobile device with no agent: it installs what's scoped to it at once."""
-        return self.api("POST", "/standin/v1/simulated-devices",
-                        {"kind": kind, "name": name, "applications": list(applications)})
+    def add_simulated_device(self, kind, name, applications=None):
+        """A computer or mobile device with no agent: it installs what's scoped to it at once.
+        With applications, an existing one is put back on exactly those (for reset scripts)."""
+        request = {"kind": kind, "name": name}
+        if applications is not None:
+            request["applications"] = list(applications)
+        return self.api("POST", "/standin/v1/simulated-devices", request)
 
 
 def sub(parent, tag, text=None):
@@ -736,6 +739,9 @@ class Standin:
         kind = "computers" if request["kind"] == "computer" else "mobile_devices"
         for device_id, device in state[kind].items():
             if device["name"] == request["name"]:
+                if request.get("applications") is not None and device.get("simulated"):
+                    device["applications"] = request["applications"]
+                    self.note(state, "API client", "device", f"Reset {request['name']}")
                 return {"id": device_id, "existing": True}
         device_id = self.next_id(state, kind)
         if kind == "computers":
@@ -1303,8 +1309,8 @@ def lambda_handler(event, context):
     return response
 
 
-def serve(directory, port, client_id, client_secret, signing_key, enrollment_code):
-    """The stand-in on this machine, for development and the tests."""
+def make_server(directory, port, client_id, client_secret, signing_key, enrollment_code, host="0.0.0.0"):
+    """The stand-in as an HTTP server on this machine, for development and the tests."""
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     import threading
 
@@ -1330,9 +1336,14 @@ def serve(directory, port, client_id, client_secret, signing_key, enrollment_cod
         do_GET = do_POST = do_PUT = do_DELETE = respond
 
         def log_message(self, fmt, *args):
-            print(f"{self.address_string()} {fmt % args}", flush=True)
+            if os.environ.get("JAMF_STANDIN_QUIET") != "1":
+                print(f"{self.address_string()} {fmt % args}", flush=True)
 
-    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    return ThreadingHTTPServer((host, port), Handler)
+
+
+def serve(directory, port, client_id, client_secret, signing_key, enrollment_code):
+    server = make_server(directory, port, client_id, client_secret, signing_key, enrollment_code)
     print(f"Jamf Pro stand-in on http://127.0.0.1:{port}", flush=True)
     server.serve_forever()
 

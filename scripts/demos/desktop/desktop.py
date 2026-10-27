@@ -77,6 +77,12 @@ def verified_package(state):
     return package
 
 
+def windows_record(package):
+    """windows-build.json from the package, or {} without a Windows track."""
+    _, raw = member(package, "windows-build.json")
+    return json.loads(raw.decode("utf-8-sig")) if raw else {}
+
+
 def member(package, suffix):
     """The one file in the zip whose name ends with suffix, as (name, bytes)."""
     with zipfile.ZipFile(io.BytesIO(package)) as archive:
@@ -87,10 +93,10 @@ def member(package, suffix):
 
 
 def released_versions(service_name):
-    """Versions in <service>-releases: the ones that reached production."""
-    from publish import request
+    """Versions in the service's releases folder: the ones that reached production."""
+    from publish import releases_root, request
 
-    status, body = request("GET", f"api/storage/{service_name}-releases/", jcr_token())
+    status, body = request("GET", f"api/storage/{releases_root(service_name)}/", jcr_token())
     if status != 200:
         return []
     return sorted((c["uri"].strip("/") for c in json.loads(body).get("children", []) if c.get("folder")), key=version_key)
@@ -98,13 +104,14 @@ def released_versions(service_name):
 
 def release_package(service_name, version):
     """A released version's zip from JCR, checked against its build-info.json."""
-    from publish import download
+    from publish import download, releases_root
 
     token = jcr_token()
-    info = json.loads(download(token, f"{service_name}-releases/{version}/build-info.json"))
-    package = download(token, f"{service_name}-releases/{version}/{info['package']}")
+    base = f"{releases_root(service_name)}/{version}"
+    info = json.loads(download(token, f"{base}/build-info.json"))
+    package = download(token, f"{base}/{info['package']}")
     if hashlib.sha256(package).hexdigest() != info["sha256"]:
-        fail(f"{service_name}-releases/{version}/{info['package']} doesn't match its SHA-256.")
+        fail(f"{base}/{info['package']} doesn't match its SHA-256.")
     return package
 
 
@@ -221,6 +228,18 @@ def windows_installed(session, instance, product):
         return {"error": f"unexpected answer: {output[-300:]}"}
 
 
+TRUST_TEST_CERTIFICATE = r"""
+$ErrorActionPreference = 'Stop'
+$certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new([Convert]::FromBase64String('{certificate}'))
+foreach ($store in 'Root', 'TrustedPublisher') {{
+  if (-not (Get-ChildItem "Cert:\LocalMachine\$store" | Where-Object Thumbprint -eq $certificate.Thumbprint)) {{
+    $opened = [Security.Cryptography.X509Certificates.X509Store]::new($store, 'LocalMachine')
+    $opened.Open('ReadWrite'); $opened.Add($certificate); $opened.Close()
+    Write-Output "Trusted the test certificate $($certificate.Subject) in LocalMachine\$store"
+  }}
+}}
+"""
+
 INSTALL_MSI = r"""
 $ErrorActionPreference = 'Stop'
 $dir = 'C:\ProgramData\release-demo\installers'
@@ -237,14 +256,17 @@ Write-Output "msiexec exit code $($process.ExitCode)"
 """
 
 
-def windows_install(session, instance, bucket, msi_name, msi_bytes, version):
+def windows_install(session, instance, bucket, msi_name, msi_bytes, version, test_certificate=None):
     """Install an MSI on the test instance: the bytes go to the demo's bucket, the
-    instance reads them with its own role, checks the SHA-256 and runs msiexec."""
+    instance reads them with its own role, checks the SHA-256 and runs msiexec.
+    A test certificate (its public part, base64) is trusted there first, as on
+    any test machine."""
     sha256 = hashlib.sha256(msi_bytes).hexdigest()
     key = f"installers/{version}/{sha256[:16]}/{msi_name}"
     session.client("s3").put_object(Bucket=bucket, Key=key, Body=msi_bytes)
-    status, output = run_powershell(session, instance, [INSTALL_MSI.format(file=msi_name, bucket=bucket, key=key, sha256=sha256)],
-                                    f"Install {msi_name}")
+    commands = [TRUST_TEST_CERTIFICATE.format(certificate=test_certificate)] if test_certificate else []
+    commands.append(INSTALL_MSI.format(file=msi_name, bucket=bucket, key=key, sha256=sha256))
+    status, output = run_powershell(session, instance, commands, f"Install {msi_name}")
     print(output)
     if status != "Success":
         fail(f"Installing {msi_name} on {instance}: Run Command {status}")

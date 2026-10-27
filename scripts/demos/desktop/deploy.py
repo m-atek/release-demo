@@ -62,6 +62,9 @@ def deploy_pilot(config, state, client, args):
     if "windows" in config["desktop"]["tracks"]:
         deploy["windows"] = deploy_windows(config, state, package)
     state.setdefault("deploys", {})["staging"] = deploy
+    # How Slack's last line reads if the run stops from here, a rejected rollout above all.
+    state["finish_line"] = (f"Stopped after {{total}}. {config['jamf']['policy']} {state['version']} stays on the "
+                            f"{env['jamf_scope']} group; every other Mac stays on {previous_version or 'what it has'}.")
     run_state.save(state)
 
 
@@ -74,8 +77,10 @@ def deploy_windows(config, state, package):
     msi_name, msi_bytes = desktop.member(package, ".msi")
     if msi_name is None:
         fail("The package holds no .msi.")
+    signature = desktop.windows_record(package).get("signature") or {}
     before = desktop.windows_installed(session, instance, product)
-    key = desktop.windows_install(session, instance, desktop.installer_bucket(session), msi_name, msi_bytes, state["version"])
+    key = desktop.windows_install(session, instance, desktop.installer_bucket(session), msi_name, msi_bytes, state["version"],
+                                  signature.get("certificate") if signature.get("test_certificate") else None)
     print(f"Windows test instance {instance}: {msi_name} installed, was {before.get('version') or 'not installed'}")
     return {"instance": instance, "previous_version": before.get("version"), "key": key}
 
@@ -99,6 +104,7 @@ def widen(config, state, client):
         "number": str(record["id"]), "previous_number": staging.get("previous_number"),
         "previous_version": staging.get("previous_version"), "previous_scope": policy["scope"]["groups"],
         "scope": [env["jamf_scope"]], "url": desktop.policy_url(client, policy), "deployed_at": run_state.now()}
+    state["finish_line"] = f"Stopped after {{total}}, after the scope widened to {env['jamf_scope']}. Look at Jamf now."
     run_state.save(state)
 
 
@@ -117,9 +123,11 @@ def back(config, state, client, environment):
     windows = deploy.get("windows")
     if environment == "staging" and windows and windows.get("previous_version"):
         session = desktop.deploy_session()
-        msi_name, msi_bytes = desktop.member(desktop.release_package(config["name"], windows["previous_version"]), ".msi")
+        released = desktop.release_package(config["name"], windows["previous_version"])
+        msi_name, msi_bytes = desktop.member(released, ".msi")
+        signature = desktop.windows_record(released).get("signature") or {}
         desktop.windows_install(session, windows["instance"], desktop.installer_bucket(session), msi_name, msi_bytes,
-                                windows["previous_version"])
+                                windows["previous_version"], signature.get("certificate") if signature.get("test_certificate") else None)
         print(f"Windows test instance: back on {windows['previous_version']}")
     if environment == "staging":
         desktop.close_pilot_change(state, "unsuccessful", f"The pilot check failed. The policy is back on "

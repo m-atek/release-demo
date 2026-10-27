@@ -346,3 +346,65 @@ store-floor/jamf-client-secret:
   source: you
   secure: true
   help: "That API client's secret, shown once when you generate it."
+
+# Demo 6, desktop apps (and demo 7, which shares Jamf and Apple).
+jamf/standin-url:
+  source: terraform
+  secure: true
+  help: "The Jamf Pro stand-in's URL (a Lambda function URL). Written by infra/demos/6-desktop."
+jamf/standin-client-id:
+  source: terraform
+  secure: true
+  help: "The Jamf Pro stand-in's API client id. Written by infra/demos/6-desktop."
+jamf/standin-client-secret:
+  source: terraform
+  secure: true
+  help: "The Jamf Pro stand-in's API client secret. Written by infra/demos/6-desktop."
+jamf/standin-signing-key:
+  source: terraform
+  secure: true
+  help: "The key the Jamf Pro stand-in signs its tokens and page links with. Written by infra/demos/6-desktop."
+jamf/standin-enrollment-code:
+  source: terraform
+  secure: true
+  help: "The invitation the pilot Mac enrolls in the Jamf Pro stand-in with. Written by infra/demos/6-desktop."
+jamf/url:
+  source: you
+  secure: true
+  help: "With the Jamf Pro trial: its URL, https://<instance>.jamfcloud.com. Only with STANDIN_JAMF=0."
+jamf/client-id:
+  source: you
+  secure: true
+  help: "Jamf Pro, Settings, API roles and clients: the release pipeline's client id. Only with STANDIN_JAMF=0."
+jamf/client-secret:
+  source: you
+  secure: true
+  help: "That API client's secret, shown once when you generate it. Only with STANDIN_JAMF=0."
+apple/developer-id-application-p12:
+  source: script
+  secure: true
+  help: "Developer ID Application certificate and key, a .p12 in base64. Written by scripts/demos/desktop/apple_setup.py. Only with STANDIN_APPLE=0."
+apple/developer-id-application-password:
+  source: script
+  secure: true
+  help: "That .p12's passphrase. Written by scripts/demos/desktop/apple_setup.py."
+apple/developer-id-installer-p12:
+  source: script
+  secure: true
+  help: "Developer ID Installer certificate and key, a .p12 in base64. Written by scripts/demos/desktop/apple_setup.py. Only with STANDIN_APPLE=0."
+apple/developer-id-installer-password:
+  source: script
+  secure: true
+  help: "That .p12's passphrase. Written by scripts/demos/desktop/apple_setup.py."
+apple/notary-key:
+  source: script
+  secure: true
+  help: "App Store Connect API key for notarytool, the .p8 file in base64. Written by scripts/demos/desktop/apple_setup.py."
+apple/notary-key-id:
+  source: script
+  secure: false
+  help: "That API key's Key ID. Written by scripts/demos/desktop/apple_setup.py."
+apple/notary-issuer:
+  source: script
+  secure: true
+  help: "App Store Connect, Users and Access, Integrations: the Issuer ID. Written by scripts/demos/desktop/apple_setup.py."

@@ -1,0 +1,104 @@
+<powershell>
+# The Windows build agent's boot, at every start: stop 4 hours from now;
+# once, the toolchain (the .NET 10 SDK, a Java runtime for the Jenkins agent,
+# Git, signtool and the stand-in's test certificate); then the Jenkins agent,
+# which connects out to ${jenkins_url} over WebSocket with the agent's
+# Cloudflare Access service token. Its values come from SSM with the
+# instance's role, never through this file.
+$ErrorActionPreference = 'Continue'
+$state = 'C:\ProgramData\release-demo'
+New-Item -ItemType Directory -Force -Path $state, C:\tools, C:\jenkins | Out-Null
+Start-Transcript -Append -Path "$state\boot.log"
+shutdown.exe /a 2>$null
+shutdown.exe /s /t 14400 /c "release-demo: this build agent stops 4 hours after boot"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$ProgressPreference = 'SilentlyContinue'
+
+function Add-MachinePath([string] $dir) {
+  $path = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+  if (($path -split ';') -notcontains $dir) { [Environment]::SetEnvironmentVariable('Path', "$path;$dir", 'Machine') }
+  $env:Path = "$env:Path;$dir"
+}
+
+if (-not (Test-Path "$state\tools-v1")) {
+  # .NET 10 SDK
+  Invoke-WebRequest -UseBasicParsing https://dot.net/v1/dotnet-install.ps1 -OutFile "$state\dotnet-install.ps1"
+  & "$state\dotnet-install.ps1" -Channel 10.0 -InstallDir 'C:\Program Files\dotnet'
+  Add-MachinePath 'C:\Program Files\dotnet'
+  [Environment]::SetEnvironmentVariable('DOTNET_CLI_TELEMETRY_OPTOUT', '1', 'Machine')
+
+  # Eclipse Temurin 21 JRE, for agent.jar
+  Invoke-WebRequest -UseBasicParsing 'https://api.adoptium.net/v3/installer/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse?project=jdk' -OutFile "$state\jre.msi"
+  Start-Process msiexec.exe -Wait -ArgumentList '/i', "$state\jre.msi", 'ADDLOCAL=FeatureMain,FeatureEnvironment,FeatureJavaHome', '/qn'
+
+  # MinGit, for the agent's checkout
+  $release = Invoke-RestMethod -UseBasicParsing https://api.github.com/repos/git-for-windows/git/releases/latest
+  $asset = $release.assets | Where-Object { $_.name -match '^MinGit-[\d.]+-64-bit\.zip$' } | Select-Object -First 1
+  Invoke-WebRequest -UseBasicParsing $asset.browser_download_url -OutFile "$state\mingit.zip"
+  Expand-Archive "$state\mingit.zip" C:\tools\git -Force
+  Add-MachinePath 'C:\tools\git\cmd'
+  Write-Output "Installed $($asset.name)"
+
+  # signtool, from the Windows SDK build tools package
+  $versions = (Invoke-RestMethod -UseBasicParsing https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.buildtools/index.json).versions |
+    Where-Object { $_ -notmatch '-' }
+  $version = $versions[-1]
+  Invoke-WebRequest -UseBasicParsing "https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.buildtools/$version/microsoft.windows.sdk.buildtools.$version.nupkg" -OutFile "$state\buildtools.zip"
+  Expand-Archive "$state\buildtools.zip" C:\tools\signtool -Force
+  Write-Output "Installed Microsoft.Windows.SDK.BuildTools $version"
+
+  New-Item -ItemType File "$state\tools-v1" | Out-Null
+}
+
+# The stand-in's test certificate: made here, its key never leaves this
+# machine, and this machine trusts it so signtool verify /pa passes.
+$subject = 'CN=Expeditious Software (test certificate)'
+$certificate = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -eq $subject -and $_.NotAfter -gt (Get-Date).AddDays(30) } | Select-Object -First 1
+if (-not $certificate) {
+  $certificate = New-SelfSignedCertificate -Type CodeSigningCert -Subject $subject -CertStoreLocation Cert:\LocalMachine\My `
+    -KeyExportPolicy NonExportable -KeyAlgorithm RSA -KeyLength 3072 -HashAlgorithm SHA256 -NotAfter (Get-Date).AddYears(2)
+}
+foreach ($store in 'Root', 'TrustedPublisher') {
+  if (-not (Get-ChildItem "Cert:\LocalMachine\$store" | Where-Object Thumbprint -eq $certificate.Thumbprint)) {
+    $opened = New-Object Security.Cryptography.X509Certificates.X509Store($store, 'LocalMachine')
+    $opened.Open('ReadWrite'); $opened.Add($certificate); $opened.Close()
+  }
+}
+
+# The Jenkins agent: a scheduled task at startup, as SYSTEM, that waits for
+# its values in SSM and reconnects when the connection drops.
+@'
+$ErrorActionPreference = 'Stop'
+$url = '${jenkins_url}'
+function Get-Value([string] $name) {
+  (Get-SSMParameter -Name "/release-demo/$name" -WithDecryption $true -Region eu-west-1).Value
+}
+while ($true) {
+  try {
+    $id = Get-Value 'cloudflare/windows-agent-client-id'
+    $secret = Get-Value 'cloudflare/windows-agent-client-secret'
+    $agentSecret = Get-Value 'jenkins/agent-secret/windows'
+    if ('unset' -in $id, $secret, $agentSecret) { throw 'The agent''s Cloudflare token or Jenkins secret is not in SSM yet' }
+    $headers = @{ 'CF-Access-Client-Id' = $id; 'CF-Access-Client-Secret' = $secret }
+    Invoke-WebRequest -UseBasicParsing -Headers $headers "$($url)jnlpJars/agent.jar" -OutFile C:\jenkins\agent.jar
+    Set-Content -Path C:\jenkins\secret -Value $agentSecret -NoNewline
+    $java = Join-Path ([Environment]::GetEnvironmentVariable('JAVA_HOME', 'Machine')) 'bin\java.exe'
+    $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    & $java -jar C:\jenkins\agent.jar -url $url -name windows -secret '@C:\jenkins\secret' -webSocket `
+      -webSocketHeader "CF-Access-Client-Id=$id" -webSocketHeader "CF-Access-Client-Secret=$secret" -workDir C:\jenkins
+  } catch {
+    Add-Content C:\jenkins\agent.log "$(Get-Date -Format s) $($_.Exception.Message)"
+  }
+  Start-Sleep -Seconds 60
+}
+'@ | Set-Content C:\jenkins\agent.ps1
+icacls C:\jenkins /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' | Out-Null
+if (-not (Get-ScheduledTask -TaskName release-demo-jenkins-agent -ErrorAction SilentlyContinue)) {
+  $action = New-ScheduledTaskAction -Execute powershell.exe -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\jenkins\agent.ps1'
+  Register-ScheduledTask -TaskName release-demo-jenkins-agent -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) `
+    -User SYSTEM -RunLevel Highest -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)) | Out-Null
+}
+Start-ScheduledTask -TaskName release-demo-jenkins-agent
+Stop-Transcript
+</powershell>
+<persist>true</persist>

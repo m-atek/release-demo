@@ -40,7 +40,7 @@ def check_part(directory, track, version):
     record_path = directory / spec["record"]
     if not record_path.exists():
         fail(f"No {spec['record']} in {directory.relative_to(ROOT)}: the {track} agent's build didn't arrive.")
-    record = json.loads(record_path.read_text())
+    record = json.loads(record_path.read_text(encoding="utf-8-sig"))  # PowerShell 5.1 writes a BOM
     installer = record[spec["file"]]
     path = directory / installer["name"]
     if not path.exists():
