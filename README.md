@@ -289,6 +289,33 @@ tools-host/              docker-compose.yml for the tools host, the local overri
 demo-data/               the fictional release checklist
 ```
 
+## Demo on a call: Windows store servers (demo 1)
+
+store-sync, a .NET Framework 4.8 Windows service, upgraded from 3.2.0 to 3.3.0 (ORD-31) on six store servers, STORE-001 to STORE-006, in waves: STORE-001 alone, then two at a time. Every step runs through AWS Systems Manager Run Command; no server has an inbound rule, RDP or WinRM. STORE-004's config lacks UploadEndpoint, planted on purpose: its check fails, it goes back to 3.2.0 by itself, the wave stops, and the change closes as "Successful with issues". The fleet costs about USD 0.41 an hour while it runs, and each server stops itself 4 hours after boot.
+
+Once, before the first take:
+
+1. In JCR's UI, the two shared Generic repositories `demos-candidates` and `demos-releases` (`scripts/jcr_setup.py --host` lists the steps).
+2. `.venv/bin/python scripts/servicenow_setup.py`, then `.venv/bin/python scripts/demos/windows/servicenow_fleet.py`: store-sync's CMDB item and rollback template, and the six servers as Windows Server CIs that run it.
+3. `.venv/bin/python scripts/demos/windows/seed.py`: builds 3.2.0 with Docker and puts it in JCR, checked against the SHA-256 that `services.yaml` pins. `up` also runs it when the baseline is missing.
+
+For each call or take:
+
+```bash
+scripts/tools.sh up                    # the tools host first: the fleet downloads from its JCR
+scripts/demo.sh up windows             # under 15 minutes from nothing, about 4 from stopped
+scripts/demo.sh status windows         # what each server runs, the drift, the cost
+.venv/bin/python scripts/demos/windows/reset.py     # before every retake: all six on 3.2.0, the drift planted
+```
+
+1. Grafana, dashboard Store fleet (folder Release demo): the wave progress and one tile per server, refreshed every 10 seconds.
+2. Slack, as Sam: `/release store-sync ORD-31`. The change lists the six servers as affected items and the waves in its implementation plan. Approve it as Alex.
+3. Systems Manager, Run Command, Command history: every step, named in its comment (`store-sync 3.3.0: install on STORE-002 (CHG...)`).
+4. STORE-004 fails its check and rolls back; Slack says "STORE-004 failed its check, back on 3.2.0. Wave stopped." STORE-005 finishes; STORE-006 is never touched. Each server has a work note in the change.
+5. `scripts/demos/windows/fix-drift.sh` restores UploadEndpoint. Then `/release store-sync ORD-31 resume`: a new change, linked to the first, for STORE-004 and STORE-006 only.
+
+`scripts/demo.sh down windows` stops the fleet; only its disks cost, about USD 0.52 a day. `scripts/demos/windows/down.sh --destroy` removes it with Terraform.
+
 ## License
 
 MIT

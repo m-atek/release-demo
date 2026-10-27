@@ -1,0 +1,856 @@
+{
+  "uid": "release-demo-store-fleet",
+  "title": "Store fleet",
+  "description": "store-sync on the store servers: each server's version and its status in the upgrade, refreshed every 10 seconds.",
+  "tags": [
+    "release-demo",
+    "store-sync"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 0,
+  "refresh": "10s",
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "links": [],
+  "annotations": {
+    "list": []
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "store-sync",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 101,
+      "type": "stat",
+      "title": "Wave progress",
+      "description": "The wave running now, or where the last upgrade stopped, and how many store servers run the new version.",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 24,
+        "h": 3
+      },
+      "timeFrom": "14d",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"wave\" | line_format \"{{.label}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"wave\" | line_format \"{{.progress}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Line"
+              ]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "No upgrade yet",
+          "mappings": [
+            {
+              "type": "regex",
+              "options": {
+                "pattern": ".*stopped$",
+                "result": {
+                  "color": "orange"
+                }
+              }
+            },
+            {
+              "type": "regex",
+              "options": {
+                "pattern": ".*running$",
+                "result": {
+                  "color": "blue"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "text": {
+          "valueSize": 40
+        },
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "vertical",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 102,
+      "type": "stat",
+      "title": "STORE-001",
+      "description": "store-sync on STORE-001: the version it runs and its status in the upgrade.",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 5
+      },
+      "timeFrom": "14d",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"server\" and server=\"STORE-001\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"server\" and server=\"STORE-001\" | line_format \"{{.status}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Line"
+              ]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "transparent"
+          },
+          "noValue": "No data"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "waiting": {
+                        "color": "#5c6370",
+                        "index": 0
+                      },
+                      "upgrading": {
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "healthy": {
+                        "color": "green",
+                        "index": 2
+                      },
+                      "failed": {
+                        "color": "red",
+                        "index": 3
+                      },
+                      "rolled back": {
+                        "color": "orange",
+                        "index": 4
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "text": {
+          "titleSize": 22,
+          "valueSize": 44
+        },
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "vertical",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 103,
+      "type": "stat",
+      "title": "STORE-006",
+      "description": "store-sync on STORE-006: the version it runs and its status in the upgrade.",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 5
+      },
+      "timeFrom": "14d",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"server\" and server=\"STORE-006\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"server\" and server=\"STORE-006\" | line_format \"{{.status}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Line"
+              ]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "transparent"
+          },
+          "noValue": "No data"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "waiting": {
+                        "color": "#5c6370",
+                        "index": 0
+                      },
+                      "upgrading": {
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "healthy": {
+                        "color": "green",
+                        "index": 2
+                      },
+                      "failed": {
+                        "color": "red",
+                        "index": 3
+                      },
+                      "rolled back": {
+                        "color": "orange",
+                        "index": 4
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "text": {
+          "titleSize": 22,
+          "valueSize": 44
+        },
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "vertical",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 104,
+      "type": "stat",
+      "title": "STORE-002",
+      "description": "store-sync on STORE-002: the version it runs and its status in the upgrade.",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 12,
+        "h": 5
+      },
+      "timeFrom": "14d",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"server\" and server=\"STORE-002\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"server\" and server=\"STORE-002\" | line_format \"{{.status}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Line"
+              ]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "transparent"
+          },
+          "noValue": "No data"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "waiting": {
+                        "color": "#5c6370",
+                        "index": 0
+                      },
+                      "upgrading": {
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "healthy": {
+                        "color": "green",
+                        "index": 2
+                      },
+                      "failed": {
+                        "color": "red",
+                        "index": 3
+                      },
+                      "rolled back": {
+                        "color": "orange",
+                        "index": 4
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "text": {
+          "titleSize": 22,
+          "valueSize": 44
+        },
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "vertical",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 105,
+      "type": "stat",
+      "title": "STORE-003",
+      "description": "store-sync on STORE-003: the version it runs and its status in the upgrade.",
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 12,
+        "h": 5
+      },
+      "timeFrom": "14d",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"server\" and server=\"STORE-003\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"server\" and server=\"STORE-003\" | line_format \"{{.status}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Line"
+              ]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "transparent"
+          },
+          "noValue": "No data"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "waiting": {
+                        "color": "#5c6370",
+                        "index": 0
+                      },
+                      "upgrading": {
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "healthy": {
+                        "color": "green",
+                        "index": 2
+                      },
+                      "failed": {
+                        "color": "red",
+                        "index": 3
+                      },
+                      "rolled back": {
+                        "color": "orange",
+                        "index": 4
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "text": {
+          "titleSize": 22,
+          "valueSize": 44
+        },
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "vertical",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 106,
+      "type": "stat",
+      "title": "STORE-004",
+      "description": "store-sync on STORE-004: the version it runs and its status in the upgrade.",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 5
+      },
+      "timeFrom": "14d",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"server\" and server=\"STORE-004\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"server\" and server=\"STORE-004\" | line_format \"{{.status}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Line"
+              ]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "transparent"
+          },
+          "noValue": "No data"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "waiting": {
+                        "color": "#5c6370",
+                        "index": 0
+                      },
+                      "upgrading": {
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "healthy": {
+                        "color": "green",
+                        "index": 2
+                      },
+                      "failed": {
+                        "color": "red",
+                        "index": 3
+                      },
+                      "rolled back": {
+                        "color": "orange",
+                        "index": 4
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "text": {
+          "titleSize": 22,
+          "valueSize": 44
+        },
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "vertical",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 107,
+      "type": "stat",
+      "title": "STORE-005",
+      "description": "store-sync on STORE-005: the version it runs and its status in the upgrade.",
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 5
+      },
+      "timeFrom": "14d",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"server\" and server=\"STORE-005\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"store-sync\", environment=\"production\", kind=\"fleet\"} | json | type=\"server\" and server=\"STORE-005\" | line_format \"{{.status}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Line"
+              ]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "transparent"
+          },
+          "noValue": "No data"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "waiting": {
+                        "color": "#5c6370",
+                        "index": 0
+                      },
+                      "upgrading": {
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "healthy": {
+                        "color": "green",
+                        "index": 2
+                      },
+                      "failed": {
+                        "color": "red",
+                        "index": 3
+                      },
+                      "rolled back": {
+                        "color": "orange",
+                        "index": 4
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "text": {
+          "titleSize": 22,
+          "valueSize": 44
+        },
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "vertical",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    }
+  ]
+}

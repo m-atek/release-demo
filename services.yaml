@@ -258,6 +258,8 @@ store-sync:
   platform: windows-fleet
   path: services/store-sync
   toolchain: jenkins/toolchain/dotnet.Dockerfile
+  # Packages go to demos-candidates/store-sync/ and demos-releases/store-sync/.
+  jcr: { shared: true }
 
   jira:
     project: ORD
@@ -272,7 +274,6 @@ store-sync:
     test: scripts/demos/windows/test.sh
     quality_gate: scripts/demos/windows/quality_gate.sh
     publish: scripts/publish.py
-    plan: scripts/demos/windows/plan.py
     deploy: scripts/demos/windows/deploy.py
     check: scripts/demos/windows/check.py
     change: scripts/change.py
@@ -309,7 +310,7 @@ store-sync:
       # What up and reset.py install: the release before ORD-31.
       baseline:
         version: 3.2.0
-        path: store-sync-releases/3.2.0/store-sync-3.2.0.zip
+        path: demos-releases/store-sync/3.2.0/store-sync-3.2.0.zip
         # The build is reproducible, so the baseline's checksum is fixed:
         # scripts/demos/windows/seed.py checks it, every server verifies it.
         sha256: 1f8afb36d041cf1b01af9201536b7fb3a0d303a64376b34ec93561ce58d4fd52

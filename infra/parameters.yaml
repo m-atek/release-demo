@@ -175,6 +175,12 @@ jcr/token:
   secure: true
   help: "Access token of the JCR user release-pipeline. Written by scripts/jcr_setup.py on the tools host."
 
+jcr/store-fleet-token:
+  # Demo 1's own root (infra/demos/1-windows) creates the name, so the main root doesn't.
+  source: terraform
+  secure: true
+  help: "Read-only JCR token (readers group) the store fleet downloads store-sync with. Written by scripts/demos/windows/jcr_token.py."
+
 splunk/general-terms-accepted:
   source: script
   secure: false

@@ -60,7 +60,7 @@ function Get-Health {
         $response.Close()
     }
     try {
-        $json = $answer.body | ConvertRead-Json
+        $json = $answer.body | ConvertFrom-Json
         $answer.version = $json.version
         $answer.status = $json.status
         if ($json.problems) { $answer.problems = @($json.problems) }
@@ -155,7 +155,7 @@ function Get-JcrToken {
     return $value
 }
 
-function Read-Json($Value) { if ($Value -is [string]) { return $Value | ConvertRead-Json } return $Value }
+function Read-Json($Value) { if ($Value -is [string]) { return $Value | ConvertFrom-Json } return $Value }
 function ConvertTo-Hex([byte[]] $Bytes) { return -join ($Bytes | ForEach-Object { $_.ToString('x2') }) }
 function Get-Sha256Hex([string] $Text) {
     return ConvertTo-Hex ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($Text)))

@@ -14,7 +14,9 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+# The shared scripts, after anything already on the path: a demo module of the same name wins.
+if str(Path(__file__).resolve().parents[2]) not in sys.path:
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
 from common import REGION, SSM_PREFIX, aws_session, fail  # noqa: E402
 
 POWERSHELL = Path(__file__).resolve().parent / "powershell"
