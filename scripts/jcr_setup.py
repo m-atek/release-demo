@@ -79,18 +79,34 @@ class Client:
             return status, raw
 
 
+# On the host nobody can press Enter, so the UI steps are collected and
+# printed together at the end, for one pass in the UI and one rerun.
+todo = []
+
+
 def by_hand(steps, check):
     """Print UI steps, wait for Enter, and confirm the result."""
+    if not sys.stdin.isatty():
+        todo.append(steps)
+        return
     print("JCR didn't accept this through its API. In the JCR UI at " + ui + ":")
     for number, step in enumerate(steps, 1):
         print(f"  {number}. {step}")
-    if not sys.stdin.isatty():
-        fail("Do these steps in the UI, then run this again.")
     while True:
         input("Press Enter when it's done. ")
         if check():
             return
         print("Not there yet.")
+
+
+def report_todo():
+    print(f"JCR's free edition doesn't allow these through its API. In the JCR UI at {ui}:")
+    number = 0
+    for steps in todo:
+        for step in steps:
+            number += 1
+            print(f"  {number}. {step}")
+    fail("Then run this again: it checks each one and carries on.")
 
 
 def ensure_base_url(jcr, url):
@@ -219,7 +235,11 @@ def main():
     for key, package_type in keys:
         ensure_repository(jcr, key, package_type)
     ensure_user(jcr)
+    if todo:
+        report_todo()
     ensure_permission(jcr, [key for key, _ in keys])
+    if todo:
+        report_todo()
 
     if args.host:
         current = ssm.get_parameter(Name="/release-demo/jcr/token", WithDecryption=True)["Parameter"]["Value"]
