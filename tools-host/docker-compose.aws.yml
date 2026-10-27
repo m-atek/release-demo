@@ -1,0 +1,36 @@
+# EC2 mode: the Jenkins agent runs on the host, so it reaches Jenkins, JCR and
+# Splunk's HTTP Event Collector on localhost. Only JCR also listens on the
+# private address, for demo servers in the VPC; the security group decides who
+# may connect. Everyone else comes in through the Cloudflare tunnel.
+#
+# boot.sh starts the containers once the secrets are on the tmpfs, so Docker
+# must not start them on its own at boot: restart only on failure.
+
+services:
+  jenkins:
+    restart: on-failure
+    ports:
+      - 127.0.0.1:8080:8080
+    environment:
+      JCR_URL: http://localhost:8082
+      SPLUNK_HEC_URL: http://localhost:8088
+      AGENT_REMOTE_FS: /data/jenkins-agent
+
+  jcr:
+    restart: on-failure
+    ports:
+      - 8082:8082
+
+  splunk:
+    restart: on-failure
+    ports:
+      - 127.0.0.1:8088:8088
+
+  cloudflared:
+    restart: on-failure
+    # Request counter for the idle stop.
+    ports:
+      - 127.0.0.1:2000:2000
+
+  jcr-db:
+    restart: on-failure

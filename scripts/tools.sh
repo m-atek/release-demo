@@ -2,12 +2,12 @@
 # Start, stop and check the tools host: Jenkins, JFrog Container Registry and
 # Splunk Free.
 #
-#   scripts/tools.sh up --local       start the stack on this Mac, wait until it answers
-#   scripts/tools.sh status --local   what runs and what answers
-#   scripts/tools.sh down --local     stop it; the data stays in Docker volumes
+#   scripts/tools.sh up       start the EC2 tools host, wait until everything answers: "Ready"
+#   scripts/tools.sh status   its state, what answers, and any other demo server still running
+#   scripts/tools.sh down     stop it; it also stops itself after 30 idle minutes
 #
-# Without --local these will drive the EC2 tools host, once infra/ exists.
-# Local secrets live in ~/.local/state/release-demo/secrets, outside the repository.
+# Add --local to run the same stack in Docker on this Mac instead. Local
+# secrets live in ~/.local/state/release-demo/secrets, outside the repository.
 
 set -euo pipefail
 
@@ -153,6 +153,113 @@ down() {
   echo "Stopped. The data stays in the Docker volumes."
 }
 
+# The EC2 tools host. The AWS CLI starts and stops it; SSM Run Command asks it
+# tools-host/ready.sh, so nothing needs an open port or another token.
+
+aws_signed_in() {
+  export AWS_PROFILE=${AWS_PROFILE:-release-demo} AWS_REGION=eu-west-1
+  aws sts get-caller-identity >/dev/null 2>&1 ||
+    { echo "Not signed in to AWS. Run: aws sso login --profile $AWS_PROFILE"; exit 1; }
+}
+
+instance_id() {
+  aws ec2 describe-instances --output text --query 'Reservations[].Instances[].InstanceId' \
+    --filters Name=tag:Name,Values=release-demo-tools-host Name=instance-state-name,Values=pending,running,stopping,stopped
+}
+
+instance_state() {
+  aws ec2 describe-instances --instance-ids "$1" --query 'Reservations[0].Instances[0].State.Name' --output text
+}
+
+# Runs ready.sh on the host and prints its answer; fails while SSM can't reach it.
+host_ready() {
+  local command
+  command=$(aws ssm send-command --instance-ids "$1" --document-name AWS-RunShellScript \
+    --parameters 'commands=["/opt/release-demo/tools-host/ready.sh"]' --query Command.CommandId --output text 2>/dev/null) || return 1
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 2
+    aws ssm get-command-invocation --command-id "$command" --instance-id "$1" \
+      --query StandardOutputContent --output text 2>/dev/null && return
+  done
+  return 1
+}
+
+# Splunk starts only once Mateusz has accepted its General Terms, recorded in SSM.
+splunk_terms_in_ssm() {
+  local accepted
+  accepted=$(aws ssm get-parameter --name /release-demo/splunk/general-terms-accepted --query Parameter.Value --output text)
+  [[ $accepted != unset ]] && return
+  [[ -t 0 ]] || { echo "Splunk's General Terms aren't accepted yet: Splunk won't start. Run up in a terminal to accept them."; return; }
+  echo "Splunk starts only once you accept Splunk's General Terms:"
+  echo "  $SPLUNK_TERMS_URL"
+  local answer
+  read -r -p "Do you accept them? [y/N] " answer
+  [[ $answer =~ ^[Yy] ]] || return
+  aws ssm put-parameter --overwrite --type String --name /release-demo/splunk/general-terms-accepted \
+    --value "$(date -u +%Y-%m-%dT%H:%M:%SZ) accepted by $(aws sts get-caller-identity --query Arn --output text | sed 's#.*/##')" >/dev/null
+  echo "Recorded. The host starts Splunk at its next boot."
+}
+
+aws_up() {
+  aws_signed_in
+  local id
+  id=$(instance_id)
+  [[ -n $id ]] || { echo "No tools host. Apply infra/ first: scripts/tf.sh apply"; exit 1; }
+  splunk_terms_in_ssm
+
+  case $(instance_state "$id") in
+    stopped) aws ec2 start-instances --instance-ids "$id" >/dev/null; echo "Starting $id" ;;
+    stopping) aws ec2 wait instance-stopped --instance-ids "$id"; aws ec2 start-instances --instance-ids "$id" >/dev/null ;;
+  esac
+  aws ec2 wait instance-running --instance-ids "$id"
+
+  local start=$SECONDS answer=""
+  echo "Waiting until everything answers (the first start builds images: about 15 minutes)"
+  while (( SECONDS - start < 1800 )); do
+    answer=$(host_ready "$id" || true)
+    if grep -q '^Ready$' <<<"$answer"; then
+      echo "$answer"
+      echo "  Jenkins        https://jenkins-demo.es.nl"
+      echo "  JCR            https://artifactory-demo.es.nl"
+      echo "  Splunk         https://splunk-demo.es.nl"
+      return
+    fi
+    sleep 15
+  done
+  echo "Not ready after 30 minutes. Last answer:"
+  if [[ -n $answer ]]; then echo "$answer"; else echo "  the host does not answer SSM yet"; fi
+  exit 1
+}
+
+aws_status() {
+  aws_signed_in
+  local id state
+  id=$(instance_id)
+  [[ -n $id ]] || { echo "No tools host. Apply infra/ first: scripts/tf.sh apply"; exit 1; }
+  state=$(instance_state "$id")
+  echo "Tools host $id: $state"
+  [[ $state == running ]] && { host_ready "$id" || echo "  (doesn't answer SSM yet)"; }
+  local others query
+  query="Reservations[].Instances[?InstanceId!='$id'].[InstanceId,Tags[?Key=='Name']|[0].Value]"
+  others=$(aws ec2 describe-instances --output text --query "$query" \
+    --filters Name=tag:Project,Values=release-demo Name=instance-state-name,Values=pending,running)
+  if [[ -n $others ]]; then
+    echo "Other demo servers still running:"
+    echo "$others" | sed 's/^/  /'
+  else
+    echo "No other demo servers running."
+  fi
+}
+
+aws_down() {
+  aws_signed_in
+  local id
+  id=$(instance_id)
+  [[ -n $id ]] || { echo "No tools host."; exit 1; }
+  aws ec2 stop-instances --instance-ids "$id" >/dev/null
+  echo "Stopping $id. The data stays on its volume."
+}
+
 [[ $# -ge 1 ]] || usage
 command=$1
 shift
@@ -163,14 +270,10 @@ for arg in "$@"; do
     *) usage ;;
   esac
 done
-if ! $local_mode; then
-  echo "The EC2 tools host isn't built yet (infra/). Run the stack on this Mac with --local."
-  exit 1
-fi
 
 case $command in
-  up) up ;;
-  down) down ;;
-  status) status ;;
+  up) if $local_mode; then up; else aws_up; fi ;;
+  down) if $local_mode; then down; else aws_down; fi ;;
+  status) if $local_mode; then status; else aws_status; fi ;;
   *) usage ;;
 esac

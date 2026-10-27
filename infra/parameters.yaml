@@ -126,6 +126,11 @@ jcr/token:
   secure: true
   help: "Access token of the JCR user release-pipeline. Written by scripts/jcr_setup.py."
 
+splunk/general-terms-accepted:
+  source: script
+  secure: false
+  help: "When Mateusz accepted Splunk's General Terms. Written by scripts/tools.sh after his yes; the host starts Splunk only when set."
+
 jenkins/release-bot-api-token:
   source: host
   secure: true
