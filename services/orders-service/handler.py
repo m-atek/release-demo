@@ -132,7 +132,6 @@ def page():
     )
     return PAGE.format(
         service=SERVICE,
-        title=html.escape(os.environ.get("BRAND_TITLE", SERVICE)),
         env=html.escape(env),
         version=html.escape(VERSION),
         commit=html.escape(COMMIT[:7]),
@@ -175,7 +174,7 @@ PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title>
+<title>{service} ({env})</title>
 <style>
   :root {{
     --ink: #14181f; --muted: #5b6472; --line: #e3e6eb; --paper: #ffffff; --wash: #f5f6f8;

@@ -28,16 +28,6 @@ def test_page_escapes_environment_name(monkeypatch):
     assert "<staging>" not in request("/")["body"]
 
 
-def test_page_title_comes_from_brand_setting(monkeypatch):
-    monkeypatch.setenv("BRAND_TITLE", "Orders & returns")
-    assert "<title>Orders &amp; returns</title>" in request("/")["body"]
-
-
-def test_page_title_falls_back_to_the_service_name(monkeypatch):
-    monkeypatch.delenv("BRAND_TITLE")
-    assert "<title>orders-service</title>" in request("/")["body"]
-
-
 def test_orders_are_the_same_all_day():
     day = datetime.date(2026, 10, 26)
     first, again = app.todays_orders(day), app.todays_orders(day)

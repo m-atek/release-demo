@@ -12,7 +12,6 @@ import handler as app  # noqa: E402
 def env(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "staging")
     monkeypatch.setenv("DEPLOYED_AT", "26 Oct 2026, 09:30 UTC")
-    monkeypatch.setenv("BRAND_TITLE", "Store orders")
     monkeypatch.setattr(app, "_deployed_at", None)
 
 
