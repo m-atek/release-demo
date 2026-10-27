@@ -17,6 +17,14 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SERVICE = "orders-service"
 
+STORES = [
+    "Utrecht Centraal",
+    "Amsterdam Zuid",
+    "Rotterdam Blaak",
+    "Eindhoven Strijp",
+    "Den Haag Spui",
+    "Groningen Vismarkt",
+]
 PRODUCTS = [
     ("Running shoes", 89.95),
     ("Rain jacket", 74.50),
@@ -83,6 +91,7 @@ def todays_orders(today=None):
         orders.append(
             {
                 "id": f"{today:%y%m%d}-{number:03d}",
+                "store": STORES[pick(len(STORES))],
                 "items": [name for name, _ in lines],
                 "total_eur": round(sum(price for _, price in lines), 2),
                 "status": STATUSES[pick(len(STATUSES))],
@@ -117,7 +126,7 @@ def page():
     env = environment()
     orders = todays_orders()["orders"]
     rows = "\n".join(
-        f"<tr><td>{html.escape(o['id'])}</td>"
+        f"<tr><td>{html.escape(o['id'])}</td><td>{html.escape(o['store'])}</td>"
         f"<td>{len(o['items'])}</td><td>&euro; {o['total_eur']:.2f}</td></tr>"
         for o in orders[:5]
     )
@@ -214,7 +223,7 @@ PAGE = """<!doctype html>
   </section>
   <h2>Today's orders ({order_count})</h2>
   <table>
-    <thead><tr><th>Order</th><th>Items</th><th>Total</th></tr></thead>
+    <thead><tr><th>Order</th><th>Store</th><th>Items</th><th>Total</th></tr></thead>
     <tbody>
 {rows}
     </tbody>
