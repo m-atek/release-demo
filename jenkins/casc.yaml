@@ -47,6 +47,38 @@ jenkins:
         launcher:
           inbound:
             webSocket: true
+    # Agents outside the tools host, each connecting out over WebSocket
+    # through Cloudflare Access with its own service token. Demo 3's
+    # data-center agent, a virtual machine on the Mac:
+    - permanent:
+        name: dc-agent
+        labelString: dc-agent
+        mode: EXCLUSIVE
+        numExecutors: 1
+        remoteFS: /var/lib/jenkins-agent
+        launcher:
+          inbound:
+            webSocket: true
+    # Demo 6's build agents (demo 7 builds iOS on the Mac too). Their secrets
+    # go to SSM at boot: tools-host/agent_secrets.py.
+    - permanent:
+        name: mac
+        labelString: mac
+        mode: EXCLUSIVE
+        numExecutors: 1
+        remoteFS: /Users/Shared/release-demo-jenkins
+        launcher:
+          inbound:
+            webSocket: true
+    - permanent:
+        name: windows
+        labelString: windows
+        mode: EXCLUSIVE
+        numExecutors: 1
+        remoteFS: 'C:\jenkins'
+        launcher:
+          inbound:
+            webSocket: true
 
   globalNodeProperties:
     - envVars:
@@ -60,6 +92,10 @@ security:
   # The job scripts below are part of this file, which only an admin changes.
   globalJobDslSecurityConfiguration:
     useScriptSecurity: false
+  # ID tokens for the clouds (demo 5, and 6 and 7): one hour, the plugin's
+  # default, with its default claims: sub is the job's URL, plus build_number.
+  idToken:
+    tokenLifetime: 3600
 
 unclassified:
   location:
@@ -104,6 +140,74 @@ credentials:
               id: jcr-token
               description: JFrog Container Registry token for the release pipeline (scripts/jcr_setup.py)
               secret: ${jcr-token:-not-set}
+          # No stored cloud keys: each binding of these mints an ID token for the
+          # build, which one cloud trades for short-lived access. The issuer is
+          # a public S3 bucket (infra/demos/5-three-clouds), because the clouds
+          # can't reach Jenkins behind Cloudflare Access; the tools host
+          # publishes the keys there at boot (scripts/demos/clouds/oidc_issuer.py).
+          - idToken:
+              scope: GLOBAL
+              id: oidc-aws
+              description: ID token for AWS. STS trades it for an hour in a deploy role
+              audience: sts.amazonaws.com
+              issuer: ${jenkins-oidc-issuer:-}
+          - idToken:
+              scope: GLOBAL
+              id: oidc-azure
+              description: ID token for Azure. Microsoft Entra trades it for a managed identity's token
+              audience: api://AzureADTokenExchange
+              issuer: ${jenkins-oidc-issuer:-}
+          - idToken:
+              scope: GLOBAL
+              id: oidc-gcp
+              description: ID token for Google Cloud. Workload Identity Federation trades it for an hour as a service account
+              audience: release-demo-gcp
+              issuer: ${jenkins-oidc-issuer:-}
+          # Demo 3: what the data-center servers' rollout on dc-agent needs.
+          - string:
+              scope: GLOBAL
+              id: jcr-inventory-read-token
+              description: Read-only JCR token for the inventory servers (scripts/demos/linux/jcr_token.py)
+              secret: ${jcr-inventory-read-token:-not-set}
+          - string:
+              scope: GLOBAL
+              id: cloudflare-dc-agent-client-id
+              description: Cloudflare Access service token for dc-agent, client id, for JCR through Access
+              secret: ${cloudflare-dc-agent-client-id:-not-set}
+          - string:
+              scope: GLOBAL
+              id: cloudflare-dc-agent-client-secret
+              description: Cloudflare Access service token for dc-agent, client secret
+              secret: ${cloudflare-dc-agent-client-secret:-not-set}
+          - string:
+              scope: GLOBAL
+              id: inventory-app-secret
+              description: inventory's stock feed token, for the data-center servers
+              secret: ${inventory-app-secret:-not-set}
+          # Demo 7: Store Floor's Android upload key, for the signing step in
+          # store-floor-build (scripts/demos/mobile/signing_setup.py).
+          - file:
+              scope: GLOBAL
+              id: store-floor-upload-keystore
+              description: Store Floor's Android upload key (scripts/demos/mobile/signing_setup.py)
+              fileName: upload.p12
+              secretBytes: ${store-floor-android-upload-keystore:-bm90LXNldA==}
+          - string:
+              scope: GLOBAL
+              id: store-floor-upload-key-password
+              description: The upload keystore's password
+              secret: ${store-floor-android-upload-key-password:-not-set}
+          # Only when STANDIN drops apple (real Apple signing):
+          - string:
+              scope: GLOBAL
+              id: store-floor-match-password
+              description: fastlane match password for Store Floor
+              secret: ${store-floor-match-password:-not-set}
+          - string:
+              scope: GLOBAL
+              id: store-floor-apple-team-id
+              description: Apple Developer Team ID
+              secret: ${store-floor-apple-team-id:-not-set}
 
 jobs:
   - file: /var/jenkins_casc/jobs/jobs.groovy

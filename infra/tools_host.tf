@@ -65,6 +65,8 @@ data "aws_iam_policy_document" "tools_host" {
     resources = [
       "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/jenkins/release-bot-api-token",
       "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/jcr/token",
+      # Demo 6: the Mac and Windows agents' Jenkins secrets (tools-host/agent_secrets.py).
+      "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/jenkins/agent-secret/*",
     ]
   }
   statement {

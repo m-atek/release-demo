@@ -2,7 +2,8 @@
 # The tools host's boot, run as root by release-demo-boot.service on every
 # start, after a git pull. Idempotent: it mounts the data volume, installs what
 # is missing, puts the secrets from SSM on a tmpfs, starts the Docker stack and
-# the Jenkins agent, and arms the idle stop.
+# the Jenkins agent, publishes what other agents and the clouds need from
+# Jenkins, and arms the idle stop.
 
 set -euo pipefail
 exec > >(tee -a /var/log/release-demo-boot.log) 2>&1
@@ -97,6 +98,21 @@ wait_for_jenkins() {
   exit 1
 }
 
+# Configuration as Code once more: on a cold boot Jenkins didn't create the
+# jobs jobs.groovy gained since its last start. A reload makes new ID token
+# keys, so it comes before publish_oidc_issuer.
+reload_casc() {
+  local admin jar crumb status=0
+  admin="admin:$(cat "$SECRETS/jenkins-admin-password")"
+  jar=$(mktemp)
+  crumb=$(curl -sf -u "$admin" -c "$jar" http://localhost:8080/crumbIssuer/api/json |
+    jq -r '.crumbRequestField + ":" + .crumb') &&
+    curl -sf -u "$admin" -b "$jar" -H "$crumb" -X POST -o /dev/null http://localhost:8080/configuration-as-code/reload ||
+    status=$?
+  rm -f "$jar"
+  return "$status"
+}
+
 start_agent() {
   echo "== Jenkins agent"
   mkdir -p "$AGENT_WORK"
@@ -137,6 +153,17 @@ kube_token_helper() {
   visudo -cf /etc/sudoers.d/release-demo-kube-token >/dev/null || rm -f /etc/sudoers.d/release-demo-kube-token
 }
 
+# Demo 5: the clouds trust Jenkins's ID tokens through the keys published in
+# the issuer bucket, and Jenkins makes new keys at every start and reload.
+publish_oidc_issuer() {
+  "$VENV/bin/python" "$REPO_DIR/scripts/demos/clouds/oidc_issuer.py" publish || echo "OIDC issuer not published"
+}
+
+# Demo 6: the Mac and Windows build agents read their Jenkins secrets from SSM.
+agent_secrets() {
+  "$VENV/bin/python" "$HERE/agent_secrets.py" "$SECRETS" || echo "agent secrets: will retry at next boot"
+}
+
 release_bot_token() {
   "$VENV/bin/python" "$HERE/release_bot_token.py" "$SECRETS" || echo "release-bot token: will retry at next boot"
 }
@@ -172,7 +199,11 @@ python_env
 secrets_to_tmpfs
 start_stack
 wait_for_jenkins
+reload_casc || echo "Configuration as Code reload failed: jobs added since the last start may be missing"
+wait_for_jenkins
 start_agent
+publish_oidc_issuer
+agent_secrets
 kube_token_helper
 release_bot_token
 arm_idle_stop

@@ -223,6 +223,30 @@ cloudflare/slack-handler-client-secret:
   source: terraform
   secure: true
   help: "Cloudflare Access service token for the Slack handler: client secret."
+cloudflare/mac-agent-client-id:
+  source: terraform
+  secure: true
+  help: "Cloudflare Access service token for demo 6's Mac build agent, on Jenkins: client id."
+cloudflare/mac-agent-client-secret:
+  source: terraform
+  secure: true
+  help: "Cloudflare Access service token for demo 6's Mac build agent, on Jenkins: client secret."
+cloudflare/windows-agent-client-id:
+  source: terraform
+  secure: true
+  help: "Cloudflare Access service token for demo 6's Windows build agent, on Jenkins: client id."
+cloudflare/windows-agent-client-secret:
+  source: terraform
+  secure: true
+  help: "Cloudflare Access service token for demo 6's Windows build agent, on Jenkins: client secret."
+jenkins/agent-secret/mac:
+  source: host
+  secure: true
+  help: "The Jenkins secret of the node mac, demo 6's Mac build agent. Written by the tools host (agent_secrets.py)."
+jenkins/agent-secret/windows:
+  source: host
+  secure: true
+  help: "The Jenkins secret of the node windows, demo 6's Windows build agent. Written by the tools host (agent_secrets.py)."
 
 pricing-api/staging/api-url:
   source: terraform

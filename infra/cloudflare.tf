@@ -1,8 +1,8 @@
 # Cloudflare: the only way in to the tools host. A tunnel that cloudflared on
 # the host dials out to, three hostnames on it, and a Cloudflare Access
 # application in front of each: Mateusz's email, plus a service token for the
-# Slack handler on Jenkins. Splunk Free has no login of its own, so Access is
-# what keeps it private.
+# Slack handler on Jenkins, and one for each Jenkins agent outside the tools
+# host. Splunk Free has no login of its own, so Access is what keeps it private.
 #
 # es.nl also serves the production website. This file only adds its own,
 # separately named resources and never imports or changes anything else in
@@ -24,6 +24,16 @@ locals {
     artifactory = { hostname = "artifactory-demo.es.nl", service = "http://jcr:8082", name = "release-demo JFrog Container Registry" }
     splunk      = { hostname = "splunk-demo.es.nl", service = "http://splunk:8000", name = "release-demo Splunk" }
   }
+  # Jenkins agents that connect from outside, each with its own service token
+  # and the Access apps it may reach: demo 3's data-center agent (Jenkins, and
+  # JCR for its packages) and demo 6's Mac and Windows build agents.
+  # The key names their SSM values: cloudflare/<key>-client-id and -client-secret.
+  remote_agents = {
+    dc-agent      = { name = "release-demo dc-agent", apps = ["jenkins", "artifactory"] }
+    mac-agent     = { name = "release-demo Mac agent", apps = ["jenkins"] }
+    windows-agent = { name = "release-demo Windows agent", apps = ["jenkins"] }
+  }
+  agents_by_app = { for app in keys(local.tool_hostnames) : app => sort([for key, agent in local.remote_agents : key if contains(agent.apps, app)]) }
 }
 
 resource "random_bytes" "tunnel_secret" {
@@ -80,6 +90,21 @@ resource "cloudflare_zero_trust_access_policy" "slack_handler" {
   include    = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.slack_handler.id } }]
 }
 
+resource "cloudflare_zero_trust_access_service_token" "agents" {
+  for_each   = local.remote_agents
+  account_id = local.cf_account
+  name       = each.value.name
+  duration   = "8760h"
+}
+
+resource "cloudflare_zero_trust_access_policy" "agents" {
+  for_each   = local.remote_agents
+  account_id = local.cf_account
+  name       = "release-demo: ${each.key}"
+  decision   = "non_identity"
+  include    = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.agents[each.key].id } }]
+}
+
 resource "cloudflare_zero_trust_access_application" "tools" {
   for_each             = local.tool_hostnames
   account_id           = local.cf_account
@@ -91,6 +116,9 @@ resource "cloudflare_zero_trust_access_application" "tools" {
   policies = concat(
     [{ id = cloudflare_zero_trust_access_policy.mateusz.id, precedence = 1 }],
     each.key == "jenkins" ? [{ id = cloudflare_zero_trust_access_policy.slack_handler.id, precedence = 2 }] : [],
+    # The agents after both, so the existing two keep their places.
+    [for i, agent in local.agents_by_app[each.key] :
+    { id = cloudflare_zero_trust_access_policy.agents[agent].id, precedence = (each.key == "jenkins" ? 3 : 2) + i }],
   )
 }
 
@@ -99,13 +127,16 @@ data "cloudflare_zero_trust_tunnel_cloudflared_token" "tools_host" {
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.tools_host.id
 }
 
-# The host and the Slack handler read these from SSM.
+# The host, the Slack handler and the agents read these from SSM.
 resource "aws_ssm_parameter" "cloudflare_generated" {
-  for_each = {
+  for_each = merge({
     "cloudflare/tunnel-token"                = data.cloudflare_zero_trust_tunnel_cloudflared_token.tools_host.token
     "cloudflare/slack-handler-client-id"     = cloudflare_zero_trust_access_service_token.slack_handler.client_id
     "cloudflare/slack-handler-client-secret" = cloudflare_zero_trust_access_service_token.slack_handler.client_secret
-  }
+    }, merge([for key, token in cloudflare_zero_trust_access_service_token.agents : {
+      "cloudflare/${key}-client-id"     = token.client_id
+      "cloudflare/${key}-client-secret" = token.client_secret
+  }]...))
   name        = "/release-demo/${each.key}"
   type        = "SecureString"
   value       = each.value

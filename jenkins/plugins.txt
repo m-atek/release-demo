@@ -1,6 +1,6 @@
 # Jenkins plugins for jenkins/jenkins:2.580.1-lts-jdk21, every one pinned, dependencies included.
 # Top level: configuration-as-code job-dsl workflow-aggregator pipeline-graph-view git github-branch-source matrix-auth credentials-binding docker-workflow pipeline-utility-steps timestamper ws-cleanup junit,
-# and for the UI: blueocean pipeline-stage-view dashboard-view build-monitor-plugin github-checks for demo 2's check runs (htmlpublisher pinned to 429: Blue Ocean's minimum, 1.36, has open advisories).
+# and for the UI: blueocean pipeline-stage-view dashboard-view build-monitor-plugin github-checks for demo 2's check runs (htmlpublisher pinned to 429: Blue Ocean's minimum, 1.36, has open advisories), and oidc-provider for demo 5's ID tokens.
 # To update: resolve the top-level list with jenkins-plugin-cli --no-download --list, then pin the result.
 antisamy-markup-formatter:173.v680e3a_b_69ff3
 apache-httpcomponents-client-4-api:4.5.14-269.vfa_2321039a_83
@@ -80,6 +80,7 @@ matrix-auth:3.3
 matrix-project:928.v1effc3f3a_236
 mina-sshd-api-common:2.19.0-192.v2b_a_7b_2c1dc71
 mina-sshd-api-core:2.19.0-192.v2b_a_7b_2c1dc71
+oidc-provider:234.vca_b_26b_f4b_dda_
 okhttp-api:5.5.0-242.v1482d48d3ea_3
 pipeline-build-step:601.v6d4c6d1a_9dc7
 pipeline-graph-analysis:237.v2b_75640ca_888
