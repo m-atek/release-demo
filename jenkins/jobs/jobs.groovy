@@ -155,7 +155,8 @@ multibranchPipelineJob('network-stack') {
                     id('network-stack')
                     repoOwner(repositoryOwner)
                     delegate.repository(repositoryName)
-                    repositoryUrl("https://github.com/${repository}")
+                    // delegate: the script has its own repositoryUrl variable.
+                    delegate.repositoryUrl("https://github.com/${repository}")
                     configuredByUrl(false)
                     credentialsId('github-app')
                     traits {
