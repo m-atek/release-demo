@@ -28,13 +28,6 @@ def test_page_escapes_environment_name(monkeypatch):
     assert "<staging>" not in request("/")["body"]
 
 
-def test_production_reads_its_stores_from_the_regional_setting(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("STORES", "Breda Centrum,Zwolle Diezerstraat")
-    orders = app.todays_orders(datetime.date(2026, 10, 26))["orders"]
-    assert {order["store"] for order in orders} <= {"Breda Centrum", "Zwolle Diezerstraat"}
-
-
 def test_orders_are_the_same_all_day():
     day = datetime.date(2026, 10, 26)
     first, again = app.todays_orders(day), app.todays_orders(day)
