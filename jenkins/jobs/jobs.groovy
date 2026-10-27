@@ -49,3 +49,38 @@ pipelineJob('ci') {
     logRotator { numToKeep(100) }
     definition fromRepository('jenkins/ci.Jenkinsfile')
 }
+
+// Views next to All: a release dashboard with the latest builds and test
+// trends, and a monitor with one big tile per job for a second screen.
+List<String> demoJobs = ['release', 'ci', 'tools-smoke']
+
+dashboardView('Releases') {
+    description('Releases and CI runs on the demo platform. Demo system, not a client\'s.')
+    jobs { names(*demoJobs) }
+    columns {
+        status()
+        weather()
+        name()
+        lastSuccess()
+        lastFailure()
+        lastDuration()
+        buildButton()
+    }
+    topPortlets {
+        latestBuilds {
+            name('Latest builds')
+            numBuilds(15)
+        }
+    }
+    leftPortlets {
+        buildStatistics { displayName('Build results') }
+    }
+    rightPortlets {
+        testTrendChart { displayName('Test trend') }
+    }
+}
+
+buildMonitorView('Monitor') {
+    description('One tile per job: green, red or running.')
+    jobs { names(*demoJobs) }
+}
