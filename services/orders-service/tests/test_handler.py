@@ -23,15 +23,6 @@ def test_page_shows_service_version_and_deploy_time():
     assert "26 Oct 2026, 09:30 UTC" in response["body"]
 
 
-def test_page_shows_delivery_estimate():
-    assert "Delivery estimate: 2 days" in request("/")["body"]
-
-
-def test_delivery_estimate_comes_from_regional_setting(monkeypatch):
-    monkeypatch.setenv("DELIVERY_ESTIMATE_DAYS", "3")
-    assert "Delivery estimate: 3 days" in request("/")["body"]
-
-
 def test_page_escapes_environment_name(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "<staging>")
     assert "<staging>" not in request("/")["body"]

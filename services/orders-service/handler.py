@@ -17,14 +17,6 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SERVICE = "orders-service"
 
-STORES = [
-    "Utrecht Centraal",
-    "Amsterdam Zuid",
-    "Rotterdam Blaak",
-    "Eindhoven Strijp",
-    "Den Haag Spui",
-    "Groningen Vismarkt",
-]
 PRODUCTS = [
     ("Running shoes", 89.95),
     ("Rain jacket", 74.50),
@@ -79,25 +71,20 @@ def _lambda_last_modified():
         return "unknown"
 
 
-def delivery_estimate_days():
-    """The regional setting for this environment."""
-    return int(os.environ["DELIVERY_ESTIMATE_DAYS"])
-
-
 def todays_orders(today=None):
     """Fictional orders, the same all day, different every day."""
     today = today or datetime.date.today()
     pick = _picker(today.isoformat())
     orders = []
-    for number in range(1, 8 + pick(7) + 1):
+    # Newest first.
+    for number in reversed(range(1, 8 + pick(7) + 1)):
         first = pick(len(PRODUCTS))
         lines = [PRODUCTS[(first + n) % len(PRODUCTS)] for n in range(1 + pick(3))]
         orders.append(
             {
                 "id": f"{today:%y%m%d}-{number:03d}",
-                "store": STORES[pick(len(STORES))],
                 "items": [name for name, _ in lines],
-                "total_eur": round(sum(price for _, price in lines), 2),
+                "total_eur": sum(price for _, price in lines),
                 "status": STATUSES[pick(len(STATUSES))],
             }
         )
@@ -130,9 +117,8 @@ def page():
     env = environment()
     orders = todays_orders()["orders"]
     rows = "\n".join(
-        f"<tr><td>{html.escape(o['id'])}</td><td>{html.escape(o['store'])}</td>"
-        f"<td>{len(o['items'])}</td><td>&euro; {o['total_eur']:.2f}</td>"
-        f"<td>{html.escape(o['status'])}</td></tr>"
+        f"<tr><td>{html.escape(o['id'])}</td>"
+        f"<td>{len(o['items'])}</td><td>&euro; {o['total_eur']:.2f}</td></tr>"
         for o in orders[:5]
     )
     return PAGE.format(
@@ -141,7 +127,6 @@ def page():
         version=html.escape(VERSION),
         commit=html.escape(COMMIT[:7]),
         deployed=html.escape(deployed_at()),
-        delivery_days=delivery_estimate_days(),
         order_count=len(orders),
         rows=rows,
     )
@@ -170,7 +155,7 @@ def handler(event, context):
 def _json(status, body):
     return {
         "statusCode": status,
-        "headers": {"content-type": "application/json", "cache-control": "no-store"},
+        "headers": {"content-type": "application/json"},
         "body": json.dumps(body),
     }
 
@@ -180,7 +165,7 @@ PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{service} ({env})</title>
+<title>{service}</title>
 <style>
   :root {{
     --ink: #14181f; --muted: #5b6472; --line: #e3e6eb; --paper: #ffffff; --wash: #f5f6f8;
@@ -222,7 +207,6 @@ PAGE = """<!doctype html>
     <span class="demo">Demo system</span>
   </header>
   <div class="version">{version}</div>
-  <p class="note">Delivery estimate: {delivery_days} days</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>
@@ -230,7 +214,7 @@ PAGE = """<!doctype html>
   </section>
   <h2>Today's orders ({order_count})</h2>
   <table>
-    <thead><tr><th>Order</th><th>Store</th><th>Items</th><th>Total</th><th>Status</th></tr></thead>
+    <thead><tr><th>Order</th><th>Items</th><th>Total</th></tr></thead>
     <tbody>
 {rows}
     </tbody>
