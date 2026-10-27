@@ -3,20 +3,25 @@
 // stage logic lives in scripts/. Started by the Slack handler or history.py,
 // as the Jenkins user release-bot, with these parameters:
 // SERVICE, JIRA_KEY, OPTION, REQUESTED_BY, SLACK_CHANNEL, SLACK_TS.
+//
+// Values from outside the pipeline (parameters, versions, names, error
+// messages) reach the shell as environment variables, never quoted into the
+// script: a value with an apostrophe can't break or change a command.
 
 def call() {
     node('tools-host') {
         def checkedOut = checkout scm
         env.GIT_COMMIT = checkedOut.GIT_COMMIT
         String service = params.SERVICE
-        sh """
+        sh '''
             rm -rf .release dist
-            python3 scripts/run_state.py init --service '${service}' --jira-key '${params.JIRA_KEY}' \\
-                --option '${params.OPTION ?: ''}' --requested-by '${params.REQUESTED_BY ?: ''}' \\
-                --slack-channel '${params.SLACK_CHANNEL ?: ''}' --slack-ts '${params.SLACK_TS ?: ''}'
-        """
+            python3 scripts/run_state.py init --service "$SERVICE" --jira-key "$JIRA_KEY" \\
+                --option "$OPTION" --requested-by "$REQUESTED_BY" \\
+                --slack-channel "$SLACK_CHANNEL" --slack-ts "$SLACK_TS"
+        '''
         String version = state('version')
-        currentBuild.description = "${service} ${version} for ${params.JIRA_KEY}, asked by ${params.REQUESTED_BY ?: 'the Jenkins UI'}"
+        currentBuild.displayName = "#${env.BUILD_NUMBER} ${service} ${version}"
+        currentBuild.description = "${params.JIRA_KEY}${params.OPTION ? ', ' + params.OPTION : ''}, asked by ${params.REQUESTED_BY ? 'Slack' : 'the Jenkins UI'}"
         sh 'python3 scripts/jira.py fix-version'
 
         try {
@@ -39,34 +44,36 @@ def call() {
             } else {
                 releaseStage('Approval') {
                     sh 'python3 scripts/change.py wait'
-                    sh "python3 scripts/notify.py line 'Approved by ${state('change.approved_by')} in ServiceNow.'"
+                    withEnv(["APPROVER=${state('change.approved_by')}"]) {
+                        sh 'python3 scripts/notify.py line "Approved by $APPROVER in ServiceNow."'
+                    }
                 }
             }
             releaseStage('Production', environment: 'production', deploy: true) {
                 sh 'python3 scripts/change.py implement'
                 sh "python3 scripts/deploy.py ${service} production"
             }
-            boolean live = true
             releaseStage('Check production', environment: 'production') {
                 if (check(service, 'production', version) != 0) {
-                    live = false
                     rollBack(service)
                     error "Production check failed: rolled back to ${state('deploys.production.previous_version')}."
                 }
             }
             releaseStage('Record') {
-                sh """
-                    python3 scripts/publish.py ${service} --release
-                    python3 scripts/notify.py finish live
-                    python3 scripts/jira.py comment "Released ${service} ${version} in \$(python3 scripts/run_state.py get change.number). Live in \$(python3 scripts/run_state.py get total). Build: ${env.BUILD_URL}"
-                    python3 scripts/jira.py release
-                    python3 scripts/tag.py
-                    python3 scripts/events.py annotate "${service} ${version} released (${params.JIRA_KEY})" --tags release,${service}
-                    python3 scripts/change.py close successful --notes "Released ${service} ${version}. Total time: \$(python3 scripts/run_state.py get total). Build: ${env.BUILD_URL}"
-                """
+                withEnv(["VERSION=${version}"]) {
+                    sh '''
+                        python3 scripts/publish.py "$SERVICE" --release
+                        python3 scripts/notify.py finish live
+                        python3 scripts/jira.py comment "Released $SERVICE $VERSION in $(python3 scripts/run_state.py get change.number). Live in $(python3 scripts/run_state.py get total). Build: $BUILD_URL"
+                        python3 scripts/jira.py release
+                        python3 scripts/tag.py
+                        python3 scripts/events.py annotate "$SERVICE $VERSION released ($JIRA_KEY)" --tags "release,$SERVICE"
+                        python3 scripts/change.py close successful --notes "Released $SERVICE $VERSION. Total time: $(python3 scripts/run_state.py get total). Build: $BUILD_URL"
+                    '''
+                }
             }
         } catch (error) {
-            stopped(service, error)
+            stopped(error)
             throw error
         }
     }
@@ -75,7 +82,10 @@ def call() {
 // The pipeline's check: /health within the environment's timeout, then the check paths.
 int check(String service, String environment, String version) {
     String url = state("deploys.${environment}.url")
-    return sh(returnStatus: true, script: "python3 scripts/check.py ${service} ${environment} --version ${version} --url '${url}'")
+    return withEnv(["CHECK_VERSION=${version}", "CHECK_URL=${url}"]) {
+        sh(returnStatus: true,
+            script: "python3 scripts/check.py ${service} ${environment} --version \"\$CHECK_VERSION\" --url \"\$CHECK_URL\"")
+    }
 }
 
 // After a failed production check: the previous version back, checked, and recorded everywhere.
@@ -83,27 +93,38 @@ void rollBack(String service) {
     long started = System.currentTimeMillis()
     String previous = state('deploys.production.previous_version')
     sh "python3 scripts/deploy.py ${service} production --back"
-    if (check(service, 'production', previous) != 0) {
-        sh "python3 scripts/notify.py line 'The previous version, ${previous}, fails its check too. Look now.'"
-        error "Rolled back to ${previous}, but it fails its check too."
+    withEnv(["PREVIOUS=${previous}"]) {
+        if (check(service, 'production', previous) != 0) {
+            sh 'python3 scripts/notify.py line "The previous version, $PREVIOUS, fails its check too. Look now."'
+            error "Rolled back to ${previous}, but it fails its check too."
+        }
+        String recovery = String.format('%.0f', (System.currentTimeMillis() - started) / 1000.0)
+        withEnv(["RECOVERY=${recovery}"]) {
+            sh '''
+                python3 scripts/events.py --stage Rollback --result rolled-back --environment production --recovery-seconds "$RECOVERY"
+                python3 scripts/events.py annotate "$SERVICE rolled back to $PREVIOUS" --tags "rollback,$SERVICE"
+                python3 scripts/notify.py finish rolled-back --previous "$PREVIOUS"
+                python3 scripts/change.py close unsuccessful --notes "Production check failed. The pipeline rolled back to $PREVIOUS automatically in ${RECOVERY}s and checked it. Total time: $(python3 scripts/run_state.py get total). Build: $BUILD_URL"
+                python3 scripts/jira.py comment "Release of $SERVICE $(python3 scripts/run_state.py get version) failed its production check and was rolled back to $PREVIOUS in ${RECOVERY}s. Change: $(python3 scripts/run_state.py get change.number). Build: $BUILD_URL"
+            '''
+        }
     }
-    String recovery = String.format('%.0f', (System.currentTimeMillis() - started) / 1000.0)
-    sh """
-        python3 scripts/events.py --stage Rollback --result rolled-back --environment production --recovery-seconds ${recovery}
-        python3 scripts/events.py annotate "${service} rolled back to ${previous}" --tags rollback,${service}
-        python3 scripts/notify.py finish rolled-back --previous ${previous}
-        python3 scripts/change.py close unsuccessful --notes "Production check failed. The pipeline rolled back to ${previous} automatically in ${recovery}s and checked it. Total time: \$(python3 scripts/run_state.py get total). Build: ${env.BUILD_URL}"
-        python3 scripts/jira.py comment "Release of ${service} \$(python3 scripts/run_state.py get version) failed its production check and was rolled back to ${previous} in ${recovery}s. Change: \$(python3 scripts/run_state.py get change.number). Build: ${env.BUILD_URL}"
-    """
 }
 
-// Any other failure: Slack says where it stopped, and an open change is cancelled.
-void stopped(String service, error) {
+// Any other failure: Slack says where it stopped. Before production, the open
+// change is cancelled; after the production deploy, it closes unsuccessful.
+void stopped(error) {
     if (state('total')) {
         return  // the rollback already told everyone
     }
-    sh(returnStatus: true, script: "python3 scripts/notify.py finish failed")
-    sh(returnStatus: true, script: "python3 scripts/change.py cancel --notes 'The release stopped: ${error.message?.replace("'", '')}. Nothing changed in production.'")
+    withEnv(["REASON=${(error.message ?: error.toString()).readLines().first()}"]) {
+        sh(returnStatus: true, script: 'python3 scripts/notify.py finish failed')
+        if (state('deploys.production.number')) {
+            sh(returnStatus: true, script: 'python3 scripts/change.py close unsuccessful --notes "The release stopped after the production deploy: $REASON. Look at production now."')
+        } else {
+            sh(returnStatus: true, script: 'python3 scripts/change.py cancel --notes "The release stopped: $REASON. Nothing changed in production."')
+        }
+    }
 }
 
 String state(String key) {

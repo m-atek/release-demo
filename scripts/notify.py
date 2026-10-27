@@ -100,7 +100,8 @@ def main():
         total = run_state.duration(run_state.now() - state["started_at"])
         state["total"] = total
         text = {"live": f"Live in {total}.",
-                "failed": f"Stopped after {total}. Nothing reached production.",
+                "failed": (f"Stopped after {total}, after the production deploy. Look at production now."
+                           if "production" in state.get("deploys", {}) else f"Stopped after {total}. Nothing reached production."),
                 "rolled-back": f"Production check failed. Rolled back to {args.previous}.",
                 "cancelled": f"Cancelled after {total}."}[args.result]
         state.setdefault("lines", []).append(text)

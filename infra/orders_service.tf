@@ -81,7 +81,9 @@ resource "aws_lambda_function" "orders" {
   role             = aws_iam_role.orders[each.key].arn
   runtime          = local.orders.runtime
   handler          = local.orders.handler
-  memory_size      = 128
+  # CPU scales with memory: at 128 MB the page's first request, which imports
+  # boto3 to read the deploy time, took over 6 seconds.
+  memory_size      = 1024
   timeout          = 10
   filename         = data.archive_file.orders_initial.output_path
   source_code_hash = data.archive_file.orders_initial.output_base64sha256

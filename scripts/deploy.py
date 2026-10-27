@@ -13,8 +13,12 @@ that service's functions.
 
 import argparse
 import hashlib
+import io
+import re
 import sys
 import time
+import urllib.request
+import zipfile
 
 import run_state
 from common import aws_session, fail, get_parameter, service, ssm_client
@@ -34,8 +38,15 @@ def alias_version(client, function):
     return client.get_alias(FunctionName=function, Name="live")["FunctionVersion"]
 
 
-def description_of(client, function, number):
-    return client.get_function_configuration(FunctionName=function, Qualifier=number)["Description"]
+def app_version(client, function, number):
+    """The app version a Lambda version runs: its description, which this script
+    sets, or for the version Terraform published first, the VERSION in its package."""
+    description = client.get_function_configuration(FunctionName=function, Qualifier=number)["Description"]
+    if re.fullmatch(r"\d+\.\d+\.\d+", description):
+        return description
+    location = client.get_function(FunctionName=function, Qualifier=number)["Code"]["Location"]
+    with urllib.request.urlopen(location, timeout=30) as response:
+        return zipfile.ZipFile(io.BytesIO(response.read())).read("VERSION").decode().strip()
 
 
 def move_alias(client, function, number):
@@ -45,13 +56,15 @@ def move_alias(client, function, number):
 def previous_release(client, function):
     """The newest published version before live whose app version differs from live's."""
     current = alias_version(client, function)
-    current_app = description_of(client, function, current)
+    current_app = app_version(client, function, current)
     versions = []
     for page in client.get_paginator("list_versions_by_function").paginate(FunctionName=function):
         versions += [v for v in page["Versions"] if v["Version"] != "$LATEST"]
     for v in sorted(versions, key=lambda v: int(v["Version"]), reverse=True):
-        if int(v["Version"]) < int(current) and v["Description"] and v["Description"] != current_app:
-            return v["Version"], v["Description"]
+        if int(v["Version"]) < int(current):
+            app = app_version(client, function, v["Version"])
+            if app != current_app:
+                return v["Version"], app
     fail(f"{function} has no earlier release to roll back to.")
 
 
@@ -77,7 +90,7 @@ def main():
         else:
             number, app = previous_release(client, function)
             deploys[args.environment] = {"previous_number": alias_version(client, function),
-                                         "previous_version": description_of(client, function, alias_version(client, function))}
+                                         "previous_version": app_version(client, function, alias_version(client, function))}
         move_alias(client, function, number)
         deploys[args.environment].update({"rolled_back_to": app, "rolled_back_number": number,
                                           "url": client.get_function_url_config(FunctionName=function, Qualifier="live")["FunctionUrl"]})
@@ -94,7 +107,7 @@ def main():
     print(f"SHA-256 verified: {actual}")
 
     previous_number = alias_version(client, function)
-    previous_app = description_of(client, function, previous_number)
+    previous_app = app_version(client, function, previous_number)
     client.update_function_code(FunctionName=function, ZipFile=package)
     client.get_waiter("function_updated_v2").wait(FunctionName=function)
     published = client.publish_version(FunctionName=function, Description=state["version"])
