@@ -206,7 +206,7 @@ Once, after the merge:
 4. `.venv/bin/python scripts/servicenow_setup.py` adds the CMDB item pricing-api and its templates "Routine release of pricing-api" and "Rollback of pricing-api".
 5. `.venv/bin/python scripts/demos/apis/dashboard.py` puts the dashboard "pricing-api: contract check and canary" on the Grafana stack.
 
-Before each call or take: `scripts/reset.py apis`, which runs `scripts/demos/apis/reset.py`, in the reset job on the tools host (its JCR step needs the host): both environments on 2.0.4, production's 2.0.4 contract in `demos-releases/pricing-api/2.0.4/` for the contract check, the later release copies, tags and Jira versions cleared, and 2.0.4 staged on main. Open Grafana on that dashboard (last 15 minutes, refresh 5 seconds), Slack `#releases` as Sam, and ServiceNow's change list for pricing-api.
+Before each call or take: `scripts/reset.py apis`, which runs `scripts/demos/apis/reset.py`, in the reset job on the tools host with DEMO=apis (its JCR step needs the host): both environments on 2.0.4, production's 2.0.4 contract in `demos-releases/pricing-api/2.0.4/` for the contract check, and 2.0.4 staged on main. Like the main reset it keeps the past: the later tags and their GitHub releases move under `takes/`, the later release copies under `demos-releases/pricing-api/takes/`, and the Jira versions are un-released with ORD-52 reopened. `--dry-run` shows what it would do. Open Grafana on that dashboard (last 15 minutes, refresh 5 seconds), Slack `#releases` as Sam, and ServiceNow's change list for pricing-api.
 
 On the call, three times: `scripts/stage.py pricing-api <version>`, then in Slack `/release pricing-api ORD-52 call`.
 
