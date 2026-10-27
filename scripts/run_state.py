@@ -62,6 +62,15 @@ def duration(seconds):
     return f"{seconds // 60}m {seconds % 60:02d}s" if seconds >= 60 else f"{seconds}s"
 
 
+def requested_at(value):
+    """The Slack command's time (epoch seconds), if given and plausible, else now."""
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return now()
+    return seconds if 0 <= now() - seconds < 3600 else now()
+
+
 def init(args):
     config = service(args.service)
     commit = os.environ.get("GIT_COMMIT") or subprocess.run(
@@ -78,7 +87,9 @@ def init(args):
         "requested_by": args.requested_by or "",
         "slack": {"channel": args.slack_channel or "", "ts": args.slack_ts or ""},
         "build": {"number": os.environ.get("BUILD_NUMBER", "local"), "url": os.environ.get("BUILD_URL", "")},
-        "started_at": now(),
+        # From the moment Sam pressed Enter in Slack when the handler passes it,
+        # so "Live in" matches the clock that starts at the command.
+        "started_at": requested_at(args.requested_at),
         "stages": {name: {"status": "waiting"} for name in STAGES},
     }
     save(state)
@@ -94,6 +105,7 @@ def main():
     start.add_argument("--jira-key", required=True)
     start.add_argument("--option", default="")
     start.add_argument("--requested-by", default="")
+    start.add_argument("--requested-at", default="", help="epoch seconds of the Slack command")
     start.add_argument("--slack-channel", default="")
     start.add_argument("--slack-ts", default="")
     getter = sub.add_parser("get")

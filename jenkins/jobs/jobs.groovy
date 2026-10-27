@@ -34,6 +34,7 @@ pipelineJob('release') {
         stringParam('REQUESTED_BY', '', 'Slack user id of who asked.')
         stringParam('SLACK_CHANNEL', '', 'Channel of the Slack status message.')
         stringParam('SLACK_TS', '', 'Timestamp of the Slack status message.')
+        stringParam('REQUESTED_AT', '', 'Epoch seconds of the Slack command, where the total time starts.')
     }
     properties { disableConcurrentBuilds() }
     logRotator { numToKeep(200) }

@@ -2,7 +2,7 @@
 // record. Each demo adds only its own deploy, check and rollback steps; the
 // stage logic lives in scripts/. Started by the Slack handler or history.py,
 // as the Jenkins user release-bot, with these parameters:
-// SERVICE, JIRA_KEY, OPTION, REQUESTED_BY, SLACK_CHANNEL, SLACK_TS.
+// SERVICE, JIRA_KEY, OPTION, REQUESTED_BY, SLACK_CHANNEL, SLACK_TS, REQUESTED_AT.
 //
 // Values from outside the pipeline (parameters, versions, names, error
 // messages) reach the shell as environment variables, never quoted into the
@@ -17,7 +17,7 @@ def call() {
             rm -rf .release dist
             python3 scripts/run_state.py init --service "$SERVICE" --jira-key "$JIRA_KEY" \\
                 --option "$OPTION" --requested-by "$REQUESTED_BY" \\
-                --slack-channel "$SLACK_CHANNEL" --slack-ts "$SLACK_TS"
+                --slack-channel "$SLACK_CHANNEL" --slack-ts "$SLACK_TS" --requested-at "${REQUESTED_AT:-}"
         '''
         String version = state('version')
         Map cfg = serviceConfig(service)
