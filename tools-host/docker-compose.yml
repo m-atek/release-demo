@@ -1,7 +1,7 @@
 # The tools host: Jenkins, JFrog Container Registry and Splunk Free, plus
 # cloudflared on the EC2 host. No container uses host networking. Secrets reach
 # the containers as files in SECRETS_DIR (a tmpfs on the EC2 host), never as
-# values in this file. Memory plan inside 16 GB: Jenkins 2, JCR 4 with its
+# values in this file. Memory plan inside 16 GB: Jenkins 2, JCR 6 with its
 # database, Splunk 2, builds the rest.
 #
 # Run it through scripts/tools.sh, not directly.
@@ -39,8 +39,11 @@ services:
     image: releases-docker.jfrog.io/jfrog/artifactory-jcr:7.161.26
     restart: unless-stopped
     # JCR 7.161 starts only on PostgreSQL. The password comes from jcr.env.
+    # JFConnect is off: this image doesn't ship it, and with it on the UI waits
+    # forever for its entitlements.
     environment:
       JF_SHARED_EXTRAJAVAOPTS: "-Xms512m -Xmx2g"
+      JF_JFCONNECT_ENABLED: "false"
       JF_SHARED_DATABASE_TYPE: postgresql
       JF_SHARED_DATABASE_DRIVER: org.postgresql.Driver
       JF_SHARED_DATABASE_URL: jdbc:postgresql://jcr-db:5432/artifactory
@@ -49,8 +52,9 @@ services:
       - ${SECRETS_DIR}/jcr.env
     volumes:
       - jcr-var:/var/opt/jfrog/artifactory
-    # Five JVMs, a Node frontend and the router: about 3.1 GB once warm.
-    mem_limit: 4g
+    # Five JVMs, a Node frontend and the router: about 3.1 GB idle, 4 GB with
+    # the UI in use. 4 GB starved it.
+    mem_limit: 6g
     ulimits:
       nofile: { soft: 32000, hard: 40000 }
     depends_on:

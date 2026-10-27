@@ -14,12 +14,14 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from common import SSM_PREFIX, aws_session  # noqa: E402
+import yaml  # noqa: E402
+from common import ROOT, SSM_PREFIX, aws_session  # noqa: E402
 
 JENKINS_GID = 1000  # the jenkins user's group inside the controller image
 CLOUDFLARED_UID = 65532  # the nonroot user inside the cloudflared image
 NOT_ON_HOST = {"cloudflare/api-token", "cloudflare/account-id", "cloudflare/zone-id",
-               "grafana/external-id", "terraform/state-bucket"}
+               "grafana/external-id", "terraform/state-bucket", "servicenow/admin-password",
+               "servicenow/sam-password", "servicenow/alex-password"}
 
 
 def write(directory, name, value, uid=0, gid=JENKINS_GID, mode=0o640):
@@ -35,14 +37,17 @@ def main():
     os.chown(directory, 0, JENKINS_GID)
     directory.chmod(0o750)
 
+    # By name, ten at a time, from the catalog: reading by path would skip the
+    # IAM denies on the values the host must not see.
+    catalog = yaml.safe_load((ROOT / "infra" / "parameters.yaml").read_text())
+    wanted = [SSM_PREFIX + name for name in catalog if name not in NOT_ON_HOST]
     ssm = aws_session().client("ssm")
     values = {}
-    for page in ssm.get_paginator("get_parameters_by_path").paginate(
-            Path=SSM_PREFIX, Recursive=True, WithDecryption=True):
-        for parameter in page["Parameters"]:
-            name = parameter["Name"].removeprefix(SSM_PREFIX)
-            if parameter["Value"] != "unset" and name not in NOT_ON_HOST:
-                values[name] = parameter["Value"]
+    for start in range(0, len(wanted), 10):
+        reply = ssm.get_parameters(Names=wanted[start:start + 10], WithDecryption=True)
+        for parameter in reply["Parameters"]:
+            if parameter["Value"] != "unset":
+                values[parameter["Name"].removeprefix(SSM_PREFIX)] = parameter["Value"]
 
     for name, value in values.items():
         if name == "cloudflare/tunnel-token":

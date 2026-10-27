@@ -49,14 +49,15 @@ resource "aws_iam_role_policy_attachment" "tools_host_ssm" {
 data "aws_iam_policy_document" "tools_host" {
   statement {
     sid       = "ReadOwnParameters"
-    actions   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+    actions   = ["ssm:GetParameter", "ssm:GetParameters"]
     resources = ["arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/*"]
   }
   statement {
-    sid       = "NotTheCloudflareToken"
-    effect    = "Deny"
-    actions   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-    resources = ["arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/cloudflare/api-token"]
+    sid     = "NotForTheHost"
+    effect  = "Deny"
+    actions = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+    resources = [for name in ["cloudflare/api-token", "servicenow/admin-password", "servicenow/sam-password", "servicenow/alex-password"] :
+    "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/${name}"]
   }
   statement {
     sid     = "WriteHostMadeTokens"

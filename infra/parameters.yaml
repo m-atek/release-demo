@@ -46,6 +46,18 @@ servicenow/instance-url:
   secure: true
   help: "Your PDI's URL, https://devNNNNNN.service-now.com."
   pattern: "^https://dev[0-9]+\\.service-now\\.com$"
+servicenow/admin-password:
+  source: you
+  secure: true
+  help: "The PDI admin password, only while servicenow_setup.py is being built and tested. Change it in ServiceNow afterwards and set this back to unset."
+servicenow/sam-password:
+  source: you
+  secure: true
+  help: "A password you choose for Sam Developer in ServiceNow. You sign in as Sam."
+servicenow/alex-password:
+  source: you
+  secure: true
+  help: "A password you choose for Alex Change Manager in ServiceNow. You sign in as Alex to approve."
 servicenow/release-pipeline-password:
   source: script
   secure: true
