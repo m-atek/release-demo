@@ -31,7 +31,7 @@ def test_dutch_store_gets_the_national_price():
     response = request("/prices/RS-100", "NL-UTR-01")
     assert response["statusCode"] == 200
     assert body(response) == {"sku": "RS-100", "name": "Running shoes", "store": "NL-UTR-01",
-                              "price": 89.95, "price_list": "national"}
+                              "price": 89.95, "currency": "EUR", "price_list": "national"}
 
 
 def test_belgian_store_gets_the_regional_price():
