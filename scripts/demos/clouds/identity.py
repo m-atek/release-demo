@@ -30,7 +30,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-sys.path.insert(1, str(Path(__file__).resolve().parents[2]))  # scripts/, for the shared helpers
+sys.path.append(str(Path(__file__).resolve().parents[2]))  # scripts/, for the shared helpers, after this folder
 
 from common import aws_session, fail  # noqa: E402
 
@@ -133,9 +133,11 @@ class Login:
         self.cloud, self.who, self.expires, self.how, self.access = cloud, who, expires, how, access
 
     def line(self, cloud_name):
+        """One line per cloud for the log: who we are there and when the access ends. Never the token."""
+        if self.how != "token":
+            return f"  {cloud_name}: signed in as {self.who}"
         left = max(0, round((self.expires - time.time()) / 60))
-        verb = "accepted it" if self.how == "token" else "signed in with your login"
-        return f"  {cloud_name} {verb}: {self.who}, access expires {clock(self.expires)} (in {left} min)"
+        return f"  {cloud_name} accepted it: {self.who}, access expires {clock(self.expires)} (in {left} min)"
 
 
 # AWS ------------------------------------------------------------------------

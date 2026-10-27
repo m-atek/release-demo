@@ -85,6 +85,58 @@
             6
           ]
         }
+      },
+      {
+        "name": "quote-service releases",
+        "enable": true,
+        "hide": false,
+        "iconColor": "green",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "target": {
+          "type": "tags",
+          "tags": [
+            "release-demo",
+            "release",
+            "quote-service"
+          ],
+          "matchAny": false,
+          "limit": 100
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            53
+          ]
+        }
+      },
+      {
+        "name": "quote-service rollbacks",
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "target": {
+          "type": "tags",
+          "tags": [
+            "release-demo",
+            "rollback",
+            "quote-service"
+          ],
+          "matchAny": false,
+          "limit": 100
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            53
+          ]
+        }
       }
     ]
   },
@@ -906,6 +958,391 @@
             "sum"
           ],
           "fields": ""
+        }
+      }
+    },
+    {
+      "id": 50,
+      "type": "row",
+      "title": "quote-service, in AWS, Azure and Google Cloud",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 51,
+      "type": "stat",
+      "title": "Version per cloud, staging",
+      "description": "What each cloud's staging target answers on /health, from the prober on the tools host, which calls every target every 5 seconds during a release. Side by side with the other environment, a grid of cloud by environment.",
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 6,
+        "h": 7
+      },
+      "timeFrom": "14d",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "GCP",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"quote-service\", kind=\"probe\", cloud=\"gcp\", environment=\"staging\"} | json | version != \"\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        },
+        {
+          "refId": "AZURE",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"quote-service\", kind=\"probe\", cloud=\"azure\", environment=\"staging\"} | json | version != \"\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        },
+        {
+          "refId": "AWS",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"quote-service\", kind=\"probe\", cloud=\"aws\", environment=\"staging\"} | json | version != \"\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Line"
+              ]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "None yet"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "GCP"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Google Cloud"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "AZURE"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Azure"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "AWS"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "AWS"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "text": {
+          "titleSize": 16,
+          "valueSize": 32
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 52,
+      "type": "stat",
+      "title": "Version per cloud, production",
+      "description": "What each cloud's production target answers on /health, from the prober on the tools host, which calls every target every 5 seconds during a release. Side by side with the other environment, a grid of cloud by environment.",
+      "gridPos": {
+        "x": 6,
+        "y": 26,
+        "w": 6,
+        "h": 7
+      },
+      "timeFrom": "14d",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "GCP",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"quote-service\", kind=\"probe\", cloud=\"gcp\", environment=\"production\"} | json | version != \"\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        },
+        {
+          "refId": "AZURE",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"quote-service\", kind=\"probe\", cloud=\"azure\", environment=\"production\"} | json | version != \"\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        },
+        {
+          "refId": "AWS",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "{source=\"release-demo\", service=\"quote-service\", kind=\"probe\", cloud=\"aws\", environment=\"production\"} | json | version != \"\" | line_format \"{{.version}}\"",
+          "queryType": "range",
+          "maxLines": 1,
+          "editorMode": "code"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Line"
+              ]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "None yet"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "GCP"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Google Cloud"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "AZURE"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Azure"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "AWS"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "AWS"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/"
+        },
+        "text": {
+          "titleSize": 16,
+          "valueSize": 32
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 53,
+      "type": "timeseries",
+      "title": "Response time per cloud",
+      "description": "How long each cloud takes to answer /health, staging and production together, measured from the tools host in eu-west-1 every 5 seconds during a release. Green marks are releases, red marks are rollbacks.",
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "avg by (cloud) (avg_over_time({source=\"release-demo\", service=\"quote-service\", kind=\"probe\"} | json | status=\"200\" | unwrap ms [1m]))",
+          "queryType": "range",
+          "legendFormat": "{{cloud}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "always",
+            "pointSize": 5,
+            "spanNulls": false,
+            "axisSoftMin": 0,
+            "barAlignment": 0,
+            "gradientMode": "none",
+            "lineInterpolation": "linear"
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "gcp"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Google Cloud"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "azure"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Azure"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "aws"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "AWS"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
         }
       }
     }

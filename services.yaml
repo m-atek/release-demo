@@ -339,6 +339,7 @@ quote-service:
   platform: three-clouds  # AWS Lambda, Azure Container Apps and Google Cloud Run
   path: services/quote-service
   runtime: python3.13     # the image's Python, for SonarQube
+  jcr: { shared: true }   # demos-candidates/quote-service/, demos-releases/quote-service/
 
   jira:
     project: ORD

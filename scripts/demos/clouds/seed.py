@@ -1,8 +1,8 @@
 """Put quote-service 1.1.0, the version every target starts on, in a cloud's registry.
 
     python scripts/demos/clouds/seed.py aws      build 1.1.0 from demo-states and push it to ECR
-    python scripts/demos/clouds/seed.py azure    copy it by digest from ECR to the Azure registry
-    python scripts/demos/clouds/seed.py gcp      copy it by digest from ECR to Artifact Registry
+    python scripts/demos/clouds/seed.py azure --registry <host> --repository quote-service   copy it by digest from ECR
+    python scripts/demos/clouds/seed.py gcp --registry <host> --repository <project>/quote-service/quote-service
 
 Terraform creates each cloud's functions or apps on this image, so it must be
 in the registry first: bootstrap.sh and up.sh run this between the registry
@@ -14,18 +14,16 @@ logins.
 
 import argparse
 import base64
-import json
 import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(1, str(Path(__file__).resolve().parents[2]))  # scripts/, for the shared helpers
+sys.path.append(str(Path(__file__).resolve().parents[2]))  # scripts/, for the shared helpers, after this folder
 
 from build import build_image  # noqa: E402
 from common import ROOT, aws_session, fail, service  # noqa: E402
 from identity import acr_password, azure, gcp  # noqa: E402
 from registry import Layout, Registry, copy  # noqa: E402
-from targets import cloud_settings  # noqa: E402
 
 VERSION = "1.1.0"
 
@@ -47,31 +45,33 @@ def seed_aws(config):
     print(f"ECR holds {config['name']}:{VERSION} as {digest}")
 
 
-def seed_from_ecr(config, cloud):
+def seed_from_ecr(config, cloud, registry, repository):
     source, source_repository = ecr()
     digest = source.digest(source_repository, VERSION)
     if not digest:
         fail(f"ECR has no {config['name']}:{VERSION} yet. First: scripts/demos/clouds/seed.py aws")
-    settings = cloud_settings(cloud, config)
-    if not settings.get("registry"):
-        fail(f"The {cloud} registry doesn't exist yet: apply its root with apps=true first.")
     if cloud == "azure":
-        login = azure(settings, None)
-        target = Registry(settings["registry"], "00000000-0000-0000-0000-000000000000",
-                          acr_password(login, settings["registry"]), name="Azure Container Registry")
+        tenant = azure({}, None)
+        target = Registry(registry, "00000000-0000-0000-0000-000000000000", acr_password(tenant, registry),
+                          name="Azure Container Registry")
     else:
-        login = gcp(settings, None)
-        target = Registry(settings["registry"], "oauth2accesstoken", login.access["token"], name="Artifact Registry")
-    copy(source, source_repository, digest, target, settings["repository"], VERSION)
-    print(json.dumps({"digest": digest}))
+        target = Registry(registry, "oauth2accesstoken", gcp({}, None).access["token"], name="Artifact Registry")
+    copy(source, source_repository, digest, target, repository, VERSION)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("cloud", choices=["aws", "azure", "gcp"])
+    parser.add_argument("--registry", help="azure and gcp: the registry's host, from its Terraform output")
+    parser.add_argument("--repository", help="azure and gcp: the repository, from its Terraform output")
     args = parser.parse_args()
     config = service("quote-service")
-    seed_aws(config) if args.cloud == "aws" else seed_from_ecr(config, args.cloud)
+    if args.cloud == "aws":
+        seed_aws(config)
+    elif not (args.registry and args.repository):
+        fail("--registry and --repository come from the cloud's Terraform output: up.sh passes them")
+    else:
+        seed_from_ecr(config, args.cloud, args.registry, args.repository)
 
 
 if __name__ == "__main__":

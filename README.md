@@ -276,6 +276,33 @@ What to say if asked: every tool is real, on a real AWS stack. The plan role rea
 
 After the call: nothing to stop. The stack has nothing that runs by the hour; the bucket and queue cost cents a month until reset removes them. `scripts/demo.sh status terraform` shows what exists.
 
+## Demo 5 on a call: one release, three clouds
+
+quote-service goes to AWS Lambda, Azure Container Apps and Google Cloud Run from one pipeline, as one image checked by its digest, with one change and no stored cloud keys: Jenkins signs an ID token per build (OpenID Connect Provider plugin), and each cloud trusts it. Its code is in `services/quote-service/`, its scripts in `scripts/demos/clouds/`, its Terraform in `infra/demos/5-three-clouds/` (AWS and the Jenkins issuer), `azure/` and `gcp/`.
+
+Once, per cloud, with your own short-lived logins:
+
+1. AWS: `scripts/demos/clouds/bootstrap.sh aws`. It makes the issuer, a public S3 bucket holding only Jenkins's two discovery files (the account's one public bucket, tagged as the exception), AWS's trust in it, ECR with 1.1.0 and both functions.
+2. Azure: a pay-as-you-go subscription. `brew install azure-cli`, `az login`, `.venv/bin/python scripts/secrets.py set azure`, then `scripts/demos/clouds/bootstrap.sh azure`: the deploy identity with its federated credential and a budget alert at 10 a month.
+3. Google Cloud: a project on a paid billing account. `brew install --cask gcloud-cli`, `gcloud auth login`, `gcloud auth application-default login`, `.venv/bin/python scripts/secrets.py set gcp`, then `scripts/demos/clouds/bootstrap.sh gcp`: the workload identity pool, the deploy service account and a budget alert.
+4. `.venv/bin/python scripts/demos/clouds/servicenow_items.py create quote-service` for the three per-cloud CMDB items, after `servicenow_setup.py`.
+
+Before a call:
+
+```bash
+scripts/demo.sh up clouds                          # Azure's and Google Cloud's registries and apps, on 1.1.0; waits for all six
+.venv/bin/python scripts/demos/clouds/reset.py     # all six targets on 1.1.0, main on 1.1.0, ORD-60 reopened
+.venv/bin/python scripts/stage.py quote-service 1.2.0
+```
+
+Then in Slack, as Sam: `/release quote-service ORD-60`. Show the Staging stage's log: the ID token, one line per cloud accepting it with the time its access expires, the image copied by digest from JFrog to ECR, Azure Container Registry and Artifact Registry, and the digest check with one line per registry. Alex approves in ServiceNow; production goes Google Cloud, Azure, AWS, each checked before the next. For the failure, `stage.py quote-service 1.2.1` and release again under ORD-60: Azure's production app lacks a setting 1.2.1 reads, so Google Cloud keeps 1.2.1, Azure goes back to 1.2.0 within two minutes, and AWS is never touched. The change lists every cloud and its version. Grafana's quote-service row shows the version per cloud and environment, and the response time per cloud.
+
+After the call: `scripts/demo.sh down clouds` deletes Azure's and Google Cloud's registries and apps (the Azure registry is billed per day while it exists); their trust in Jenkins stays. `scripts/demo.sh status clouds` shows what runs. AWS costs cents at most, and nothing while idle.
+
+If a cloud refuses the ID token with "published keys are out of date": Jenkins makes new keys at every start and configuration reload, and the tools host publishes them at boot. After a reload, on the host: `sudo /opt/release-demo-venv/bin/python scripts/demos/clouds/oidc_issuer.py publish`.
+
+The scripts' tests: `.venv/bin/python -m pytest -q scripts/demos/clouds/tests`.
+
 ## Layout
 
 ```

@@ -23,7 +23,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-sys.path.insert(1, str(Path(__file__).resolve().parents[2]))  # scripts/, for the shared helpers
+sys.path.append(str(Path(__file__).resolve().parents[2]))  # scripts/, for the shared helpers, after this folder
 
 from common import get_parameter, http_get, service, ssm_client  # noqa: E402
 from events import send  # noqa: E402
@@ -58,7 +58,7 @@ def probe(target):
         except ValueError:
             pass
     return {"service": "quote-service", "cloud": cloud, "environment": environment, "version": version,
-            "status": status, "ms": milliseconds}
+            "status": status, "ms": milliseconds, "at": int(time.time())}
 
 
 def push(loki, results):

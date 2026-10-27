@@ -29,6 +29,7 @@ CLOUDS=aws limits a run to some clouds, for trying one cloud on its own.
 import argparse
 import hashlib
 import io
+import json
 import os
 import subprocess
 import sys
@@ -36,7 +37,7 @@ import time
 import zipfile
 from pathlib import Path
 
-sys.path.insert(1, str(Path(__file__).resolve().parents[2]))  # scripts/, for the shared helpers
+sys.path.append(str(Path(__file__).resolve().parents[2]))  # scripts/, for the shared helpers, after this folder
 
 import run_state  # noqa: E402
 from check import check_cloud, cloud_names  # noqa: E402
@@ -63,9 +64,12 @@ def clouds_in_order(config):
 
 
 def label(state):
-    """What tells this run's revisions and tags apart: b17 for Jenkins build 17."""
-    build = str(state.get("build", {}).get("number", "local"))
-    return f"b{build}" if build.isdigit() else f"local{int(time.time()) % 1000000}"
+    """What tells this run's revisions and tags apart: b17 for Jenkins build 17.
+    Kept in the run state, so staging and production use the same one."""
+    if not state.get("image", {}).get("label"):
+        build = str(state.get("build", {}).get("number", "local"))
+        state.setdefault("image", {})["label"] = f"b{build}" if build.isdigit() else f"local{int(time.time()) % 1000000}"
+    return state["image"]["label"]
 
 
 # The image -------------------------------------------------------------------
@@ -118,7 +122,7 @@ def distribute(layout, digest, tag, places):
 
 def digest_check(digest, tag, places):
     """Every registry must hold the build's digest under this run's tag. Nothing deploys otherwise."""
-    print("Digest check, before any deploy:")
+    print(f"Digest check of {tag}, before any deploy:")
     width = max(len(r.name) for r, _ in places)
     wrong = []
     for registry, repository in places:
@@ -234,10 +238,11 @@ def deploy(config, environment, clouds, state):
     run_label = label(state)
     tag = f"{version}-{run_label.removeprefix('b')}"
     layout, digest = package_layout(state, workspace)
-    expected = state.get("image", {}).get("digest")
+    info = workspace / "dist" / config["name"] / "build-info.json"
+    expected = json.loads(info.read_text()).get("image", {}).get("digest") if info.exists() else None
     if expected and expected != digest:
-        fail(f"The package holds image {digest}, but this run built {expected}.")
-    state["image"] = {"digest": digest, "tag": tag}
+        fail(f"The package holds image {digest}, but this run's build made {expected}.")
+    state["image"].update(digest=digest, tag=tag)
 
     targets = list(sign_in_all(config, clouds, environment).values())
     places = registries(targets)

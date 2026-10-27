@@ -37,7 +37,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-sys.path.insert(1, str(Path(__file__).resolve().parents[2]))  # scripts/, for the shared helpers
+sys.path.append(str(Path(__file__).resolve().parents[2]))  # scripts/, for the shared helpers, after this folder
 
 from common import ROOT, fail, service, version_of, write_json  # noqa: E402
 from registry import Layout, Registry, image_manifest, sha256  # noqa: E402

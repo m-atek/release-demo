@@ -28,7 +28,7 @@ import urllib.request
 from collections import namedtuple
 from pathlib import Path
 
-sys.path.insert(1, str(Path(__file__).resolve().parents[2]))  # scripts/, for the shared helpers
+sys.path.append(str(Path(__file__).resolve().parents[2]))  # scripts/, for the shared helpers, after this folder
 
 from common import fail, ssm_client  # noqa: E402
 from identity import acr_password  # noqa: E402

@@ -218,6 +218,9 @@ class Layout:
             raise RegistryError(f"The build holds {len(manifests)} images, expected one")
         return manifests[0]
 
+    def digest(self, repository, reference, push=False):
+        return self.image()["digest"] if (self.path / "index.json").exists() else None
+
     def manifest(self, repository, reference):
         descriptor = self.image()
         if reference not in (descriptor["digest"], "latest"):
