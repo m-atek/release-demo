@@ -63,3 +63,14 @@ def test_a_site_whose_run_failed_before_its_servers_is_no_clean_rollout():
     assert report.stopped_at(table) is None
     assert report.summary(table, "2.8.0").endswith(
         "Rollout stopped before inv-dc-01: its run failed before reaching it (see above).")
+
+
+def test_the_slack_line_goes_through_the_shared_notify(monkeypatch):
+    import subprocess
+    from pathlib import Path
+
+    calls = []
+    monkeypatch.setattr(subprocess, "run", lambda command, check: calls.append(command))
+    report.post_line("inv-dc-01 failed its check. Rolled back to 2.7.3. Rollout stopped.")
+    script = Path(calls[0][1])
+    assert script.name == "notify.py" and script.exists() and script.parent.name == "scripts"

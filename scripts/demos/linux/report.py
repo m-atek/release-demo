@@ -159,4 +159,4 @@ def post_line(text):
     """The Slack line, through the shared notify.py, before the pipeline's own stop."""
     import subprocess
 
-    subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1] / "notify.py"), "line", text], check=False)
+    subprocess.run([sys.executable, str(Path(__file__).resolve().parents[2] / "notify.py"), "line", text], check=False)
