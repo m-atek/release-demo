@@ -115,7 +115,8 @@ resource "aws_s3_object" "discovery" {
     token_endpoint                        = "https://unimplemented"
   })
   lifecycle {
-    ignore_changes = [content, etag, cache_control]
+    # oidc_issuer.py rewrites both files, without tags.
+    ignore_changes = [content, etag, cache_control, tags_all]
   }
 }
 
@@ -125,7 +126,8 @@ resource "aws_s3_object" "jwks" {
   content_type = "application/json"
   content      = jsonencode({ keys = [] })
   lifecycle {
-    ignore_changes = [content, etag, cache_control]
+    # oidc_issuer.py rewrites both files, without tags.
+    ignore_changes = [content, etag, cache_control, tags_all]
   }
 }
 
