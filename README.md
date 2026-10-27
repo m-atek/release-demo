@@ -291,7 +291,7 @@ Before a call:
 
 ```bash
 scripts/demo.sh up clouds                          # Azure's and Google Cloud's registries and apps, on 1.1.0; waits for all six
-.venv/bin/python scripts/demos/clouds/reset.py     # all six targets on 1.1.0, main on 1.1.0, ORD-60 reopened
+.venv/bin/python scripts/reset.py clouds           # all six on 1.1.0, main on 1.1.0, ORD-60 reopened; or the Jenkins job reset, DEMO=clouds
 .venv/bin/python scripts/stage.py quote-service 1.2.0
 ```
 
