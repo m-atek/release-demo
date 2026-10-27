@@ -122,7 +122,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**Demo system, not a client's.** orders-service is a fictional service. The releases, events and metrics on this dashboard come from real runs of the demo's release pipeline."
+        "content": "**Demo system, not a client's.** The releases, events and metrics on this dashboard come from real runs of the release pipeline."
       }
     },
     {
