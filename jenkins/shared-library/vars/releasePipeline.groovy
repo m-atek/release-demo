@@ -139,7 +139,10 @@ void stopped(error) {
     if (state('total')) {
         return  // the rollback already told everyone
     }
-    withEnv(["REASON=${(error.message ?: error.toString()).readLines().first()}"]) {
+    // The notes add their own full stop after the reason, so one it ends with goes:
+    // "fails its check too." would read "too.. Look at production now."
+    String reason = (error.message ?: error.toString()).readLines().first().replaceAll(/\.+$/, '')
+    withEnv(["REASON=${reason}"]) {
         sh(returnStatus: true, script: 'python3 scripts/notify.py finish failed')
         if (state('change.closed')) {
             echo "The change is closed already: ${state('change.closed')}."
