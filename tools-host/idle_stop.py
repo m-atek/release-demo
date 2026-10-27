@@ -49,6 +49,10 @@ def main():
     secrets = Path(sys.argv[1])
     now = time.time()
     state = json.loads(STATE.read_text()) if STATE.exists() else {"last_active": now, "requests": None}
+    # Idle time counts from this boot at the earliest: a state file from before
+    # a stop would otherwise power the host off 10 minutes after every start.
+    booted = now - float(Path("/proc/uptime").read_text().split()[0])
+    state["last_active"] = max(state["last_active"], booted)
 
     requests = tunnel_requests()
     if jenkins_busy(secrets) or requests != state["requests"]:
