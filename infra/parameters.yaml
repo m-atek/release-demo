@@ -121,10 +121,15 @@ cloudflare/access-email:
   secure: true
   help: "The email Cloudflare Access lets into Jenkins, JCR and Splunk."
 
+jcr/admin-password:
+  source: you
+  secure: true
+  help: "The JCR admin password you set in its setup wizard. scripts/jcr_setup.py and reset.py use it on the host."
+
 jcr/token:
   source: script
   secure: true
-  help: "Access token of the JCR user release-pipeline. Written by scripts/jcr_setup.py."
+  help: "Access token of the JCR user release-pipeline. Written by scripts/jcr_setup.py on the tools host."
 
 splunk/general-terms-accepted:
   source: script

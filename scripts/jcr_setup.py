@@ -1,9 +1,11 @@
 """Set up JFrog Container Registry for the release pipeline. Idempotent.
 
-    python scripts/jcr_setup.py --local
+    python scripts/jcr_setup.py --local   JCR in Docker on this Mac
+    python scripts/jcr_setup.py --host    on the EC2 tools host, through SSM Run Command
 
 Run it once after the first start, when you have accepted JCR's licence in its
-UI and set the admin password there. It asks for that password, then creates:
+UI and set the admin password there. --local asks for that password; --host
+reads it from SSM (jcr/admin-password). Then it creates:
 
 - per service in services.yaml, the Generic repositories <service>-candidates
   and <service>-releases, plus docker-local and helm-local;
@@ -11,9 +13,11 @@ UI and set the admin password there. It asks for that password, then creates:
   but no delete, so a stored package can't be overwritten;
 - an access token for release-pipeline, which Jenkins uses as jcr-token.
 
-Where JCR refuses an API call, the script prints the steps for the UI, waits,
-and checks the result. --local writes the token to the local secrets folder and
-reloads Jenkins' configuration; on the EC2 host it will go to SSM instead.
+Where JCR refuses an API call, the script prints the steps for the UI, waits
+and checks the result; on the host, where nobody can press Enter, it prints
+them and stops, so you do them and run it again. --local writes the token to
+the local secrets folder; --host writes it to SSM and the host's tmpfs. Either
+way Jenkins then reloads its configuration. A token that still works is kept.
 """
 
 import argparse
@@ -22,17 +26,21 @@ import getpass
 import http.cookiejar
 import json
 import os
+import subprocess
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-from common import fail, services
+from common import ROOT, fail, get_parameter, put_parameter, services, ssm_client
 
 JCR = "http://localhost:8082"
 JENKINS = "http://localhost:8080"
-SECRETS_DIR = Path(os.environ.get("RELEASE_DEMO_STATE") or Path(
+LOCAL_SECRETS = Path(os.environ.get("RELEASE_DEMO_STATE") or Path(
     os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "release-demo") / "secrets"
+HOST_SECRETS = Path("/run/release-demo/secrets")
+UI = {"local": "http://localhost:8082", "host": "https://artifactory-demo.es.nl"}
+ui = UI["local"]
 USER = "release-pipeline"
 TOKEN_SECONDS = 365 * 24 * 3600
 
@@ -66,9 +74,11 @@ class Client:
 
 def by_hand(steps, check):
     """Print UI steps, wait for Enter, and confirm the result."""
-    print("JCR didn't accept this through its API. In the JCR UI at " + JCR + ":")
+    print("JCR didn't accept this through its API. In the JCR UI at " + ui + ":")
     for number, step in enumerate(steps, 1):
         print(f"  {number}. {step}")
+    if not sys.stdin.isatty():
+        fail("Do these steps in the UI, then run this again.")
     while True:
         input("Press Enter when it's done. ")
         if check():
@@ -138,14 +148,27 @@ def create_token(jcr):
     if status == 200 and isinstance(reply, dict) and reply.get("access_token"):
         print(f"  token for {USER}: created, valid for a year")
         return reply["access_token"]
-    print("JCR didn't create the token through its API. In the JCR UI:")
+    print(f"JCR didn't create the token through its API. In the JCR UI at {ui}:")
     print("  1. Administration, User Management, Access Tokens, Generate Token.")
     print(f"  2. Token scope: User. User name: {USER}. Expiration: 1 year. Generate, then copy it.")
+    if not sys.stdin.isatty():
+        fail("Then store it: python scripts/secrets.py set jcr/token --force")
     return getpass.getpass("Paste the token (it isn't shown): ").strip()
 
 
-def reload_jenkins():
-    password = (SECRETS_DIR / "jenkins-admin-password").read_text().strip()
+def token_works(token, key):
+    """The token can read a pipeline repository, so it is release-pipeline's and still valid."""
+    request = urllib.request.Request(f"{JCR}/artifactory/api/repositories/{key}",
+                                     headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return response.status == 200
+    except urllib.error.URLError:
+        return False
+
+
+def reload_jenkins(secrets_dir):
+    password = (secrets_dir / "jenkins-admin-password").read_text().strip()
     jenkins = Client(JENKINS, "admin", password)
     status, crumb = jenkins.call("GET", "/crumbIssuer/api/json")
     if status != 200:
@@ -158,35 +181,51 @@ def reload_jenkins():
 
 
 def main():
+    global ui
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--local", action="store_true", help="JCR on localhost; token to the local secrets folder")
+    where = parser.add_mutually_exclusive_group(required=True)
+    where.add_argument("--local", action="store_true", help="JCR in Docker on this Mac")
+    where.add_argument("--host", action="store_true", help="on the EC2 tools host")
     args = parser.parse_args()
-    if not args.local:
-        fail("Only --local works until the EC2 tools host exists.")
 
-    password = os.environ.get("JCR_ADMIN_PASSWORD") or getpass.getpass("JCR admin password: ")
+    if args.host:
+        ui, ssm = UI["host"], ssm_client()
+        password = get_parameter(ssm, "jcr/admin-password")
+    else:
+        password = os.environ.get("JCR_ADMIN_PASSWORD") or getpass.getpass("JCR admin password: ")
     jcr = Client(JCR, "admin", password)
     status, _ = jcr.call("GET", "/artifactory/api/system/version")
     if status == 401:
         fail("JCR refused that password. Use the admin password you set in JCR's UI.")
     if status != 200:
-        fail(f"JCR answered {status}. Open {JCR}, accept the licence and finish the setup wizard first.")
+        fail(f"JCR answered {status}. Open {ui}, accept the licence and finish the setup wizard first.")
 
     keys = repositories()
     for key, package_type in keys:
         ensure_repository(jcr, key, package_type)
     ensure_user(jcr)
     ensure_permission(jcr, [key for key, _ in keys])
+
+    if args.host:
+        current = ssm.get_parameter(Name="/release-demo/jcr/token", WithDecryption=True)["Parameter"]["Value"]
+        if current != "unset" and token_works(current, keys[0][0]):
+            print(f"  token for {USER}: the stored one still works")
+        else:
+            put_parameter(ssm, "jcr/token", create_token(jcr) or fail("No token: nothing saved."))
+            print("Saved the token to SSM")
+        subprocess.run([sys.executable, str(ROOT / "tools-host" / "host_secrets.py"), str(HOST_SECRETS)], check=True)
+        reload_jenkins(HOST_SECRETS)
+        return
+
     token = create_token(jcr)
     if not token:
         fail("No token: nothing saved.")
-
-    SECRETS_DIR.mkdir(parents=True, exist_ok=True)
-    target = SECRETS_DIR / "jcr-token"
+    LOCAL_SECRETS.mkdir(parents=True, exist_ok=True)
+    target = LOCAL_SECRETS / "jcr-token"
     target.write_text(token + "\n")
     target.chmod(0o600)
     print(f"Saved the token to {target}")
-    reload_jenkins()
+    reload_jenkins(LOCAL_SECRETS)
 
 
 if __name__ == "__main__":

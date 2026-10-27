@@ -59,9 +59,12 @@ data "aws_iam_policy_document" "tools_host" {
     resources = ["arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/cloudflare/api-token"]
   }
   statement {
-    sid       = "WriteReleaseBotToken"
-    actions   = ["ssm:PutParameter"]
-    resources = ["arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/jenkins/release-bot-api-token"]
+    sid     = "WriteHostMadeTokens"
+    actions = ["ssm:PutParameter"]
+    resources = [
+      "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/jenkins/release-bot-api-token",
+      "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/jcr/token",
+    ]
   }
   statement {
     sid       = "AssumeDeployRoles"

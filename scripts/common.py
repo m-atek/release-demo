@@ -79,7 +79,10 @@ def put_parameter(client, name, value, secure=True):
 
 
 def get_parameter(client, name):
-    value = client.get_parameter(Name=SSM_PREFIX + name, WithDecryption=True)["Parameter"]["Value"]
+    try:
+        value = client.get_parameter(Name=SSM_PREFIX + name, WithDecryption=True)["Parameter"]["Value"]
+    except client.exceptions.ParameterNotFound:
+        fail(f"{SSM_PREFIX}{name} doesn't exist yet. Apply infra/ first: scripts/tf.sh apply")
     if value == "unset":
         fail(f"{SSM_PREFIX}{name} isn't set yet. See: python scripts/secrets.py")
     return value
