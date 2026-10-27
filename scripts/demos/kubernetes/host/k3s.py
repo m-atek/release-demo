@@ -211,10 +211,23 @@ def down():
     if subprocess.run(["systemctl", "is-active", "--quiet", "k3s"]).returncode == 0:
         run("systemctl", "stop", "k3s")
     # Stopping the service leaves the pods' containers running; this stops them too.
+    # It finds them by the data folder, so it must know ours.
     if Path("/usr/local/bin/k3s-killall.sh").exists():
-        run("/usr/local/bin/k3s-killall.sh", check=False)
-    k3s_mib, pods_mib = memory()
-    print(f"k3s stopped. Memory left: k3s {k3s_mib} MiB, pods {pods_mib} MiB")
+        subprocess.run(["/usr/local/bin/k3s-killall.sh"], capture_output=True,
+                       env={**os.environ, "K3S_DATA_DIR": DATA_DIR})
+    # Without pstree on the host, it kills the shims but not the containers under them;
+    # the kernel stops whatever is left in the pods' cgroup.
+    for name in ("kubepods.slice", "kubepods"):
+        kill = Path("/sys/fs/cgroup") / name / "cgroup.kill"
+        if kill.exists():
+            kill.write_text("1")
+    time.sleep(1)
+    left = subprocess.run(["pgrep", "-f", f"{DATA_DIR}/data/"], capture_output=True, text=True).stdout.split()
+    pods = [line for name in ("kubepods.slice", "kubepods")
+            for f in (Path("/sys/fs/cgroup") / name).rglob("cgroup.procs") for line in f.read_text().split()]
+    if left or pods:
+        raise SystemExit(f"k3s stopped, but {len(left) + len(pods)} of its processes still run")
+    print("k3s stopped, and every pod with it.")
 
 
 def status():
