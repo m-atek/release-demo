@@ -5,13 +5,13 @@
 # with your gcloud login: the APIs, the workload identity pool whose provider
 # trusts the Jenkins issuer (for the job release only), the deploy service
 # account Jenkins acts as, the runtime service account the services run as
-# (no roles at all), and the budget alert. With apps = true, from
+# (no roles at all). With apps = true, from
 # scripts/demo.sh up clouds: the registry and both services. down sets
 # apps = false, which deletes them. The pool stays: Google keeps a deleted
 # pool's name for 30 days.
 #
 # Run it through scripts/demos/clouds/tf.sh gcp ..., which takes the project
-# and billing account from SSM and signs in to AWS for the state and issuer.
+# from SSM and signs in to AWS for the state and issuer.
 
 terraform {
   required_version = ">= 1.10"
@@ -44,11 +44,6 @@ provider "aws" {
 
 variable "project_id" {
   description = "The Google Cloud project, from SSM (gcp/project-id) through tf.sh."
-  type        = string
-}
-
-variable "billing_account" {
-  description = "The billing account for the budget alert, from SSM (gcp/billing-account-id) through tf.sh."
   type        = string
 }
 
@@ -137,27 +132,8 @@ resource "google_service_account_iam_member" "deployer_uses_runtime" {
   member             = "serviceAccount:${google_service_account.deployer.email}"
 }
 
-# In the billing account's own currency. Billing admins get the emails.
-resource "google_billing_budget" "monthly" {
-  billing_account = var.billing_account
-  display_name    = "release-demo-monthly"
-  budget_filter {
-    projects = ["projects/${data.google_project.current.number}"]
-  }
-  amount {
-    specified_amount {
-      units = "10"
-    }
-  }
-  threshold_rules {
-    threshold_percent = 1.0
-  }
-  threshold_rules {
-    threshold_percent = 1.0
-    spend_basis       = "FORECASTED_SPEND"
-  }
-  depends_on = [google_project_service.apis]
-}
+# The billing account's budget alert (EUR 10 a month, to its admins) is set on
+# the billing account itself, not here, so tearing down the demo never removes it.
 
 # Up -------------------------------------------------------------------------
 

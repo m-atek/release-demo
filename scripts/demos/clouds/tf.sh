@@ -46,8 +46,7 @@ case $cloud in
     gcloud auth application-default print-access-token >/dev/null 2>&1 ||
       { echo "No Google Cloud login for Terraform. Run: gcloud auth application-default login"; exit 1; }
     TF_VAR_project_id=$(parameter gcp/project-id)
-    TF_VAR_billing_account=$(parameter gcp/billing-account-id)
-    export TF_VAR_project_id TF_VAR_billing_account
+    export TF_VAR_project_id
     ;;
 esac
 

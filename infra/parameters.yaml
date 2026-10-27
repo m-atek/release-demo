@@ -284,12 +284,6 @@ gcp/project-id:
   help: "The Google Cloud project's id, not its name or number: gcloud projects list."
   pattern: "^[a-z][a-z0-9-]{4,28}[a-z0-9]$"
   hint: "a project id is 6 to 30 lower-case letters, digits and dashes"
-gcp/billing-account-id:
-  source: you
-  secure: false
-  help: "The billing account the project uses, for the budget alert: gcloud billing accounts list (XXXXXX-XXXXXX-XXXXXX)."
-  pattern: "^[0-9A-F]{6}-[0-9A-F]{6}-[0-9A-F]{6}$"
-  hint: "a billing account id is three groups of six capitals and digits"
 jenkins/oidc-issuer:
   source: terraform
   secure: false
