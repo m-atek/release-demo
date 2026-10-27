@@ -84,8 +84,7 @@ def todays_orders(today=None):
     today = today or datetime.date.today()
     pick = _picker(today.isoformat())
     orders = []
-    # Newest first.
-    for number in reversed(range(1, 8 + pick(7) + 1)):
+    for number in range(1, 8 + pick(7) + 1):
         first = pick(len(PRODUCTS))
         lines = [PRODUCTS[(first + n) % len(PRODUCTS)] for n in range(1 + pick(3))]
         orders.append(
