@@ -44,14 +44,18 @@ def qualityGate(String service, String version) {
 }
 
 // Syft and Grype ship as images without a shell, so they run with docker run.
+// Neither image has a /tmp the agent's user can write, so each gets a cache
+// directory on the data volume for its cache and temporary files.
 def sbomAndScan(String service) {
+    String cache = '/data/jenkins-agent/cache'
     sh """
-        rm -rf .release/package && mkdir -p .release/package .release/reports /data/jenkins-agent/cache/grype
+        rm -rf .release/package && mkdir -p .release/package .release/reports ${cache}/syft ${cache}/grype
         python3 -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" dist/${service}/*.zip .release/package
-        docker run --rm --user \$(id -u):\$(id -g) -v "\$PWD:/work" ${SYFT} \\
+        docker run --rm --user \$(id -u):\$(id -g) -v "\$PWD:/work" -v ${cache}/syft:/cache \\
+            -e SYFT_CACHE_DIR=/cache -e TMPDIR=/cache ${SYFT} \\
             dir:/work/.release/package --source-name ${service} -o cyclonedx-json=/work/.release/reports/sbom.cdx.json
-        docker run --rm --user \$(id -u):\$(id -g) -v "\$PWD:/work" -v /data/jenkins-agent/cache/grype:/cache \\
-            -e GRYPE_DB_CACHE_DIR=/cache ${GRYPE} sbom:/work/.release/reports/sbom.cdx.json \\
+        docker run --rm --user \$(id -u):\$(id -g) -v "\$PWD:/work" -v ${cache}/grype:/cache \\
+            -e GRYPE_DB_CACHE_DIR=/cache -e TMPDIR=/cache ${GRYPE} sbom:/work/.release/reports/sbom.cdx.json \\
             --fail-on critical -o table -o json=/work/.release/reports/grype.json
     """
 }
