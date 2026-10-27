@@ -81,10 +81,11 @@ def products():
 
 
 def shelf_price(sku, store):
-    """A store in a region with its own price list gets the regional price."""
-    region = store.split("-")[0]
-    if region in REGIONAL_PRICES:
-        return REGIONAL_PRICES[region][sku], "regional"
+    """A store in a region with its own price list gets the regional price
+    where that list has the product, and the national price otherwise."""
+    regional = REGIONAL_PRICES.get(store.split("-")[0], {})
+    if sku in regional:
+        return regional[sku], "regional"
     return PRODUCTS[sku][1], "national"
 
 
