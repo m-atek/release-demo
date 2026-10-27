@@ -176,8 +176,10 @@ def connect_agent():
         print("  Not connected yet: dc-agent has no Cloudflare Access service token "
               "(cloudflare/dc-agent-client-id in SSM). See the README, demo 3.")
         return False
+    # Cloudflare turns away Python's default User-Agent with a 403, so the requests name themselves.
     headers = {"CF-Access-Client-Id": values["cloudflare/dc-agent-client-id"],
-               "CF-Access-Client-Secret": values["cloudflare/dc-agent-client-secret"]}
+               "CF-Access-Client-Secret": values["cloudflare/dc-agent-client-secret"],
+               "User-Agent": "release-demo demo.sh up linux"}
     import base64
 
     admin = "Basic " + base64.b64encode(f"admin:{get_parameter(ssm, 'jenkins/admin-password')}".encode()).decode()

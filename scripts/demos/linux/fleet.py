@@ -248,7 +248,9 @@ def run_dc_multipass(playbook, extra_vars, names, tags, secrets, prefix):
             tar.addfile(info, io.BytesIO(data))
         multipass("exec", DC_AGENT, "--", "sudo", "-u", "jenkins", "sh", "-c",
                   f"rm -rf {remote} && mkdir -p {remote} && tar -x -C {remote}", stdin=bundle.read_bytes())
-    script = (f"set -a; . /dev/stdin; set +a; cd {remote} && INVENTORY_DC_HERE=1 python3 "
+    # eval "$(cat)", not ". /dev/stdin": as jenkins, bash may not reopen the
+    # pipe sudo hands it, and the secrets would silently stay unset.
+    script = (f"set -a; eval \"$(cat)\"; set +a; cd {remote} && INVENTORY_DC_HERE=1 python3 "
               f"scripts/demos/linux/datacenter.py --request-file request.json --results {remote}/results.jsonl")
     env_lines = "".join(f"{key}={shlex.quote(value)}\n" for key, value in secrets.items())
     code = stream(["multipass", "exec", DC_AGENT, "--", "sudo", "-u", "jenkins", "-H", "bash", "-c", script],
