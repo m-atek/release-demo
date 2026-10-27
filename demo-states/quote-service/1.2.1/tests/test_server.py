@@ -64,6 +64,13 @@ def test_without_the_setting_gbp_quotes_and_the_page_fail(monkeypatch):
     assert request("/health")[0] == 200
 
 
+def test_a_gbp_rate_that_is_not_a_number_fails_the_quote(monkeypatch):
+    monkeypatch.setenv("QUOTE_GBP_RATE", "eighty-six")
+    status, _, body = request("/api/quote?amount=100&currency=GBP")
+    assert status == 500
+    assert body["error"] == "QUOTE_GBP_RATE is not a number: 'eighty-six'"
+
+
 def test_quote_in_eur_is_valid_for_30_days():
     body = app.quote(120, "EUR", today=datetime.date(2026, 10, 27))
     assert body["total"] == 120.0
