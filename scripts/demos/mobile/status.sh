@@ -15,7 +15,7 @@ else
   echo "  bucket: none (scripts/demos/mobile/tf.sh apply)"
   exit 0
 fi
-if [[ -f $STATE/mobile-console.pid ]] && kill -0 "$(cat "$STATE/mobile-console.pid")" 2>/dev/null; then
+if pgrep -f "scripts/demos/mobile/console.py" >/dev/null; then
   echo "  console: running on http://127.0.0.1:8077"
 else
   echo "  console: stopped"

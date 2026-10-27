@@ -81,8 +81,8 @@ def check_jamf(state, environment, version, timeout, checks, clock=time.monotoni
     if environment == "production" and not checks.failed:
         everyone = client.devices(settings["all_group"])
         have = sum(1 for d in everyone if (client.installed(d["id"], bundle) or {}).get("version") == version)
-        print(f"ok   {have} of {len(everyone)} store devices report {version} so far; "
-              "the rest install it when they check in")
+        rest = "" if have == len(everyone) else "; the rest install it when they check in"
+        print(f"ok   {have} of {len(everyone)} store devices report {version}{rest}")
 
 
 def check_stores(state, environment, version, timeout, checks, clock=time.monotonic, sleep=time.sleep):

@@ -4,8 +4,7 @@
 
 set -euo pipefail
 STATE=${XDG_STATE_HOME:-$HOME/.local/state}/release-demo
-if [[ -f $STATE/mobile-console.pid ]] && kill -0 "$(cat "$STATE/mobile-console.pid")" 2>/dev/null; then
-  kill "$(cat "$STATE/mobile-console.pid")"
+if pkill -f "scripts/demos/mobile/console.py" 2>/dev/null; then
   echo "Console stopped"
 else
   echo "Console wasn't running"

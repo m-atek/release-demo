@@ -28,10 +28,10 @@ if not store.read("testflight.json"):
 PY
 )
 
-if [[ -f $STATE/mobile-console.pid ]] && kill -0 "$(cat "$STATE/mobile-console.pid")" 2>/dev/null; then
+if pgrep -f "scripts/demos/mobile/console.py" >/dev/null; then
   echo "Console already running: http://127.0.0.1:8077"
 else
-  (cd "$ROOT" && nohup "$PY" scripts/demos/mobile/console.py > "$STATE/mobile-console.log" 2>&1 & echo $! > "$STATE/mobile-console.pid")
+  (cd "$ROOT" && nohup "$PY" scripts/demos/mobile/console.py > "$STATE/mobile-console.log" 2>&1 &)
   for _ in $(seq 1 30); do
     curl -sf -o /dev/null http://127.0.0.1:8077/jamf && break
     sleep 1

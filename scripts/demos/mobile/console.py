@@ -48,7 +48,7 @@ table { width: 100%; border-collapse: collapse; background: var(--paper); border
 th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { background: #eef0f3; font-size: 15px; color: var(--muted); }
 pre { margin: 0; white-space: pre-wrap; font: inherit; }
-code { font: 15px/1.4 ui-monospace, Menlo, monospace; }
+code { font: 15px/1.4 ui-monospace, Menlo, monospace; word-break: break-all; }
 .muted { color: var(--muted); }
 """
 
