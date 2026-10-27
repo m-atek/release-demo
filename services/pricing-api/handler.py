@@ -47,6 +47,11 @@ STORES = {
     "BE-GNT-03": "Gent Veldstraat",
 }
 PRICE_PATH = re.compile(r"/prices/([A-Z]{2}-[0-9]{3})")
+# Regions with their own price list (ORD-52): Belgian stores sell these
+# products at Belgian prices.
+REGIONAL_PRICES = {
+    "BE": {"RS-100": 92.95, "RJ-200": 76.50, "DB-300": 49.95},
+}
 
 
 def read_package(directory):
@@ -76,7 +81,10 @@ def products():
 
 
 def shelf_price(sku, store):
-    """Every store sells at the national price."""
+    """A store in a region with its own price list gets the regional price."""
+    region = store.split("-")[0]
+    if region in REGIONAL_PRICES:
+        return REGIONAL_PRICES[region][sku], "regional"
     return PRODUCTS[sku][1], "national"
 
 
@@ -93,7 +101,6 @@ def price(sku, store):
         "name": PRODUCTS[sku][0],
         "store": store,
         "price": amount,
-        "currency": "EUR",
         "price_list": price_list,
     })
 

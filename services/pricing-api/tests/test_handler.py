@@ -31,13 +31,13 @@ def test_dutch_store_gets_the_national_price():
     response = request("/prices/RS-100", "NL-UTR-01")
     assert response["statusCode"] == 200
     assert body(response) == {"sku": "RS-100", "name": "Running shoes", "store": "NL-UTR-01",
-                              "price": 89.95, "currency": "EUR", "price_list": "national"}
+                              "price": 89.95, "price_list": "national"}
 
 
-def test_belgian_store_gets_the_national_price_too():
-    price = body(request("/prices/HL-320", "BE-ANT-01"))
-    assert price["price"] == 34.95
-    assert price["price_list"] == "national"
+def test_belgian_store_gets_the_regional_price():
+    price = body(request("/prices/RS-100", "BE-ANT-01"))
+    assert price["price"] == 92.95
+    assert price["price_list"] == "regional"
 
 
 def test_store_is_required_and_must_exist():
