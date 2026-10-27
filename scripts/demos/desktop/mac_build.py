@@ -117,6 +117,9 @@ def xcode():
         return None
     result = run(["xcodebuild", "-version"], check=False, quiet=True)
     match = re.search(r"Xcode (\d+)(\.\d+)*", result.stdout)
+    if match and run(["xcodebuild", "-checkFirstLaunchStatus"], check=False, quiet=True).returncode != 0:
+        raise SystemExit(f"Xcode {match.group(0).split()[1]} hasn't finished its first launch: "
+                         "run sudo xcodebuild -runFirstLaunch on the Mac agent.")
     return match.group(0).split()[1] if match else None
 
 

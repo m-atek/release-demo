@@ -42,7 +42,7 @@ plus a few of its own under /standin/:
 The stand-in says what it is in its startup log; nothing else marks it.
 
     python jamf.py serve --dir .local/jamf --port 8090     the stand-in on this Mac, for development and tests
-    python jamf.py ui-link                                  a signed link to the stand-in's page, valid 12 hours
+    python jamf.py ui-link [--only "Store Assistant"]      open the stand-in's page with a signed link, valid 12 hours
     python jamf.py status                                   policies, apps, scope and inventory, in the terminal
 
 Standard library only (boto3 on Lambda and for SSM).
@@ -1356,7 +1356,9 @@ def main():
     server = sub_parsers.add_parser("serve", help="run the stand-in on this machine")
     server.add_argument("--dir", default=".local/jamf-standin")
     server.add_argument("--port", type=int, default=8090)
-    sub_parsers.add_parser("ui-link", help="a signed link to the stand-in's page, valid 12 hours")
+    link = sub_parsers.add_parser("ui-link", help="open the stand-in's page with a signed link, valid 12 hours")
+    link.add_argument("--only", help="show one policy or app, such as Store Assistant")
+    link.add_argument("--print", action="store_true", help="print the link instead of opening it (it signs you in)")
     status = sub_parsers.add_parser("status", help="a policy or app: its package or version, scope and inventory")
     status.add_argument("--policy", help="a policy name, such as Store Assistant")
     status.add_argument("--app", help="a mobile device app name, such as Store Floor")
@@ -1377,7 +1379,14 @@ def main():
     if args.command == "ui-link":
         url = get_parameter(ssm, "jamf/standin-url").rstrip("/")
         token = Signer(get_parameter(ssm, "jamf/standin-signing-key")).sign("ui", UI_SECONDS)
-        print(f"{url}/standin/ui/login?token={token}")
+        target = "/standin/ui" + (f"?only={urllib.parse.quote(args.only)}" if args.only else "")
+        link = f"{url}/standin/ui/login?token={token}&next={urllib.parse.quote(target)}"
+        if args.print:
+            print(link)
+        else:
+            import subprocess
+            subprocess.run(["open", link], check=True)
+            print("Opened the page in your browser.")
         return
     jamf = connect(ssm=ssm)
     print_status(jamf, args)

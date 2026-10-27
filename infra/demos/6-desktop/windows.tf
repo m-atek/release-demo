@@ -134,9 +134,10 @@ resource "aws_instance" "windows" {
 
   tags = { Name = each.value.name, Role = "desktop-${each.key}" }
 
-  # A new base image doesn't replace a set-up instance.
+  # A new base image doesn't replace a set-up instance, and neither does the
+  # public address a stopped instance gives up (AWS then reports none).
   lifecycle {
-    ignore_changes = [ami]
+    ignore_changes = [ami, associate_public_ip_address]
   }
 }
 

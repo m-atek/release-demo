@@ -1,20 +1,27 @@
 """Put demo 6 back to its starting state, for a retake or a call. Safe to run twice.
 
-    python scripts/demos/desktop/reset.py                                   the starting state
-    python scripts/demos/desktop/reset.py --pilot-ssh admin@192.168.64.5    and run the pilot Mac's check-in over SSH
-    python scripts/demos/desktop/reset.py --no-stage                        leave main as it is
+    python scripts/reset.py desktop                                   the starting state
+    python scripts/reset.py desktop --pilot-ssh admin@192.168.64.5    and run the pilot Mac's check-in over SSH
+    python scripts/reset.py desktop --dry-run                         every action it would take, and nothing else
 
-The starting state: the Jamf policy Store Assistant on the 1.6.0 package and
-scoped to Pilot, its logs flushed; the pilot Mac and the other managed Macs
-on 1.6.0; the Windows test instance on 1.6.0 if it runs; no open change for
-store-assistant; ORD-71 open with its fix versions unreleased; no
-store-assistant-v1.7.x tags; and the bugged 1.7.0 staged on main.
+The starting state: the Jamf policy Store Assistant on the 1.6.0 package,
+scoped to Pilot, its logs flushed; the pilot Mac and every other managed Mac
+on 1.6.0; the Windows test instance on 1.6.0 when it runs; no open change
+for store-assistant; ORD-71 open and the versions after 1.6.0 unreleased in
+Jira; and the bugged 1.7.0 staged on main.
+
+Like the main demo's reset (scripts/reset.py), it keeps the past: the take's
+tags and GitHub releases after 1.6.0 move to takes/<tag>-<UTC time>, and its
+release copies in JFrog to the releases folder's takes/ (on the tools host,
+where JFrog answers; from the Mac that step is skipped, and nothing depends
+on it). Those steps are the main reset's own, for store-assistant.
 
 The pilot Mac installs 1.6.0 at its next check-in. With --pilot-ssh the
 check-in runs at once (pilot_setup.sh lets sudo run jamf policy without a
 password); without it, run sudo jamf policy on the pilot Mac while reset
-waits. 1.6.0 comes from JCR's releases, so the baseline release must have run
-once: /release store-assistant ORD-50 standard with 1.6.0 staged.
+waits. If Jamf lost the 1.6.0 package, it comes back from JFrog's releases:
+the baseline release must have run once (/release store-assistant ORD-50
+standard, with 1.6.0 staged).
 """
 
 import argparse
@@ -25,128 +32,127 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import desktop  # noqa: E402
-from desktop import ROOT, service  # noqa: E402
+import desktop  # noqa: E402  (puts scripts/ first on the path)
+import host  # noqa: E402
+import reset as shared  # noqa: E402  (scripts/reset.py)
+from desktop import fail, service  # noqa: E402
 
-BASELINE, STAGED, JIRA_KEY, LATER = "1.6.0", "1.7.0", "ORD-71", ["1.7.0", "1.7.1"]
-
-
-class Steps:
-    def __init__(self):
-        self.failed = []
-
-    def run(self, name, step):
-        started = time.monotonic()
-        try:
-            result = step()
-            print(f"ok   {name}{': ' + result if result else ''} ({time.monotonic() - started:.0f}s)", flush=True)
-        except (Exception, SystemExit) as error:
-            self.failed.append(name)
-            print(f"FAIL {name}: {error}", flush=True)
+SERVICE, BASELINE, STAGED, ISSUES = "store-assistant", "1.6.0", "1.7.0", ["ORD-71"]
 
 
-def jamf_back(config, client):
+def jamf_back(reset, config, client):
     policy = desktop.jamf_policy(client, config)
     name = desktop.package_name(config, BASELINE)
+    pilot = config["jamf"]["pilot_group"]
     record = client.package(name)
     if record is None or not record.get("hashValue"):
-        pkg_name, pkg_bytes = desktop.member(desktop.release_package(config["name"], BASELINE), ".pkg")
-        record = desktop.ensure_jamf_package(client, config, BASELINE, pkg_name, pkg_bytes)
-    client.set_policy_package(policy["id"], record["id"])
-    client.set_policy_scope(policy["id"], [config["jamf"]["pilot_group"]])
-    client.flush_policy_logs(policy["id"])
+        def upload():
+            pkg_name, pkg_bytes = desktop.member(desktop.release_package(SERVICE, BASELINE), ".pkg")
+            desktop.ensure_jamf_package(client, config, BASELINE, pkg_name, pkg_bytes)
+        reset.act(f"upload {name} to Jamf again, from JFrog's releases", upload)
+    if [p["name"] for p in policy["packages"]] != [name]:
+        reset.act(f"point the policy {policy['name']} at {name}",
+                  lambda: client.set_policy_package(policy["id"], client.package(name)["id"]))
+    if policy["scope"]["groups"] != [pilot] or policy["scope"]["all"]:
+        reset.act(f"scope the policy to {pilot} only (it was {', '.join(policy['scope']['groups']) or 'nobody'})",
+                  lambda: client.set_policy_scope(policy["id"], [pilot]))
+    reset.act(f"flush the policy's logs, so the Macs in {pilot} run it again", lambda: client.flush_policy_logs(policy["id"]))
     if client.standin:
         app = desktop.app_config(config)
-        for member in client.computer_group(config["jamf"]["all_group"])["members"]:
-            if not member["name"].startswith("pilot"):
-                client.add_simulated_device("computer", member["name"], [
-                    {"name": app["name"], "version": BASELINE, "bundleId": app["bundle_id"],
-                     "path": f"/Applications/{app['name']}.app"}])
-    return f"{name}, scoped to {config['jamf']['pilot_group']}, logs flushed"
+        baseline = [{"name": app["name"], "version": BASELINE, "bundleId": app["bundle_id"],
+                     "path": f"/Applications/{app['name']}.app"}]
+        for row in client.app_versions(config["jamf"]["all_group"], app["bundle_id"]):
+            if not row["name"].startswith("pilot") and row["version"] != BASELINE:
+                reset.act(f"put the agentless {row['name']} back on {BASELINE}",
+                          lambda row=row: client.add_simulated_device("computer", row["name"], baseline))
 
 
-def pilot_back(config, client, ssh, wait):
+def pilot_back(reset, config, client, ssh, wait):
     app = desktop.app_config(config)
     group = config["jamf"]["pilot_group"]
+    if reset.dry_run:
+        print(f"  would wait for the Macs in {group} to report {BASELINE}")
+        return
     if ssh:
-        subprocess.run(["ssh", ssh, "sudo", "-n", "/usr/local/bin/jamf", "policy"], check=True)
+        reset.act(f"run sudo jamf policy on {ssh}",
+                  lambda: subprocess.run(["ssh", ssh, "sudo", "-n", "/usr/local/bin/jamf", "policy"], check=True))
     else:
-        print(f"     Run sudo jamf policy on the pilot Mac: reset waits up to {wait}s for it to report {BASELINE}", flush=True)
+        print(f"  run sudo jamf policy on the pilot Mac: reset waits up to {wait}s for it to report {BASELINE}")
     deadline = time.monotonic() + wait
     while True:
         rows = client.app_versions(group, app["bundle_id"])
         behind = [r["name"] for r in rows if r["version"] != BASELINE]
         if rows and not behind:
-            return ", ".join(f"{r['name']} on {BASELINE}" for r in rows)
+            print(f"  {', '.join(r['name'] for r in rows)} on {BASELINE}")
+            return
         if time.monotonic() > deadline:
-            raise RuntimeError(f"{', '.join(behind) or group + ' has no Macs'} not on {BASELINE} yet: "
-                               "it installs it at its next check-in")
+            fail(f"{', '.join(behind) or group + ' has no Macs'} not on {BASELINE} yet: it installs it at its next check-in")
         time.sleep(5)
 
 
-def windows_back(config):
+def windows_back(reset, config):
     session = desktop.deploy_session()
     instance = desktop.windows_instance(session, config["windows"]["test_instance"])
     if instance is None:
-        return "the test instance is stopped: up installs nothing, the next run installs its own version"
+        print("  the test instance is stopped: the next run installs its own version")
+        return
     installed = desktop.windows_installed(session, instance, config["windows"]["product"])
     if installed.get("version") == BASELINE:
-        return f"already on {BASELINE}"
-    package = desktop.release_package(config["name"], BASELINE)
-    msi_name, msi_bytes = desktop.member(package, ".msi")
-    signature = desktop.windows_record(package).get("signature") or {}
-    desktop.windows_install(session, instance, desktop.installer_bucket(session), msi_name, msi_bytes, BASELINE,
-                            signature.get("certificate") if signature.get("test_certificate") else None)
-    return f"{installed.get('version') or 'nothing'} to {BASELINE}"
+        print(f"  already on {BASELINE}")
+        return
+
+    def install():
+        package = desktop.release_package(SERVICE, BASELINE)
+        msi_name, msi_bytes = desktop.member(package, ".msi")
+        signature = desktop.windows_record(package).get("signature") or {}
+        desktop.windows_install(session, instance, desktop.installer_bucket(session), msi_name, msi_bytes, BASELINE,
+                                signature.get("certificate") if signature.get("test_certificate") else None)
+    reset.act(f"install {BASELINE} over {installed.get('version') or 'nothing'} on the test instance", install)
 
 
-def changes_cancelled(config):
-    import change
-
-    sn, _ = desktop.servicenow()
-    rows = sn.call("GET", "/api/now/table/change_request", sysparm_fields="sys_id,number,type,state",
-                   sysparm_query=f"cmdb_ci.name={config['servicenow']['cmdb_item']}^stateNOT IN3,4", sysparm_limit=50)
-    for row in rows:
-        kind = row["type"] if row["type"] in ("normal", "standard", "emergency") else "normal"
-        change.cancel(sn, {"change": {"sys_id": row["sys_id"], "type": kind}}, "Cancelled by reset.py desktop: the demo starts over.")
-    return f"{len(rows)} cancelled" if rows else "none open"
-
-
-def script(*args):
-    result = subprocess.run([sys.executable, *args], cwd=ROOT, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError((result.stderr or result.stdout).strip().splitlines()[-1])
-    return result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+def stage_take(reset):
+    current = host.main_version(service(SERVICE)["path"])
+    if current == STAGED:
+        print(f"  main has {STAGED}")
+        return
+    reset.act(f"stage {SERVICE} {STAGED} on main (main has {current})", lambda: host.stage(SERVICE, STAGED))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--pilot-ssh", help="user@host of the pilot Mac, to run its check-in now")
     parser.add_argument("--wait", type=int, default=120, help="seconds to wait for the pilot Mac")
-    parser.add_argument("--no-stage", action="store_true", help="don't stage 1.7.0 on main")
+    parser.add_argument("--dry-run", action="store_true", help="print every action, change nothing")
     args = parser.parse_args()
 
+    # The main reset's steps, for this service and its baseline.
+    shared.SERVICE, shared.BASELINE, shared.DEMO_ISSUES = SERVICE, BASELINE, ISSUES
+    shared.NOTE = "Cancelled by reset.py desktop before the next take. Demo system, not a client's."
     started = time.monotonic()
-    config = service("store-assistant")
+    config = service(SERVICE)
     client = desktop.jamf(config)
-    steps = Steps()
-    steps.run("Jamf policy back on 1.6.0", lambda: jamf_back(config, client))
-    steps.run("Pilot Mac on 1.6.0", lambda: pilot_back(config, client, args.pilot_ssh, args.wait))
+    reset = shared.Reset(args.dry_run)
+    reset.step(f"Jamf: Store Assistant back on {BASELINE}, scoped to Pilot", lambda: jamf_back(reset, config, client))
+    reset.step(f"The pilot Mac on {BASELINE}", lambda: pilot_back(reset, config, client, args.pilot_ssh, args.wait))
     if "windows" in config["desktop"]["tracks"]:
-        steps.run("Windows test instance on 1.6.0", lambda: windows_back(config))
-    steps.run("Open store-assistant changes", lambda: changes_cancelled(config))
-    for version in LATER:
-        steps.run(f"Jira {JIRA_KEY}, store-assistant {version}",
-                  lambda version=version: script("scripts/jira.py", "reopen", JIRA_KEY, f"store-assistant {version}"))
-        steps.run(f"Tag store-assistant-v{version}",
-                  lambda version=version: script("scripts/tag.py", "--delete", f"store-assistant-v{version}"))
-    if not args.no_stage:
-        steps.run(f"Stage {STAGED} on main", lambda: script("scripts/stage.py", "store-assistant", STAGED))
-    took = time.monotonic() - started
-    if steps.failed:
-        raise SystemExit(f"Reset incomplete after {took:.0f}s: {', '.join(steps.failed)}")
-    print(f"Reset in {took:.0f}s: ready for /release store-assistant {JIRA_KEY}")
+        reset.step(f"The Windows test instance on {BASELINE}", lambda: windows_back(reset, config))
+    reset.step("Open store-assistant changes", lambda: shared.cancel_changes(reset))
+    reset.step(f"Tags and GitHub releases after {BASELINE}", lambda: shared.github_takes(reset))
+    if host.on_host():
+        reset.step(f"Release copies after {BASELINE} in JFrog", lambda: shared.jfrog_takes(reset))
+    else:
+        print(f"Release copies after {BASELINE} in JFrog\n  skipped here: JFrog answers on the tools host")
+    reset.step(f"Jira versions after {BASELINE}, and {', '.join(ISSUES)}", lambda: shared.jira_versions(reset))
+    reset.step(f"main on {STAGED}", lambda: stage_take(reset))
+
+    took = f"{time.monotonic() - started:.0f}s"
+    if reset.failed:
+        print(f"Reset incomplete after {took}: {', '.join(reset.failed)}")
+        return 1
+    print(f"{'Dry run' if args.dry_run else 'Reset'} in {took}: {reset.actions} action(s). "
+          f"Ready for /release {SERVICE} {ISSUES[0]}.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

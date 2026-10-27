@@ -330,6 +330,34 @@ For the real services, set `STANDIN` to `0` (or name only the stand-ins to keep)
 2. Google Play: the app `nl.es.demo.storefloor` in the Play Console, the first bundle uploaded there by hand to the internal track, yourself on its testers list, and the service account invited with release rights: through demo 5's federation (`store-floor/play-federation`) or a JSON key (`signing_setup.py play-service-account-key`).
 3. Jamf: the in-house app "Store Floor", the mobile device groups Pilot and All store devices, automatic updates on in In-House App Maintenance, and an API client allowed to read and update mobile device apps, read mobile devices and groups, and send mobile device commands (`secrets.py set store-floor` for its URL, id and secret). A supervised iPad or iPhone enrolled in Pilot, its UDID in the ad hoc profile.
 
+## Demo on a call: desktop apps (demo 6)
+
+Store Assistant is a small SwiftUI app for the Mac and its WPF twin for Windows: its version in large type and today's orders from orders-service. One run builds both. The Mac track builds, signs from a keychain made for that build only, packages, notarizes and staples on the Mac agent; the Windows track builds, signs and verifies the MSI on the Windows build agent. The tools host then sends the Mac package through Jamf to the Pilot group, installs the MSI on the Windows test instance, and after Alex approves the rollout change widens the Jamf policy to All managed Macs.
+
+| Version | Jira | What it is |
+| --- | --- | --- |
+| 1.6.0 | ORD-50 | The baseline: today's order count and the opening hours. Released once, as a standard change |
+| 1.7.0 | ORD-71 | Today's orders as a list, with a planted bug: the list stays empty while the count says 12. The pilot catches it, Alex rejects the rollout, `/rollback store-assistant` puts 1.6.0 back |
+| 1.7.1 | ORD-71 | The fix, for calls: approved, the scope widens to every managed Mac |
+
+Apple (Developer ID, notarization, Gatekeeper), Microsoft's Artifact Signing and Jamf run as stand-ins (`STANDIN: "1"` in services.yaml; `STANDIN_APPLE`, `STANDIN_JAMF` and `STANDIN_MICROSOFT` switch one). They say so in their startup log only. The app is really signed, with hardened runtime and Apple's secure timestamp, by an identity made for the build; productbuild only signs with an installer identity Apple issued, so the package itself is unsigned until the real certificates are in. The notary stand-in really inspects the package and rejects what Apple would. The MSI is signed and timestamped with the Windows build agent's own test certificate, which the agent and the test instance trust. The Jamf stand-in is a Lambda function (`scripts/demos/standins/jamf.py`) that answers the same Jamf Pro and Classic API calls; its page shows each policy's package and scope and its groups' inventory.
+
+Once, after the merge:
+
+1. `scripts/demo.sh up desktop` applies `infra/demos/6-desktop` if needed (Terraform shows its plan first), starts the Windows build agent and test instance, and sets up Jamf's groups, the policy Store Assistant and five store Macs on 1.6.0 (`scripts/demos/desktop/jamf_setup.py`).
+2. The Mac agent: install a Java runtime (`brew install --cask temurin@21`) and Xcode 26, then `scripts/demos/desktop/mac_agent_setup.sh`. The Windows build agent connects by itself once its Cloudflare token and Jenkins secret are in SSM.
+3. The pilot Mac: a macOS virtual machine on your Mac, never your work Mac. With Tart: `brew install cirruslabs/cli/tart`, `tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest pilot`, `tart run pilot`, then `scripts/demos/desktop/pilot_setup.sh admin@$(tart ip pilot)` (its password is admin). It names it pilot-mac-01, points Store Assistant at orders-service and enrolls it.
+4. JFrog: store-assistant uses the shared `demos-candidates` and `demos-releases`. In SonarQube Cloud add `<organization>_release-demo_store-assistant`. `.venv/bin/python scripts/servicenow_setup.py` adds the CMDB item and the templates "Routine release of", "Rollback of store-assistant" and "Pilot of Store Assistant".
+5. The baseline: `scripts/stage.py store-assistant 1.6.0`, `/release store-assistant ORD-50 standard`, and `sudo jamf policy` on the pilot Mac when the run waits for it.
+
+Before each call or take: `scripts/reset.py desktop --pilot-ssh admin@<pilot Mac>`. Jamf's policy back on 1.6.0 and Pilot, the pilot Mac and the store Macs on 1.6.0, the test instance on 1.6.0, open changes cancelled, the take's tags and release copies archived, ORD-71 reopened, and 1.7.0 staged on main. Open Store Assistant on the pilot Mac, the Jamf stand-in's page (`.venv/bin/python scripts/demos/standins/jamf.py ui-link --only "Store Assistant"` opens it with a signed link, valid 12 hours), Slack `#releases` as Sam, and ServiceNow as Alex.
+
+On the call: `/release store-assistant ORD-71`. Notarization takes about two and a half minutes. When the run waits at Check staging, run `sudo jamf policy` on the pilot Mac: 1.7.0 arrives and the app reopens with its empty list. Alex rejects the rollout change in ServiceNow: the run stops, the change is cancelled and Slack says 1.7.0 stays on the Pilot group. `/rollback store-assistant`, then `sudo jamf policy` again: 1.6.0 is back. For the happy path, stage 1.7.1 and approve.
+
+What to say if asked: the builds, the app signature, the keychain, the checks, JFrog, ServiceNow and the Windows install are real; Apple's notary service, Microsoft's identity validation and Jamf are stand-ins with the same interfaces, because their accounts and trials take days or weeks. The Mac updates only when it checks in: every 15 minutes, or at once with `sudo jamf policy`.
+
+After the call: `scripts/demo.sh down desktop` stops the Windows instances (USD 0.064 an hour each while they run; they also stop themselves 4 hours after boot). The Jamf stand-in costs nothing idle. `scripts/demo.sh status desktop` shows the instances, the Mac agent and the policy.
+
 ## Layout
 
 ```

@@ -509,7 +509,7 @@ store-assistant:
   settings:
     # 1: Apple (Developer ID, notarization), Microsoft (Artifact Signing) and
     # Jamf run as stand-ins with the same interfaces. STANDIN_APPLE, _JAMF and
-    # _MICROSOFT switch one of them. The pipeline passes these to every step.
+    # _MICROSOFT switch one of them. The scripts read them here, on every agent.
     STANDIN: "1"
     STANDIN_NOTARY_SECONDS: "150"
 
@@ -521,8 +521,8 @@ store-assistant:
       build: python3 scripts/demos/desktop/mac_build.py build store-assistant --jira-key "$JIRA_KEY"
       test: python3 scripts/demos/desktop/mac_build.py test store-assistant
     windows:
-      build: pwsh -NoProfile -File scripts/demos/desktop/windows_build.ps1 -Step build -Service store-assistant
-      test: pwsh -NoProfile -File scripts/demos/desktop/windows_build.ps1 -Step test -Service store-assistant
+      build: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/demos/desktop/windows_build.ps1 -Step build -Service store-assistant
+      test: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/demos/desktop/windows_build.ps1 -Step test -Service store-assistant
 
   desktop:
     # The Windows track can be cut here: an open decision.
@@ -549,6 +549,10 @@ store-assistant:
       standard: Routine release of store-assistant
       rollback: Rollback of store-assistant
       pilot: Pilot of Store Assistant
+    backout_plan: >-
+      Point the Jamf policy Store Assistant back at the previous package and flush its logs:
+      /rollback store-assistant does it in one step, and the Macs in scope reinstall the previous
+      version at their next check-in. A rejected rollout leaves the scope on Pilot.
     # Texts for the templates above, for servicenow_setup.py: the shared ones
     # speak of a Lambda alias.
     template_texts:

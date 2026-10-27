@@ -14,9 +14,9 @@ checked: a rollback leaves it as it was.
 Windows, in staging: the test instance's registry reports the version, and
 the installed program's signature is valid.
 
-In staging, the check closes the pilot change with its result, and keeps the
-result for the rollout change. Prints one line per check, ok or FAIL, and
-exits 1 when one fails.
+In staging, the check closes the pilot change with its result. Either way it
+keeps its lines in the run state as check.notes, for the change. Prints one
+line per check, ok or FAIL, and exits 1 when one fails.
 """
 
 import argparse
@@ -130,9 +130,10 @@ def main():
                            f"Test instance on {installed.get('version')}.")
 
     passed = not checks.failed
+    # What the check found, for the change: the pilot's result goes into the rollout change.
+    state.setdefault("check", {})["notes"] = f"{env.get('label', args.environment)} check: " + "; ".join(checks.lines) + "."
+    run_state.save(state)
     if args.environment == "staging" and not rollback:
-        state.setdefault("test_results", {})["pilot"] = checks.lines
-        run_state.save(state)
         summary = "\n".join(checks.lines)
         desktop.close_pilot_change(state, "successful" if passed else "unsuccessful",
                                    f"Pilot check {'passed' if passed else 'failed'}:\n{summary}")
