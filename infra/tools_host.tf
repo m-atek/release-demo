@@ -56,7 +56,7 @@ data "aws_iam_policy_document" "tools_host" {
     sid     = "NotForTheHost"
     effect  = "Deny"
     actions = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-    resources = [for name in ["cloudflare/api-token", "servicenow/admin-password", "servicenow/sam-password", "servicenow/alex-password"] :
+    resources = [for name in ["cloudflare/api-token", "servicenow/admin-password", "servicenow/sam-password", "servicenow/alex-password", "grafana/setup-token"] :
     "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/${name}"]
   }
   statement {

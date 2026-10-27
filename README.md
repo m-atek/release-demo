@@ -69,7 +69,10 @@ Install the tools first: `brew install hashicorp/tap/terraform awscli gh gitleak
 3. Security, Access Policies: a policy with only `logs:write` on the stack, and a token for it.
 4. In the stack: Administration, Users and access, Service accounts: `release-pipeline` with the Editor role, and a token.
 5. Connections, Data sources, CloudWatch, Grafana Assume Role: copy the External ID. Don't save the data source until Terraform has made its role.
-6. `secrets.py set grafana`.
+6. Service accounts again: `release-demo-setup` with the Admin role, and a token. Only `grafana_setup.py` on your Mac uses it, to save the CloudWatch data source; the tools host is denied it.
+7. `secrets.py set grafana`.
+8. Put Grafana's AWS account id (the CloudWatch data source's Grafana Assume Role instructions show it) in `infra/local.auto.tfvars` as `grafana_aws_account_id`, then `scripts/tf.sh apply`: it makes the role Grafana assumes.
+9. `.venv/bin/python scripts/grafana_setup.py`: the folder, the Releases dashboard and the CloudWatch data source. Safe to run again.
 
 ### 7. SonarQube Cloud
 
