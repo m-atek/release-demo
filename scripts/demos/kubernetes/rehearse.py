@@ -26,8 +26,9 @@ from pathlib import Path
 import yaml
 
 os.environ.setdefault("WORKSPACE", tempfile.mkdtemp(prefix="rehearse-"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+# This folder first: its build.py, deploy.py and check.py share names with the Lambda ones in scripts/.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 import build  # noqa: E402
 import deploy  # noqa: E402
 import kube  # noqa: E402

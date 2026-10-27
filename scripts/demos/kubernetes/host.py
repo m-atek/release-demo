@@ -20,7 +20,7 @@ import tarfile
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 from common import ROOT, aws_session, fail  # noqa: E402
 
 FILES = ["services.yaml", "scripts/common.py", "scripts/run_state.py", "scripts/publish.py",

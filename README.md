@@ -193,6 +193,27 @@ What to say if asked: the weighted alias, the alarms on the new version's `Execu
 
 After the call: `scripts/demo.sh down apis`. pricing-api has no server: Lambda and API Gateway charge per request, a few cents per recording, and nothing while idle. `down` only clears what an interrupted canary left, and `scripts/demo.sh status apis` shows what each environment runs.
 
+## Demo on a call: Kubernetes (demo 8)
+
+The catalog service on a single-node k3s cluster on the tools host, released with Helm 4 through the same pipeline: Slack, the gates, a pre-approved standard change, and a record of the rollback that Helm does by itself. It costs nothing beyond the tools host. k3s is installed there but runs only between `up` and `down`, held to 2 GB (k3s 768 MiB, its pods 1,280 MiB).
+
+| State | Jira | What changes | Where it stops |
+| --- | --- | --- | --- |
+| 1.8.2 | | Production before the take | |
+| 1.9.0 | ORD-90 | Search by supplier, from the catalog database named by `CATALOG_DB_URL`. Staging sets it, production doesn't | Production: never ready, Helm rolls back to 1.8.2 after 3 minutes, the check fails |
+| 1.9.1 | ORD-90 | The chart gives every environment `CATALOG_DB_URL` | |
+
+Before the call:
+
+1. `scripts/tools.sh up`, then `scripts/demo.sh up kubernetes` (about 30 seconds; prints "Ready").
+2. `.venv/bin/python scripts/demos/kubernetes/reset.py`: staging and production on 1.8.2, and 1.9.0 staged on main. Under a minute; safe to run twice.
+3. For the terminal: `.venv/bin/python scripts/demos/kubernetes/connect.py` in a terminal of its own. It prints the kubeconfig to export and the prepared lines (the pods watch, `helm history`, `kubectl auth can-i ... --as $SA`). It needs `brew install --cask session-manager-plugin` once.
+4. A dry run without Slack or ServiceNow: `.venv/bin/python scripts/demos/kubernetes/rehearse.py` (about 6 minutes, ends on 1.8.2). It checks every acceptance criterion and prints ok or FAIL for each.
+
+On the call: `/release catalog ORD-90`. 1.9.0 passes staging. In production, Jenkins' log shows `helm upgrade --install ... --rollback-on-failure --wait=watcher --timeout 3m` and the helper's line for the build's 10-minute token. One 1.9.0 pod starts beside the three 1.8.2 pods and never gets ready; after 3:00 Helm rolls back. The check fails at once, the pipeline confirms the rollback, Slack says "Production check failed. Rolled back to 1.8.2.", and the change closes as unsuccessful with both image digests and Helm's rollback in its work notes. Then `scripts/stage.py catalog 1.9.1` and `/release catalog ORD-90` again: a second standard change, and 1.9.1 replaces the pods one at a time.
+
+Afterwards: `scripts/demo.sh down kubernetes`. `scripts/demo.sh status kubernetes` shows the pods, their versions and the memory in use.
+
 ## Layout
 
 ```

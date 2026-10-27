@@ -16,8 +16,9 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+# This folder first: its build.py, deploy.py and check.py share names with the Lambda ones in scripts/.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 import kube  # noqa: E402
 import run_state  # noqa: E402
 from common import http_get, service  # noqa: E402

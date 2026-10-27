@@ -116,6 +116,20 @@ grafana/external-id:
   source: you
   secure: true
   help: "CloudWatch data source, Grafana Assume Role: the External ID it shows."
+grafana/metrics-url:
+  source: you
+  secure: true
+  help: "Demo 8. Grafana Cloud portal, your stack, Prometheus, Details: the Remote Write Endpoint (https://prometheus-prod-...grafana.net/api/prom/push)."
+  pattern: "^https://prometheus-[a-z0-9-]+\\.grafana\\.net/api/prom/push$"
+grafana/metrics-user:
+  source: you
+  secure: true
+  help: "Demo 8. The same Prometheus Details page: the Username / Instance ID (a number)."
+  pattern: "^[0-9]+$"
+grafana/metrics-token:
+  source: you
+  secure: true
+  help: "Demo 8. An access policy token with metrics:write (glc_...), for Grafana Alloy in the k3s cluster."
 grafana/setup-token:
   source: you
   secure: true

@@ -31,7 +31,7 @@ from pathlib import Path
 
 import yaml
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 from common import ROOT, fail  # noqa: E402
 
 HELM_VERSION = "v4.3.1"

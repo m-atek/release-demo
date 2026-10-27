@@ -4,7 +4,7 @@
     python scripts/demos/kubernetes/reset.py --no-stage   the cluster only
     python scripts/demos/kubernetes/reset.py --here       on the tools host: what the Mac's run calls there
 
-The 1.8.2 package comes from catalog-releases/1.8.2 in JCR. The first time,
+The 1.8.2 package comes from demos-releases/catalog/1.8.2 in JCR. The first time,
 when it isn't there yet, it is built from demo-states/catalog/1.8.2 and stored
 there, as Terraform's first apply does for orders-service, so every reset
 deploys the same image digest. A namespace already on 1.8.2 with every pod
@@ -26,8 +26,9 @@ import threading
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+# This folder first: its build.py, deploy.py and check.py share names with the Lambda ones in scripts/.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 import kube  # noqa: E402
 from common import ROOT, fail, get_parameter, git, service, ssm_client  # noqa: E402
 
@@ -41,7 +42,8 @@ def baseline_package(token, commit):
     import build
     import publish
 
-    path = f"{SERVICE}-releases/{BASELINE}/{SERVICE}-{BASELINE}.zip"
+    root = publish.releases_root(SERVICE)
+    path = f"{root}/{BASELINE}/{SERVICE}-{BASELINE}.zip"
     status, body = publish.request("GET", path, token)
     if status == 200:
         print(f"1.8.2 from JCR: {path}")
@@ -51,17 +53,17 @@ def baseline_package(token, commit):
         package = (Path(out) / SERVICE / info["package"]).read_bytes()
         headers = {"X-Checksum-Sha256": hashlib.sha256(package).hexdigest(), "Content-Type": "application/zip"}
         # JCR drops the connection on an upload to a repository it doesn't have, so ask first.
-        status = publish.request("GET", f"api/storage/{SERVICE}-releases", token)[0]
+        status = publish.request("GET", f"api/storage/{root.split('/')[0]}", token)[0]
         if status == 200:
             status, _ = publish.request("PUT", path, token, package, headers)
         if status in (200, 201):
-            publish.request("PUT", f"{SERVICE}-releases/{BASELINE}/build-info.json", token,
+            publish.request("PUT", f"{root}/{BASELINE}/build-info.json", token,
                             (Path(out) / SERVICE / "build-info.json").read_bytes(),
                             {"Content-Type": "application/json"})
             print(f"1.8.2 built from demo-states/{SERVICE}/{BASELINE} and stored as {path}")
         else:
             print(f"1.8.2 built from demo-states/{SERVICE}/{BASELINE}. Not stored: JCR answered {status} "
-                  f"for {path}. Create the repository {SERVICE}-releases (scripts/jcr_setup.py lists the steps).")
+                  f"for {path}. Create the repository {root.split('/')[0]} (scripts/jcr_setup.py lists the steps).")
         return package
 
 

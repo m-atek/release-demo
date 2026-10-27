@@ -153,6 +153,10 @@ catalog:
   slack:
     options: [standard]
 
+  # The package goes to demos-candidates/catalog/ and demos-releases/catalog/;
+  # the image and chart it holds to docker-local and helm-local.
+  jcr: { shared: true }
+
   scripts:
     build: scripts/demos/kubernetes/build.py
     publish: scripts/publish.py

@@ -25,8 +25,9 @@ from pathlib import Path
 
 import yaml
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+# This folder first: its build.py, deploy.py and check.py share names with the Lambda ones in scripts/.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 import oci  # noqa: E402
 from common import ROOT, fail, git, service, version_of, write_json  # noqa: E402
 

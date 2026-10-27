@@ -47,7 +47,7 @@ def parse_reference(reference):
     """docker.io/library/python:3.13@sha256:... -> (registry URL, repository, tag, digest)."""
     name, _, pinned = reference.partition("@")
     host, _, path = name.partition("/")
-    if "." not in host and ":" not in host and host != "localhost":
+    if not path or ("." not in host and ":" not in host and host != "localhost"):
         host, path = "docker.io", name
     repository, _, tag = path.partition(":")
     if host == "docker.io":

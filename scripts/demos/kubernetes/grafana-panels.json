@@ -1,0 +1,188 @@
+{
+  "comment": "Demo 8's panels for grafana/releases.json: a catalog row with these two panels (ids and y to be set where the row goes), after the panels copied from the orders-service row with service=\"catalog\".",
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "catalog",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 101,
+      "type": "timeseries",
+      "title": "Ready pods per version, production",
+      "description": "Pods of catalog in production per version, ready and not ready, from kube-state-metrics through Grafana Alloy, every 15 seconds. During a release the new version's pods start next to the old ones; a version that never gets ready shows only as not ready until Helm rolls it back.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "range": true,
+          "legendFormat": "{{version}} ready",
+          "expr": "sum by (version) (label_replace(kube_pod_labels{namespace=\"production\", label_app_kubernetes_io_name=\"catalog\"}, \"version\", \"$1\", \"label_app_kubernetes_io_version\", \"(.*)\") * on (namespace, pod) group_left() kube_pod_status_ready{namespace=\"production\", condition=\"true\"})"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "range": true,
+          "legendFormat": "{{version}} not ready",
+          "expr": "sum by (version) (label_replace(kube_pod_labels{namespace=\"production\", label_app_kubernetes_io_name=\"catalog\"}, \"version\", \"$1\", \"label_app_kubernetes_io_version\", \"(.*)\") * on (namespace, pod) group_left() kube_pod_status_ready{namespace=\"production\", condition=\"false\"})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* not ready"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    6,
+                    4
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 102,
+      "type": "timeseries",
+      "title": "Ready pods per version, staging",
+      "description": "Pods of catalog in staging per version, ready and not ready, from kube-state-metrics through Grafana Alloy, every 15 seconds. During a release the new version's pods start next to the old ones; a version that never gets ready shows only as not ready until Helm rolls it back.",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "range": true,
+          "legendFormat": "{{version}} ready",
+          "expr": "sum by (version) (label_replace(kube_pod_labels{namespace=\"staging\", label_app_kubernetes_io_name=\"catalog\"}, \"version\", \"$1\", \"label_app_kubernetes_io_version\", \"(.*)\") * on (namespace, pod) group_left() kube_pod_status_ready{namespace=\"staging\", condition=\"true\"})"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "range": true,
+          "legendFormat": "{{version}} not ready",
+          "expr": "sum by (version) (label_replace(kube_pod_labels{namespace=\"staging\", label_app_kubernetes_io_name=\"catalog\"}, \"version\", \"$1\", \"label_app_kubernetes_io_version\", \"(.*)\") * on (namespace, pod) group_left() kube_pod_status_ready{namespace=\"staging\", condition=\"false\"})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* not ready"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    6,
+                    4
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    }
+  ]
+}
