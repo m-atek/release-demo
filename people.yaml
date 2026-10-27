@@ -5,14 +5,14 @@ mateusz:
   display_name: Mateusz
   slack_user_id: null
   servicenow_user: null
-  github_login: null
+  github_login: m-atek
 
 sam:
   display_name: Sam Developer
   slack_user_id: null
   servicenow_user: sam.developer
   # Sam has no GitHub account. Pull requests from Mateusz's account map to Sam.
-  github_login: null
+  github_login: m-atek
   releaser: true
 
 alex:

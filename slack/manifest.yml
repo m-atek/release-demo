@@ -1,0 +1,36 @@
+# The Slack app for the release demo. Create it at api.slack.com/apps, From a
+# manifest. Both commands point at the Slack handler's function URL: replace
+# REPLACE_WITH_HANDLER_URL with `scripts/tf.sh output -raw slack_handler_url`
+# after Terraform has created the handler. No buttons: approval is in ServiceNow.
+
+display_information:
+  name: Release Bot
+  description: Starts releases and rollbacks for the release demo, and reports how they go.
+  background_color: "#14181f"
+
+features:
+  bot_user:
+    display_name: Release Bot
+    always_online: true
+  slash_commands:
+    - command: /release
+      url: https://REPLACE_WITH_HANDLER_URL.example.com/
+      description: Start a release
+      usage_hint: "<service> <Jira key> [option]"
+      should_escape: false
+    - command: /rollback
+      url: https://REPLACE_WITH_HANDLER_URL.example.com/
+      description: Roll production back to the previous version
+      usage_hint: "<service>"
+      should_escape: false
+
+oauth_config:
+  scopes:
+    bot:
+      - commands
+      - chat:write
+
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

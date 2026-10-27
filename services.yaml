@@ -32,8 +32,8 @@ orders-service:
       rollback: Rollback of orders-service
 
   sonarqube:
-    # Set to the key SonarQube Cloud shows for the project (organization key prefix).
-    project_key: release-demo_orders-service
+    # A monorepo project in the organization m-atek: one project per service.
+    project_key: m-atek_release-demo_orders-service
 
   environments:
     staging:

@@ -55,13 +55,19 @@ def show_status(ssm):
 
 
 def ask(name, entry):
+    """Secret values are hidden as you type; plain ones (secure: false) show."""
     print(f"\n{name}: {entry['help']}")
     while True:
-        value = getpass.getpass("  value (hidden, Enter to skip): ").strip()
+        if entry["secure"]:
+            value = getpass.getpass("  value (hidden, Enter to skip): ").strip()
+        else:
+            value = input("  value (Enter to skip): ").strip()
         if not value:
             return None
+        # A pasted Slack channel link ends in the channel id.
+        value = value.rstrip("/").rsplit("/", 1)[-1] if name == "slack/channel-id" else value
         if entry.get("pattern") and not re.search(entry["pattern"], value):
-            print("  That doesn't look right for this one. Try again, or Enter to skip.")
+            print(f"  That doesn't look right: {entry.get('hint', 'check the help above')}. Try again, or Enter to skip.")
             continue
         return value
 

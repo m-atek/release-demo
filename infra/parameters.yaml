@@ -27,15 +27,19 @@ slack/bot-token:
   secure: true
   help: "Slack app, OAuth & Permissions, Bot User OAuth Token (xoxb-...)."
   pattern: "^xoxb-"
+  hint: "the Bot User OAuth Token starts with xoxb-"
 slack/signing-secret:
   source: you
   secure: true
-  help: "Slack app, Basic Information, App Credentials, Signing Secret."
+  help: "Slack app, Basic Information, App Credentials, Signing Secret (click Show). Not the App-Level Token (xapp-)."
+  pattern: "^[0-9a-f]{32}$"
+  hint: "a signing secret is 32 characters, 0-9 and a-f"
 slack/channel-id:
   source: you
   secure: false
-  help: "#releases, channel details, the id at the bottom (C...)."
-  pattern: "^C[A-Z0-9]+$"
+  help: "#releases: click the channel name, the Channel ID at the bottom (C...). A channel link works too."
+  pattern: "^[CG][A-Z0-9]{8,}$"
+  hint: "a channel id starts with C and has 9 or more capitals and digits"
 
 servicenow/instance-url:
   source: you

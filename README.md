@@ -14,7 +14,76 @@ Built so far, and runnable on a Mac with no accounts:
 - `tools-host/` and `jenkins/`: the tools host (Jenkins configured as code, JFrog Container Registry on PostgreSQL, Splunk Free), runnable locally in Docker.
 - `demo-data/release-checklist.html`: the fictional checklist for the video's first shot.
 
-Still to build: the EC2 tools host (Terraform in `infra/`, the boot script, the idle stop, the Cloudflare tunnel), the release pipeline (Jenkinsfile, shared library and the remaining stage scripts), the Slack app, the ServiceNow, Jira, SonarQube and Grafana integrations, `reset.py`, `history.py` and the RUNBOOK.
+On AWS so far: the Terraform state bucket, the SSM parameter names and the budget alert. Every account below exists and its values are in SSM.
+
+Still to build: the rest of `infra/` (both functions, the EC2 tools host, the Slack handler, the Cloudflare tunnel and Access, the Grafana role), the tools host's boot script and idle stop, the release pipeline (Jenkinsfile, shared library and the remaining stage scripts), the ServiceNow, Jira, SonarQube and Grafana setup scripts, `reset.py`, `history.py` and the RUNBOOK.
+
+## Setup on fresh accounts
+
+You create every account, accept every licence and type every secret yourself. Secrets go into SSM Parameter Store through `scripts/secrets.py`, which reads them without echo. They never go into chat, a file in this repository, a log or a ticket. Run `.venv/bin/python scripts/secrets.py` at any point to see what is still unset, without decrypting anything. [infra/parameters.yaml](infra/parameters.yaml) lists every value and where it comes from.
+
+Install the tools first: `brew install hashicorp/tap/terraform awscli gh gitleaks` and `brew install --cask session-manager-plugin`. Homebrew needs current Command Line Tools: on macOS 15, `sudo softwareupdate -i "Command Line Tools for Xcode-16.2"` is enough. Then `make setup`.
+
+### 1. AWS
+
+1. Sign up with an address used only for this demo, account name `release-demo`, on the **Paid plan**. The free plan blocks some services and closes after six months; credits apply on the paid plan too. If you picked the free plan, Billing, Upgrade plan, Upgrade account. Joining AWS Organizations, which step 3 does, upgrades it as well.
+2. As root: IAM, Security credentials, assign MFA. Never create root access keys.
+3. Set the region to eu-west-1, then IAM Identity Center, Enable (organization instance).
+4. Identity Center: add a user for yourself (no groups needed), a permission set from the predefined AdministratorAccess with an 8-hour session, and assign both to the account. Copy the AWS access portal URL from Settings. Sign out of root.
+5. `aws configure sso`: session name `release-demo`, your portal URL, region eu-west-1, the account and AdministratorAccess, default region eu-west-1, profile `release-demo`. From then on, `aws sso login --profile release-demo`.
+6. Put your budget email in `infra/local.auto.tfvars` (git ignores it): `budget_email = "you@example.com"`.
+7. `scripts/tf.sh bootstrap`, then `scripts/tf.sh apply`. The first creates the state bucket, the second the parameter names and the USD 25 budget.
+
+### 2. GitHub
+
+1. Create the public repository `release-demo` with nothing in it: no README, .gitignore or licence. This repository brings its own MIT licence.
+2. `gh auth login`.
+3. `.venv/bin/python scripts/github_app.py --owner <your username>`, open http://localhost:8765, create the app on GitHub, then install it from the printed link on `release-demo` only. It can write contents and read metadata, and has no webhook.
+
+### 3. Slack
+
+1. A free workspace with a neutral name, the channel `#releases`, and Sam on a second address of yours, accepted in a separate browser profile, with the full name Sam Developer.
+2. api.slack.com/apps, Create New App, From a manifest: paste [slack/manifest.yml](slack/manifest.yml). Install to Workspace. In `#releases`: `/invite @Release Bot`.
+3. `secrets.py set slack`. The signing secret is under Basic Information, App Credentials, Signing Secret, Show: 32 characters. Not the App-Level Token (`xapp-`) further down the page, which the demo doesn't use. The channel id, or a link to the channel, is at the bottom of the channel's About tab.
+4. Put both member ids (profile, the three dots, Copy member ID) in [people.yaml](people.yaml).
+
+### 4. ServiceNow
+
+1. developer.servicenow.com: sign up (the Developer Program Agreement is the checkbox on the form), then Request Instance with the release it offers.
+2. Log in to the instance directly as admin and keep the password; `servicenow_setup.py` asks for it. Log in directly at least once a week, or the instance is reclaimed.
+3. `secrets.py set servicenow/instance-url`.
+
+### 5. Jira
+
+1. A Jira Cloud Free site with a neutral name. Jira now calls projects spaces.
+2. An empty **company-managed** Kanban space `Orders`, key `ORD`. A space made from a team-managed template comes with sample issues, and Jira never reuses keys, so delete and recreate it rather than deleting its issues.
+3. Invite a third address of yours, accept it in a private window, and set the full name to Release Pipeline. Add it to ORD as Administrator, which it needs to release versions.
+4. In that private window, signed in as Release Pipeline: id.atlassian.com, Security, API tokens, Create API token. A token from your own account would put your name on the pipeline's comments.
+5. `secrets.py set jira` with Release Pipeline's email and token.
+
+### 6. Grafana Cloud
+
+1. A free stack in an EU region.
+2. In the Cloud Portal, the stack's Loki card, Details: the URL and the **User** number. The stack's own id, which is also the CloudWatch External ID, is a different number.
+3. Security, Access Policies: a policy with only `logs:write` on the stack, and a token for it.
+4. In the stack: Administration, Users and access, Service accounts: `release-pipeline` with the Editor role, and a token.
+5. Connections, Data sources, CloudWatch, Grafana Assume Role: copy the External ID. Don't save the data source until Terraform has made its role.
+6. `secrets.py set grafana`.
+
+### 7. SonarQube Cloud
+
+1. Log in with GitHub and create an organization from your GitHub account, with the SonarQube Cloud app on `release-demo` only. The Free plan is enough: releases build `main`, and Free analyses `main` with the Sonar way gate. The OSS plan adds branch analysis, custom gates and webhooks.
+2. Analyze new project, **Setting up a monorepo?**: one project per service. For orders-service, key `<organization>_release-demo_orders-service`, display name `orders-service`. A plain import binds the whole repository to one project and runs Automatic Analysis; monorepo projects can't, which is what the pipeline needs.
+3. My Account, Security, Generate token. `secrets.py set sonar`: the organization key shows as you type, the token is hidden.
+
+### 8. Cloudflare
+
+The zone also serves the production website: Terraform only adds the demo's own tunnel, three `*-demo` hostnames and their Access applications, and never changes anything else in it.
+
+1. one.dash.cloudflare.com: finish the Zero Trust onboarding on the account that holds the zone, Free plan. Settings then shows a team domain.
+2. From the zone's overview page: the Account ID and the Zone ID.
+3. My Profile, API Tokens, Create Custom Token, limited to that account and that zone: Account, Cloudflare Tunnel, Edit; Account, Access: Apps and Policies, Edit; Account, Access: Service Tokens, Edit; Zone, DNS, Edit.
+4. `secrets.py set cloudflare`, with the email Access should let in.
 
 ## Local development
 
