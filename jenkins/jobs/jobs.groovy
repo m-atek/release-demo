@@ -99,6 +99,7 @@ pipelineJob('stage') {
     properties { disableConcurrentBuilds() }
     logRotator { numToKeep(50) }
     definition fromRepository('jenkins/stage.Jenkinsfile')
+}
 
 // Demo 3: the data-center servers' part of an inventory rollout, on dc-agent.
 // The release on the tools host starts it as release-bot and waits for it.
