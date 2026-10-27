@@ -44,6 +44,11 @@ class FakeRegistry(BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.reply(200 if self.path.rsplit("/", 1)[1] in self.blobs else 404)
 
+    def do_GET(self):
+        if self.path in self.manifests:
+            return self.reply(200, body=self.manifests[self.path])
+        self.reply(404)
+
     def do_POST(self):
         self.reply(202, {"Location": "/v2/upload/1?state=x"})
 

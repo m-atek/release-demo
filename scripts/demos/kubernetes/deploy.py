@@ -63,6 +63,20 @@ def unpack(package, folder):
     return json.loads((Path(folder) / "release.json").read_text())
 
 
+def chart_tag_for(registry, repository, release):
+    """The chart's version as its tag, unless JCR holds another chart under it,
+    from an earlier build of that version: the pipeline may not overwrite it,
+    so this chart then goes under <version>-<digest>, as the image does."""
+    version, wanted = release["version"], release["chart"]["digest"]
+    existing = registry.tagged(repository, version)
+    if existing in (None, wanted):
+        return version
+    tag = f"{version}-{wanted.split(':')[1][:12]}"
+    print(f"{repository}:{version} holds another build's chart ({existing.split(':')[1][:12]}): "
+          f"this one goes under {tag}")
+    return tag
+
+
 def push(config, release, folder, token):
     """The image and the chart into JCR, where the cluster pulls from. Idempotent:
     blobs JCR has are skipped, and the tags carry the content, so nothing is overwritten."""
@@ -73,12 +87,13 @@ def push(config, release, folder, token):
     image = oci.push_layout(registry, image_repo, Path(folder) / "image", image_tag)
     # A rehearsal of a chart change can push to another path, so it never takes a version's tag.
     chart_repo = os.environ.get("KUBERNETES_CHART_REPOSITORY") or kube_config["chart"]
-    chart = oci.push_layout(registry, chart_repo, Path(folder) / "chart", release["version"])
+    chart_tag = chart_tag_for(registry, chart_repo, release)
+    chart = oci.push_layout(registry, chart_repo, Path(folder) / "chart", chart_tag)
     if image != release["image"]["digest"] or chart != release["chart"]["digest"]:
         fail("JCR reports other digests than the package names. Not deploying.")
     print(f"Image in JCR: {kube_config['image']}:{image_tag}")
     print(f"        {image}")
-    print(f"Chart in JCR: {chart_repo} {release['version']}")
+    print(f"Chart in JCR: {chart_repo} {chart_tag}")
     print(f"        {chart}")
     # Helm installs the chart from the package, the same bytes JCR now holds.
     _, manifest, blobs = oci.read_layout(Path(folder) / "chart")

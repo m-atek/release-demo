@@ -88,3 +88,18 @@ def test_a_changed_blob_is_refused(tmp_path, base_image):
         assert "doesn't match" in str(error)
     else:
         raise AssertionError("a changed blob passed")
+
+
+def test_a_chart_tag_that_holds_another_build_is_never_overwritten(registry, capsys):
+    import deploy
+
+    client, server = registry
+    ours = b'{"schemaVersion": 2}'
+    release = {"version": "1.9.0", "chart": {"digest": oci.digest(ours)}}
+    assert deploy.chart_tag_for(client, "helm-local/catalog", release) == "1.9.0"
+    server.manifests["/v2/helm-local/catalog/manifests/1.9.0"] = ours
+    assert deploy.chart_tag_for(client, "helm-local/catalog", release) == "1.9.0"
+    server.manifests["/v2/helm-local/catalog/manifests/1.9.0"] = b'{"schemaVersion": 2, "earlier": true}'
+    tag = deploy.chart_tag_for(client, "helm-local/catalog", release)
+    assert tag == "1.9.0-" + release["chart"]["digest"].split(":")[1][:12]
+    assert "holds another build's chart" in capsys.readouterr().out

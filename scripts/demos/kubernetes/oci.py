@@ -131,6 +131,12 @@ class Registry:
             raise RuntimeError(f"{repository}@{reference}: the registry sent a manifest with another digest")
         return json.loads(body), body
 
+    def tagged(self, repository, tag):
+        """The digest of the manifest a tag points at, or None when the tag isn't there."""
+        status, _, body = self.request("GET", f"/v2/{repository}/manifests/{tag}",
+                                       headers={"Accept": ACCEPT}, scope=f"repository:{repository}:pull")
+        return digest(body) if status == 200 else None
+
     def blob(self, repository, blob_digest):
         status, _, body = self.request("GET", f"/v2/{repository}/blobs/{blob_digest}",
                                        scope=f"repository:{repository}:pull")
