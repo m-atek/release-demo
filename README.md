@@ -313,7 +313,7 @@ Before a call or a take:
 
 1. `scripts/tools.sh up`, and the Mac agent (demo 6) connected to Jenkins.
 2. `scripts/demo.sh up mobile`: checks demo 7's bucket, gives the stand-ins their starting state if they have none, and starts the console on http://127.0.0.1:8077 with three pages: Device management (Store Floor's scope and the pilot devices' inventory, on demo 6's Jamf stand-in page), iOS testing and Android testing (the builds, their numbers and release notes).
-3. `scripts/reset.py mobile` (on the tools host): every device back on 2.3.0, rebuilt with a higher build number, the scope on Pilot, 2.4.0 staged, ORD-80 and ORD-81 reopened. Without the Mac, `scripts/demos/mobile/reset.py --standins` resets the stand-ins alone.
+3. `.venv/bin/python scripts/reset.py mobile` (it hands itself over to the tools host, like the main reset, and keeps the past the same way): every device back on 2.3.0, rebuilt with a higher build number, the scope on Pilot, 2.4.0 staged, ORD-80 and ORD-81 reopened, earlier takes archived. `--dry-run` shows what it would do. Without the Mac, `scripts/demos/mobile/reset.py --standins` resets the stand-ins alone.
 
 During the call: Slack as Sam, the console next to it, ServiceNow as Alex. A jamf release stops at the approval with the app on the pilot devices; Alex's approval widens the scope to All store devices. A stores release is a pre-approved standard change once `change.py` reads `standard_options`; until then Alex approves it too. `/rollback store-floor` rebuilds the previous release with a higher build number and gives it to Jamf, because iOS won't install an older build over a newer one. Afterwards: `scripts/demo.sh down mobile`. Nothing of demo 7 costs money by the hour.
 

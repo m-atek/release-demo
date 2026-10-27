@@ -1,27 +1,28 @@
 """Put demo 7 back to its starting state, for a retake or a call. Safe to run twice.
 
-    python scripts/demos/mobile/reset.py              on the tools host, as scripts/reset.py mobile runs it
-    python scripts/demos/mobile/reset.py --standins   only the stand-ins' state, from anywhere (no rebuild)
+    python scripts/reset.py mobile              on the tools host (from the Mac it hands itself over)
+    python scripts/reset.py mobile --dry-run    every action it would take, and nothing else
+    python scripts/demos/mobile/reset.py --standins   only the stand-ins, from anywhere, no rebuild
 
 The starting state: every store device on Store Floor 2.3.0, rebuilt with a
 build number above the last upload (iOS won't install an older build over a
-newer one), and the app scoped to Pilot again; 2.3.0 the latest build for the
-testers; 2.4.0 staged on main; ORD-80 and ORD-81 open, the Jira version
-"store-floor 2.4.0" unreleased, no tag store-floor-v2.4.0, no release copy of
-2.4.0 in JCR, and no open store-floor change in ServiceNow.
+newer one), and the app scoped to Pilot again; 2.3.0 the testers' latest;
+2.4.0 staged on main; ORD-80 and ORD-81 open and the Jira version
+"store-floor 2.4.0" unreleased; no open store-floor change.
 
-The rebuild runs store-floor-build on the Mac agent, so the full reset runs
-on the tools host, which reaches Jenkins and JCR. With Jamf as a stand-in and
-no Mac, --standins puts the stand-in's devices back on 2.3.0 directly.
+Like scripts/reset.py for the main demo, it keeps the past and archives
+instead of deleting, with that script's own steps: earlier takes' tags move to
+takes/<tag>-<UTC time> with their GitHub releases, their release copies in
+JFrog to <releases root>/takes/, and open changes are cancelled, not removed.
+
+The rebuild runs store-floor-build on the Mac agent, so the full reset runs on
+the tools host, which reaches Jenkins and JFrog. --standins resets the
+stand-ins alone, with no rebuild, for a call without the Mac.
 """
 
 import argparse
-import base64
-import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 
 import mobile
 from mobile import ROOT, SERVICE
@@ -186,46 +187,43 @@ def reset_jamf(store):
     say(f"Jamf: {settings['app']} {START} ({number}) on every device, scope {settings['pilot_group']}")
 
 
-def run(*args):
-    result = subprocess.run([sys.executable, *args], cwd=ROOT, capture_output=True, text=True)
-    say("  " + (result.stdout.strip() or result.stderr.strip()).replace("\n", "\n  "))
-    return result.returncode == 0
+def platform_reset():
+    """scripts/reset.py, the main demo's reset, with its steps pointed at store-floor."""
+    import importlib.util
 
-
-def cancel_open_changes():
-    from change import CANCELED, connect
-
-    sn, _ = connect()
-    query = f"cmdb_ci.name={SERVICE}^stateNOT IN3,4,7^active=true"
-    changes = sn.call("GET", "/api/now/table/change_request", sysparm_query=query, sysparm_fields="sys_id,number,type")
-    for change in changes:
-        sn.call("PATCH", f"/api/sn_chg_rest/change/{change['type']}/{change['sys_id']}",
-                {"state": CANCELED, "close_notes": "Cancelled by reset.py mobile before a retake."})
-        say(f"ServiceNow: {change['number']} cancelled")
-    if not changes:
-        say("ServiceNow: no open store-floor change")
-
-
-def remove_release_copy():
-    """JCR's copy of 2.4.0, so the next take's Record stage can store its own.
-    The release-pipeline token can't delete, so this uses the admin password, on the host."""
-    from publish import JCR, releases_root
-
-    password = mobile.get_parameter(mobile.ssm_client(), "jcr/admin-password")
-    auth = "Basic " + base64.b64encode(f"admin:{password}".encode()).decode()
-    path = f"{releases_root(SERVICE)}/{RELEASE}"
-    request = urllib.request.Request(f"{JCR}/artifactory/{path}", method="DELETE", headers={"Authorization": auth})
+    # It imports scripts/check.py, build.py and deploy.py, which this folder's
+    # scripts of the same names would hide: scripts/ goes first while it loads.
+    clashing = ("build", "check", "deploy")
+    ours = {name: sys.modules.pop(name) for name in clashing if name in sys.modules}
+    scripts = str(ROOT / "scripts")
+    sys.path.insert(0, scripts)
     try:
-        urllib.request.urlopen(request, timeout=30)
-        say(f"JCR: {path} removed")
-    except urllib.error.HTTPError as error:
-        say(f"JCR: no {path}" if error.code == 404 else f"JCR: {path} not removed ({error.code})")
+        spec = importlib.util.spec_from_file_location("platform_reset", ROOT / "scripts" / "reset.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(scripts)
+        for name in clashing:
+            sys.modules.pop(name, None)
+        sys.modules.update(ours)
+    module.SERVICE, module.BASELINE, module.DEMO_ISSUES = SERVICE, START, ISSUES
+    return module
+
+
+def stage_release(reset, host):
+    current = host.main_version(mobile.config()["path"])
+    if current == RELEASE:
+        print(f"  main has {SERVICE} {RELEASE}")
+        return
+    reset.act(f"stage {SERVICE} {RELEASE} on main (main has {current})", lambda: host.stage(SERVICE, RELEASE))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--standins", action="store_true", help="only the stand-ins' state, with no rebuild")
-    parser.add_argument("--no-stage", action="store_true", help="don't stage 2.4.0 on main")
+    parser.add_argument("--dry-run", action="store_true", help="print every action, change nothing")
+    parser.add_argument("--here", action="store_true", help="run here, not on the tools host")
+    parser.add_argument("--follow", action="store_true", help="from the Mac: show the run on the tools host")
     args = parser.parse_args()
     started = time.time()
     store = mobile.state_store() if mobile.standins() else None
@@ -233,28 +231,48 @@ def main():
     if args.standins:
         if not store:
             mobile.fail("No stand-ins: STANDIN is 0 for store-floor.")
+        if args.dry_run:
+            say("Would put the stand-ins back on 2.3.0, scope Pilot")
+            return
         reset_standins(store)
         say(f"Stand-ins reset in {time.time() - started:.0f}s")
         return
 
+    import host
+
+    if not args.here and not host.on_host():
+        shown = ["--dry-run"] if args.dry_run else []
+        sys.exit(host.hand_over("reset-mobile", "demos/mobile/reset.py", shown, follow_only=args.follow,
+                                title=" ".join(["reset.py mobile", *shown])))
+    sys.stdout.reconfigure(line_buffering=True)
+    platform = platform_reset()
+    reset = platform.Reset(args.dry_run)
+    print(f"Reset demo 7 to {SERVICE} {START} on the devices and {RELEASE} on main, keeping the past"
+          f"{' (dry run: nothing changes)' if args.dry_run else ''}.")
+    try:
+        reset.step("1. Release and rollback runs in Jenkins", lambda: platform.stop_runs(
+            reset, platform.release_jobs()))
+    except platform.HistoryRunning as error:
+        print(f"  {error}")
+        sys.exit(1)
+    reset.step("2. Open store-floor changes in ServiceNow", lambda: platform.cancel_changes(reset))
+    reset.step(f"3. The take's tags and GitHub releases, after {START}", lambda: platform.github_takes(reset))
+    reset.step(f"4. The take's release copies in JFrog, after {START}", lambda: platform.jfrog_takes(reset))
+    reset.step(f"5. Jira versions after {START}, and {' and '.join(ISSUES)}", lambda: platform.jira_versions(reset))
+    reset.step(f"6. {SERVICE} {RELEASE} on main", lambda: stage_release(reset, host))
     if store and not store.read("testflight.json"):
-        initial_standins(store)
-        say("Stand-ins: created, everything on 2.3.0")
-    reset_jamf(store)
+        reset.act("give the stand-ins their starting state", lambda: initial_standins(store))
+    reset.step(f"7. Store devices on {START}, rebuilt with a higher build, scope Pilot",
+               lambda: reset.act(f"rebuild {START} on the Mac and give it to every store device", lambda: reset_jamf(store)))
     if store and {"apple", "google-play"} <= mobile.standins():
-        reset_store_tracks(store)
-    else:
-        say("TestFlight and Google Play: nothing to reset; the next take uploads a higher build")
-    ok = True
-    if not args.no_stage:
-        ok &= run("scripts/stage.py", SERVICE, RELEASE)
-    for issue in ISSUES:
-        ok &= run("scripts/jira.py", "reopen", issue, f"{SERVICE} {RELEASE}")
-    ok &= run("scripts/tag.py", "--delete", f"{SERVICE}-v{RELEASE}")
-    remove_release_copy()
-    cancel_open_changes()
-    say(f"Demo 7 reset in {time.time() - started:.0f}s" + ("" if ok else ", with the problems above"))
-    sys.exit(0 if ok else 1)
+        reset.step(f"8. {START} the testers' latest", lambda: reset.act(
+            "expire 2.4.0 in TestFlight's stand-in and put 2.3.0 back on the internal track",
+            lambda: reset_store_tracks(store)))
+    took = time.time() - started
+    if reset.failed:
+        print(f"Finished in {took:.0f}s, but these steps failed: {'; '.join(reset.failed)}. Fix them and run it again.")
+        sys.exit(1)
+    print(f"{'Dry run' if args.dry_run else 'Reset'} in {took:.0f}s: {reset.actions} action(s).")
 
 
 if __name__ == "__main__":
