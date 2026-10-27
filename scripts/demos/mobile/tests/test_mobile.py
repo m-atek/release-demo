@@ -344,3 +344,58 @@ def test_reset_standins_twice(release, monkeypatch):
         app = state["apps"]["7"]
         assert (app["version"], app["build"], app["scope"]) == ("2.3.0", "57.1", ["Pilot"])
         assert {d["apps"][BUNDLE]["version"] for d in state["devices"].values()} == {"2.3.0"}
+
+
+def test_build_job_runs_and_its_files_come_back(tmp_path, monkeypatch):
+    """jenkins.build against a fake Jenkins: the Mac is online, the job queues,
+    runs, succeeds, and its archived files download into dist/store-floor/parts."""
+    import http.server
+    import threading
+
+    import jenkins
+
+    started = {}
+
+    class FakeJenkins(http.server.BaseHTTPRequestHandler):
+        def reply(self, body, status=200, headers=()):
+            data = body if isinstance(body, bytes) else json.dumps(body).encode()
+            self.send_response(status)
+            for name, value in headers:
+                self.send_header(name, value)
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            started["parameters"] = self.rfile.read(length).decode()
+            started["auth"] = self.headers["Authorization"]
+            self.reply(b"", 201, [("Location", f"http://127.0.0.1:{port}/queue/item/7/")])
+
+        def do_GET(self):
+            base = f"http://127.0.0.1:{port}"
+            if self.path.startswith("/label/mac/"):
+                self.reply({"nodes": [{"nodeName": "mac", "offline": False}]})
+            elif self.path.startswith("/queue/item/7/"):
+                self.reply({"executable": {"number": 12, "url": f"{base}/job/store-floor-build/12/"}})
+            elif self.path.startswith("/job/store-floor-build/12/api/json"):
+                self.reply({"building": False, "result": "SUCCESS",
+                            "artifacts": [{"relativePath": "dist/store-floor/parts/ios/a.ipa"}]})
+            elif self.path == "/job/store-floor-build/12/artifact/dist/store-floor/parts/ios/a.ipa":
+                self.reply(b"ipa bytes")
+            else:
+                self.reply({}, 404)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FakeJenkins)
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setattr(mobile, "ROOT", tmp_path)
+    try:
+        client = jenkins.Jenkins(url=f"http://127.0.0.1:{port}", token="t0ken")
+        target = jenkins.build("2.3.0", "57.1", "demo-state:2.3.0", ["ios"], "", jenkins=client, say=lambda text: None)
+    finally:
+        server.shutdown()
+    assert (target / "a.ipa").read_bytes() == b"ipa bytes"
+    assert "STORE_BUILD=57.1" in started["parameters"] and "SOURCE=demo-state%3A2.3.0" in started["parameters"]
