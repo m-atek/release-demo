@@ -231,3 +231,10 @@ infracost/cli-token:
   source: you
   secure: true
   help: "Infracost Cloud, Org settings, CLI tokens (dashboard.infracost.io/org/<org>/settings/cli-tokens): a service account token for CI. Demo 2 prices pull requests with it."
+
+anthropic/api-key:
+  source: you
+  secure: true
+  help: "Claude Console (platform.claude.com), workspace release-demo, API keys: a key for the demo's AI steps (videos 12 and 13). The workspace's spend limit caps its cost."
+  pattern: "^sk-ant-"
+  hint: "an Anthropic API key starts with sk-ant-"
