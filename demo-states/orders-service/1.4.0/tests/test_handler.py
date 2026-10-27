@@ -34,7 +34,8 @@ def test_page_escapes_environment_name(monkeypatch):
 
 def test_orders_are_the_same_all_day():
     day = datetime.date(2026, 10, 26)
-    assert app.todays_orders(day) == app.todays_orders(day)
+    first, again = app.todays_orders(day), app.todays_orders(day)
+    assert first == again
     assert app.todays_orders(day) != app.todays_orders(day + datetime.timedelta(days=1))
 
 

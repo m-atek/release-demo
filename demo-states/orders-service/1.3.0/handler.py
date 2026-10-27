@@ -7,10 +7,11 @@ orders for the desktop and mobile demos. Standard library only.
 """
 
 import datetime
+import hashlib
 import html
+import itertools
 import json
 import os
-import random
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -81,20 +82,33 @@ def _lambda_last_modified():
 def todays_orders(today=None):
     """Fictional orders, the same all day, different every day."""
     today = today or datetime.date.today()
-    rng = random.Random(today.isoformat())
+    pick = _picker(today.isoformat())
     orders = []
-    for number in range(1, rng.randint(8, 14) + 1):
-        lines = rng.sample(PRODUCTS, rng.randint(1, 3))
+    for number in range(1, 8 + pick(7) + 1):
+        first = pick(len(PRODUCTS))
+        lines = [PRODUCTS[(first + n) % len(PRODUCTS)] for n in range(1 + pick(3))]
         orders.append(
             {
                 "id": f"{today:%y%m%d}-{number:03d}",
-                "store": rng.choice(STORES),
+                "store": STORES[pick(len(STORES))],
                 "items": [name for name, _ in lines],
                 "total_eur": round(sum(price for _, price in lines), 2),
-                "status": rng.choice(STATUSES),
+                "status": STATUSES[pick(len(STATUSES))],
             }
         )
     return {"date": today.isoformat(), "orders": orders}
+
+
+def _picker(seed):
+    """pick(n) gives a number below n, derived from the seed and a counter: the
+    same seed always gives the same numbers. For demo data, not for security."""
+    counter = itertools.count()
+
+    def pick(n):
+        digest = hashlib.sha256(f"{seed}/{next(counter)}".encode()).digest()
+        return int.from_bytes(digest[:8], "big") % n
+
+    return pick
 
 
 def health():
