@@ -32,6 +32,9 @@ def call() {
             releaseStage('Test') { toolchain.test(service, cfg) }
             releaseStage('Quality gate') { toolchain.qualityGate(service, version) }
             releaseStage('SBOM and scan') { toolchain.sbomAndScan(service) }
+            if (cfg.scripts.contract) {
+                releaseStage('Contract check') { sh "${serviceConfig.command(cfg, 'contract')} ${service}" }
+            }
             archiveArtifacts artifacts: '.release/reports/*, dist/**/build-info.json', allowEmptyArchive: true
             releaseStage('Publish') { sh "${publish} ${service}" }
             releaseStage('Staging', environment: 'staging') { sh "${deploy} ${service} staging" }
@@ -104,10 +107,11 @@ void rollBack(Map cfg, String service) {
         String recovery = String.format('%.0f', (System.currentTimeMillis() - started) / 1000.0)
         withEnv(["RECOVERY=${recovery}"]) {
             sh '''
+                CHECK_NOTES=$(python3 scripts/run_state.py get check.notes)
                 python3 scripts/events.py --stage Rollback --result rolled-back --environment production --recovery-seconds "$RECOVERY"
                 python3 scripts/events.py annotate "$SERVICE rolled back to $PREVIOUS" --tags "rollback,$SERVICE"
                 python3 scripts/notify.py finish rolled-back --previous "$PREVIOUS"
-                python3 scripts/change.py close unsuccessful --notes "Production check failed. The pipeline rolled back to $PREVIOUS automatically in ${RECOVERY}s and checked it. Total time: $(python3 scripts/run_state.py get total). Build: $BUILD_URL"
+                python3 scripts/change.py close unsuccessful --notes "${CHECK_NOTES:+$CHECK_NOTES }Production check failed. The pipeline rolled back to $PREVIOUS automatically in ${RECOVERY}s and checked it. Total time: $(python3 scripts/run_state.py get total). Build: $BUILD_URL"
                 python3 scripts/jira.py comment "Release of $SERVICE $(python3 scripts/run_state.py get version) failed its production check and was rolled back to $PREVIOUS in ${RECOVERY}s. Change: $(python3 scripts/run_state.py get change.number). Build: $BUILD_URL"
             '''
         }

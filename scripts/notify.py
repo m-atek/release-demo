@@ -46,8 +46,7 @@ def render(state):
     head = (f"*Release {state['service']} {state['version']}* · {state['jira_key']} · "
             f"requested by {requester(state.get('requested_by'))}")
     rows = []
-    for name in run_state.STAGES:
-        stage = state["stages"][name]
+    for name, stage in state["stages"].items():
         took = f"  _{run_state.duration(stage['seconds'])}_" if stage.get("seconds") else ""
         rows.append(f"{ICON[stage['status']]}  {name}{took}")
     links = []
@@ -79,7 +78,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     stage = sub.add_parser("stage")
-    stage.add_argument("name", choices=run_state.STAGES)
+    stage.add_argument("name", help="a stage of this run, from .release/state.json")
     stage.add_argument("status", choices=list(ICON))
     stage.add_argument("--seconds", type=float)
     line = sub.add_parser("line")
@@ -91,6 +90,8 @@ def main():
 
     state = run_state.load()
     if args.command == "stage":
+        if args.name not in state["stages"]:
+            raise SystemExit(f"No stage {args.name} in this run: {', '.join(state['stages'])}")
         state["stages"][args.name]["status"] = args.status
         if args.seconds is not None:
             state["stages"][args.name]["seconds"] = args.seconds

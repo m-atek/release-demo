@@ -24,6 +24,17 @@ STAGES = ["Build", "Test", "Quality gate", "SBOM and scan", "Publish", "Staging"
           "Change", "Approval", "Production", "Check production", "Record"]
 PATH = Path(os.environ.get("WORKSPACE", ROOT)) / ".release" / "state.json"
 REPORTS = PATH.parent / "reports"
+# Stages only some services have, from services.yaml: (script key, stage, after which stage).
+OPTIONAL_STAGES = [("contract", "Contract check", "SBOM and scan")]
+
+
+def stages_for(config):
+    """The stages of one service: the shared 12, plus its optional ones in their place."""
+    stages = list(STAGES)
+    for key, name, after in OPTIONAL_STAGES:
+        if config.get("scripts", {}).get(key):
+            stages.insert(stages.index(after) + 1, name)
+    return stages
 
 
 def load():
@@ -90,7 +101,7 @@ def init(args):
         # From the moment Sam pressed Enter in Slack when the handler passes it,
         # so "Live in" matches the clock that starts at the command.
         "started_at": requested_at(args.requested_at),
-        "stages": {name: {"status": "waiting"} for name in STAGES},
+        "stages": {name: {"status": "waiting"} for name in stages_for(config)},
     }
     save(state)
     REPORTS.mkdir(parents=True, exist_ok=True)

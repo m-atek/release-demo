@@ -71,7 +71,8 @@ def stage_summary(state):
 
 def open_change(sn, ssm, state):
     config = service(state["service"])
-    standard = state.get("option") == "standard"
+    # A service may release as standard changes by default (services.yaml servicenow.change).
+    standard = state.get("option") == "standard" or config["servicenow"].get("change") == "standard"
     groups = {g: sn.find("sys_user_group", f"name={g}", "sys_id")["sys_id"] for g in ("Platform team",)}
     ci = sn.find("cmdb_ci_appl", f"name={config['servicenow']['cmdb_item']}", "sys_id")["sys_id"]
     asked_by = requester_user(sn, state.get("requested_by"))
