@@ -160,6 +160,39 @@ Jenkins is configured only through `jenkins/casc.yaml` and the pinned `jenkins/p
 
 The versions 1.2.0 to 1.3.0 that `history.py` releases come with that script.
 
+## Demo on a call: APIs, a contract check and a canary
+
+pricing-api is a Python Lambda function behind an API Gateway HTTP API that calls the alias `live`. Its contract is `services/pricing-api/openapi.yaml`; its fictional consumers are orders-service and the store app. Two broken versions try to ship and two different checks stop them; the third goes out. About 20 minutes with the short canary.
+
+| Version | Jira | What changes | What catches it |
+| --- | --- | --- | --- |
+| 2.0.4 | | Production before the take: one national price list | |
+| 2.1.0 | ORD-52 | Belgian list prices, and drops the response field `currency` | The contract check: "Contract check failed: field currency removed". No change is opened |
+| 2.1.1 | ORD-52 | `currency` is back, but a Belgian store asking for a product without a Belgian list price raises an error | The canary: CloudWatch's Errors alarm on its version, its share back to 0%, the change closed as unsuccessful |
+| 2.1.2 | ORD-52 | Falls back to the national price | Nothing: 10% for the set time, then all traffic |
+
+Once, after the merge:
+
+1. `scripts/demo.sh up apis` applies `infra/demos/4-apis` if it isn't there (Terraform shows its plan first), then waits until both APIs answer.
+2. In the JCR UI, create the Generic repositories `pricing-api-candidates` and `pricing-api-releases` and add both to the permission `release-pipeline`. `scripts/jcr_setup.py --host` lists these steps and checks them.
+3. In SonarQube Cloud, add the monorepo project `<organization>_release-demo_pricing-api`, display name `pricing-api`, as for orders-service.
+4. `.venv/bin/python scripts/servicenow_setup.py` adds the CMDB item pricing-api and its templates "Routine release of pricing-api" and "Rollback of pricing-api".
+5. `.venv/bin/python scripts/demos/apis/dashboard.py` puts the dashboard "pricing-api: contract check and canary" on the Grafana stack.
+
+Before each call or take: `scripts/reset.py apis`, which runs `scripts/demos/apis/reset.py`, in the reset job on the tools host (its JCR step needs the host): both environments on 2.0.4, production's 2.0.4 contract in `pricing-api-releases/2.0.4/` for the contract check, the later release copies, tags and Jira versions cleared, and 2.0.4 staged on main. Open Grafana on that dashboard (last 15 minutes, refresh 5 seconds), Slack `#releases` as Sam, and ServiceNow's change list for pricing-api.
+
+On the call, three times: `scripts/stage.py pricing-api <version>`, then in Slack `/release pricing-api ORD-52 call`.
+
+- 2.1.0 stops at Contract check, before anything is published.
+- 2.1.1 passes the contract check and gets the pre-approved standard change. In production it gets 10% of the traffic. Its error line climbs in Grafana at once; CloudWatch's alarm fires a minute or two later, on one-minute metrics, and its share is back at 0% within seconds. The rollback closes the change as unsuccessful, with the alarm in the close notes.
+- 2.1.2 runs clean at 10%, then takes all traffic: "Live in ...".
+
+The word `call` gives the shorter canary, `canary.minutes_on_calls` (3 minutes). Without it the canary takes `canary.minutes` (5), which the recording uses. The weight, both alarm thresholds and the load are in `services.yaml` too.
+
+What to say if asked: the weighted alias, the alarms on the new version's `ExecutedVersion` metrics, oasdiff and JCR are all real. The traffic is generated: `scripts/demos/apis/loadgen.py` on the tools host calls the alias about 10 times a second during each canary, a third of the calls for Belgian stores, and pushes each result to Grafana. It calls the alias the way API Gateway does, because only Lambda's own answer says which version handled a call that failed. Grafana shows; CloudWatch decides.
+
+After the call: `scripts/demo.sh down apis`. pricing-api has no server: Lambda and API Gateway charge per request, a few cents per recording, and nothing while idle. `down` only clears what an interrupted canary left, and `scripts/demo.sh status apis` shows what each environment runs.
+
 ## Layout
 
 ```
