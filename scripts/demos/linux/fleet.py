@@ -153,7 +153,8 @@ def run_cloud(playbook, extra_vars, names, tags=None, prefix="cloud | "):
             path = Path(extra_vars["package"]["file"]).resolve()
             package_mount = ["-v", f"{path.parent}:/package:ro"]
             extra_vars["package"] = {**extra_vars["package"], "file": f"/package/{path.name}"}
-        write_json(work / "vars.json", {**extra_vars, "results_file": "/work/results.jsonl"})
+        (work / "results").mkdir()
+        write_json(work / "vars.json", {**extra_vars, "results_dir": "/work/results"})
         creds = session.get_credentials().get_frozen_credentials()
         env = {**os.environ, "AWS_ACCESS_KEY_ID": creds.access_key, "AWS_SECRET_ACCESS_KEY": creds.secret_key,
                "AWS_SESSION_TOKEN": creds.token}
@@ -168,7 +169,7 @@ def run_cloud(playbook, extra_vars, names, tags=None, prefix="cloud | "):
         if tags:
             command += ["--tags", tags]
         code = stream(command, env, prefix)
-        return code, read_results(work / "results.jsonl")
+        return code, read_results(work / "results")
 
 
 # Data center: dc-agent
@@ -191,15 +192,18 @@ def run_dc_here(playbook, extra_vars, names, tags=None, results=None, prefix="")
     if not ansible:
         fail("No ansible-playbook on this machine: is this dc-agent?")
     with run_dir() as work:
-        results = Path(results) if results else work / "results.jsonl"
+        (work / "results").mkdir()
         write_json(work / "inventory.json", dc_inventory(names))
-        write_json(work / "vars.json", {**extra_vars, "settings": settings(), "results_file": str(results)})
+        write_json(work / "vars.json", {**extra_vars, "settings": settings(), "results_dir": str(work / "results")})
         command = [ansible, "-i", str(work / "inventory.json"), "-e", f"@{work / 'vars.json'}", playbook]
         if tags:
             command += ["--tags", tags]
         env = {**os.environ, "ANSIBLE_CONFIG": str(ANSIBLE / "ansible.cfg")}
         code = stream(command, env, prefix, cwd=ANSIBLE)
-        return code, read_results(results)
+        found = read_results(work / "results")
+        if results:
+            Path(results).write_text("".join(json.dumps(r) + "\n" for r in found))
+        return code, found
 
 
 def dc_mode():
@@ -284,6 +288,28 @@ def run(playbook, extra_vars, names=None, tags=None, secrets=None, stop_on_failu
     return ok, results
 
 
+def check(version, names=None, secrets=None):
+    """[(server, ok, what it said)] for every server, in rollout order."""
+    names = names or [s["name"] for s in servers()]
+    results = []
+    for site, members in by_site(names).items():
+        site_names = [s["name"] for s in members]
+        extra = {"rollout_action": "check", "version": version, "rollout_serial": len(site_names), "rollout_max_fail": 100}
+        if site == "cloud":
+            results += run_cloud("release.yml", extra, site_names, prefix="  cloud | ")[1]
+        else:
+            results += run_dc("release.yml", extra, site_names, secrets=secrets, prefix="  data center | ")[1]
+    found = {r["server"]: r for r in results}
+    lines = []
+    for name in names:
+        result = found.get(name)
+        if result is None:
+            lines.append((name, False, "didn't answer the check"))
+        else:
+            lines.append((name, result["result"] == "ok", result["detail"].removeprefix("ok   ").removeprefix("FAIL ")))
+    return lines
+
+
 def stream(command, env, prefix, cwd=None, stdin=None):
     """Run a command, printing its output line by line with a prefix. Returns its exit code."""
     process = subprocess.Popen(command, env=env, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -297,8 +323,11 @@ def stream(command, env, prefix, cwd=None, stdin=None):
     return process.wait()
 
 
-def read_results(path):
-    return parse_results(Path(path).read_text()) if Path(path).exists() else []
+def read_results(folder):
+    """One JSON file per server, in rollout order."""
+    order = [s["name"] for s in servers()]
+    found = [json.loads(p.read_text()) for p in Path(folder).glob("*.json")]
+    return sorted(found, key=lambda r: order.index(r["server"]) if r["server"] in order else len(order))
 
 
 def parse_results(text):

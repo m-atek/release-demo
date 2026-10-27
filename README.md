@@ -241,6 +241,27 @@ On the call: `/release catalog ORD-90`. 1.9.0 passes staging. In production, Jen
 
 Afterwards: `scripts/demo.sh down kubernetes`. `scripts/demo.sh status kubernetes` shows the pods, their versions and the memory in use.
 
+## Demo on a call: Linux servers in AWS and a data center (demo 3)
+
+inventory, a Java web app on Tomcat 9, on four Ubuntu 24.04 servers: inv-cloud-01 and inv-cloud-02 on EC2 (t3.small, no inbound rules), and inv-dc-01 and inv-dc-02, Multipass virtual machines on the Mac that the cloud can't reach. Ansible deploys one server at a time (serial 1, max_fail_percentage 0): the cloud servers from the tools host through Systems Manager, the data-center servers from dc-agent, a third virtual machine whose Jenkins agent connects out over WebSocket with its own Cloudflare Access service token. Every release has its own folder under `/opt/inventory/releases` and a `current` symlink. Costs USD 0.0228 an hour per cloud server plus USD 0.005 for each public address, while they run; they stop themselves 4 hours after boot.
+
+| State | Jira | What changes | Where it stops |
+| --- | --- | --- | --- |
+| 2.7.3 | | Every server before the take; built for Java 8 | |
+| 2.8.0 | ORD-44 | Stock per store in the inventory API (`/api/items/<sku>`); built for Java 11, the baseline | inv-dc-01, which still runs Java 8 (planted): its check fails, its symlink goes back to 2.7.3, Tomcat restarts, the rollout stops before inv-dc-02 |
+
+Once: `brew install tmux` and `brew install --cask session-manager-plugin` (the server panes), and Multipass (`brew install --cask multipass`). In System Settings, Privacy and Security, Local Network: allow Multipass, or `multipass exec` can't reach the machines.
+
+Before the call:
+
+1. `scripts/tools.sh up`, then `scripts/demo.sh up linux`: Terraform for the cloud servers, the three virtual machines, dc-agent connected to Jenkins, the baseline (Java 11 everywhere but inv-dc-01) and 2.7.3 on any server without a release. About 15 minutes the first time, 3 after.
+2. `.venv/bin/python scripts/reset.py linux`: all four servers on 2.7.3 and Java 8 planted on inv-dc-01 again, ORD-44 reopened, open inventory changes cancelled. About a minute; safe to run twice. `--no-drift` gives inv-dc-01 Java 11, so 2.8.0 reaches all four.
+3. `scripts/watch_inventory.sh`: a tmux window with the four servers' `/health` in large type, refreshed every second. `scripts/demos/linux/closeup.sh inv-dc-01` shows that server's current release, its release folders, Tomcat (`tomcat.service`) and Java. The agent's journal: `multipass exec dc-agent -- sudo journalctl -fu jenkins-agent -o cat`.
+
+On the call: `/release inventory ORD-44`. After Alex approves, the panes switch to 2.8.0 one at a time: inv-cloud-01, inv-cloud-02, then inv-dc-01, which shows ERROR (Tomcat: built for Java 11, this server runs Java 8), switches back to 2.7.3 and restarts. Slack says "inv-dc-01 failed its check. Rolled back to 2.7.3. Rollout stopped." and "Rollout stopped at inv-dc-01 after ... inv-dc-02 untouched." The change lists the four servers as affected CIs, with each server's result in its work notes; Splunk has each server's steps.
+
+Afterwards: `scripts/demo.sh down linux` stops the cloud servers and the virtual machines; nothing is deleted.
+
 ## Demo on a call: infrastructure changes with Terraform
 
 An infrastructure change goes through the same gates as a release. The network stack in `infra/demos/2-terraform/network` (a VPC, two subnets and a security group, no NAT gateway and no instances) changes only through pull requests. Jenkins' multibranch job `network-stack` scans GitHub every minute and builds pull requests from this repository's own branches, never from forks. Each one gets five GitHub check runs, which the ruleset on main requires: terraform fmt, terraform validate, tflint, Checkov, and Conftest with the house rules in `infra/demos/2-terraform/checks/policy/` (required tags, "S3 bucket must not be public", allowed regions, allowed instance types). Then a plan saved to a file, with its summary and the monthly cost difference on the pull request, a normal change in ServiceNow, and after Alex approves it, the apply of exactly that file, a check that the bucket and queue exist and the bucket blocks public access, and the merge. Terraform refuses a saved plan when the state changed since the plan; the build then stops and says so.

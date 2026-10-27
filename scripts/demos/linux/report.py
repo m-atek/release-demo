@@ -41,7 +41,7 @@ def line(row):
     name = f"{row['server']} ({row['location']})"
     seconds = f" in {row['seconds']:.0f}s" if row.get("seconds") is not None else ""
     if row["result"] == "ok":
-        return f"{name}: on {row['running']}, check ok{seconds}. {row['detail']}".strip()
+        return f"{name}: on {row['running']}, check ok{seconds}. {why(row)}".strip()
     if row["result"] == "rolled-back":
         return (f"{name}: {row['target']} failed its check; rolled back to {row['running']} and checked{seconds}. "
                 f"{why(row)}").strip()
@@ -53,8 +53,8 @@ def line(row):
 
 
 def why(row):
-    """The failed check's own words, without the FAIL prefix."""
-    return row.get("detail", "").removeprefix("FAIL ").strip()
+    """The check's own words, without its ok or FAIL prefix."""
+    return row.get("detail", "").removeprefix("FAIL ").removeprefix("ok   ").strip()
 
 
 def slack_line(table):

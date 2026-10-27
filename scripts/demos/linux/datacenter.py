@@ -47,12 +47,12 @@ def checked(request, local_root=None):
     if not names or any(name not in data_center for name in names):
         fail(f"Servers {names} aren't all data-center servers ({', '.join(data_center)})")
     extra = request.get("extra_vars") or {}
-    allowed = {"action", "version", "package", "previous", "rollout_serial", "rollout_max_fail", "check_timeout",
+    allowed = {"rollout_action", "version", "package", "previous", "rollout_serial", "rollout_max_fail", "check_timeout",
                "java_drift_servers"}
     if set(extra) - allowed:
         fail(f"Unknown settings in the request: {', '.join(sorted(set(extra) - allowed))}")
-    if request["playbook"] == "release.yml" and extra.get("action") not in ACTIONS:
-        fail(f"Action {extra.get('action')!r} isn't one of {', '.join(sorted(ACTIONS))}")
+    if request["playbook"] == "release.yml" and extra.get("rollout_action") not in ACTIONS:
+        fail(f"Action {extra.get('rollout_action')!r} isn't one of {', '.join(sorted(ACTIONS))}")
     if "version" in extra and not VERSION.match(str(extra["version"])):
         fail(f"{extra['version']!r} isn't a version")
     for name, version in (extra.get("previous") or {}).items():

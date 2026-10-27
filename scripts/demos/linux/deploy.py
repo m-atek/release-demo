@@ -120,7 +120,7 @@ def deploy(args, state, deploys, reporting):
                              "deployed_at": run_state.now()}
     run_state.save(state)
 
-    results = rollout({"action": "deploy", "version": version}, names, dc_secrets(),
+    results = rollout({"rollout_action": "deploy", "version": version}, names, dc_secrets(),
                       lambda site: package_for(site, state, cloud_jcr, args.package_file))
     table = report.rows(fleet.servers(), results, version)
     previous = collections.Counter(r["previous"] for r in table if r.get("previous")).most_common(1)
@@ -157,10 +157,10 @@ def back(args, state, deploys, reporting):
             run_state.save(state)
             return
         names = [r["server"] for r in moved]
-        extra = {"action": "back", "previous": {r["server"]: r["previous"] for r in moved}}
+        extra = {"rollout_action": "back", "previous": {r["server"]: r["previous"] for r in moved}}
     else:
         names = [s["name"] for s in fleet.servers()]
-        extra = {"action": "previous"}
+        extra = {"rollout_action": "previous"}
     preflight(names)
     # A rollback tries every server, and keeps going past one that fails.
     extra.update({"rollout_max_fail": 100})

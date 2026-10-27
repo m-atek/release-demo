@@ -2,11 +2,11 @@
 # scripts/demos/linux/fleet.py runs it for deploy.py, check.py and reset.py,
 # with these extra vars:
 #
-#   action          deploy | activate | back | previous | check
+#   rollout_action  deploy | activate | back | previous | check
 #   version         the release to deploy, activate or check
 #   package         {source: jcr | file, url | file, sha256}, for deploy and activate
 #   previous        {server: version}, for back: where this run found each server
-#   results_file    one JSON line per server, on the controller
+#   results_dir     a folder on the controller for one JSON file per server
 #
 # Every release has its own folder under /opt/inventory/releases and the
 # current symlink points to one. A deploy fetches the package, checks its
@@ -14,7 +14,7 @@
 # Tomcat, then checks /health. On a failed check it switches the symlink back,
 # restarts Tomcat, checks again and fails the server, which stops the play.
 
-- name: "inventory: {{ action }} {{ version | default('') }}"
+- name: "inventory: {{ rollout_action }} {{ version | default('') }}"
   hosts: "{{ targets | default('all') }}"
   serial: "{{ rollout_serial | default(1) }}"
   max_fail_percentage: "{{ rollout_max_fail | default(0) }}"
@@ -41,12 +41,12 @@
     - name: Which release this server goes to
       ansible.builtin.set_fact:
         target_version: >-
-          {{ version if action in ['deploy', 'activate', 'check']
-             else previous[inventory_hostname] if action == 'back'
+          {{ version if rollout_action in ['deploy', 'activate', 'check']
+             else previous[inventory_hostname] if rollout_action == 'back'
              else before.previous }}
 
     - name: Check only
-      when: action == 'check'
+      when: rollout_action == 'check'
       block:
         - name: /health reports {{ target_version }}
           ansible.builtin.command: /opt/inventory/bin/inventory-release health --expect {{ target_version | quote }} --timeout 5 --grace 1
@@ -61,12 +61,12 @@
             detail: "{{ health.stdout | default('') }}"
 
     - name: Roll out
-      when: action != 'check'
+      when: rollout_action != 'check'
       block:
         - name: Nothing to go back to
           ansible.builtin.fail:
             msg: "{{ inventory_hostname }} has no release to go back to (releases: {{ before.releases | join(', ') or 'none' }})."
-          when: not target_version or (action in ['back', 'previous'] and target_version not in before.releases)
+          when: not target_version or (rollout_action in ['back', 'previous'] and target_version not in before.releases)
 
         - name: Install the release
           ansible.builtin.include_tasks: tasks/install.yml

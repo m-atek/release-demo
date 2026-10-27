@@ -257,16 +257,14 @@ def baseline(drift=True):
 
 
 def activate(version, package, names=None):
-    extra = {"action": "activate", "version": version, "package": package, "rollout_serial": 4, "rollout_max_fail": 100}
+    extra = {"rollout_action": "activate", "version": version, "package": package, "rollout_serial": 4, "rollout_max_fail": 100}
     ok, results = fleet.run("release.yml", extra, names, stop_on_failure=False, secrets=dc_secrets())
     return ok, results
 
 
 def without_release():
     """Servers with no current release, from a quick check."""
-    from check import check
-
-    return [name for name, ok, what in check(STARTING) if not ok and "no answer" in what or "answered 404" in what]
+    return [name for name, ok, what in fleet.check(STARTING) if not ok and ("no answer" in what or "answered 404" in what)]
 
 
 def up(args):
@@ -291,9 +289,7 @@ def up(args):
 
 
 def status_lines():
-    from check import check
-
-    rows = check(STARTING)
+    rows = fleet.check(STARTING)
     for name, ok, what in rows:
         print(f"  {name:<14} {what}")
 

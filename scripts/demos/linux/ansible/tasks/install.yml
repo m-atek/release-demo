@@ -21,14 +21,14 @@
 - name: Fetch, check and unpack
   block:
     - name: Copy the package from the controller
-      when: package is defined and package.source == 'file' and (action == 'deploy' or target_version not in before.releases)
+      when: package is defined and package.source == 'file' and (rollout_action == 'deploy' or target_version not in before.releases)
       ansible.builtin.copy:
         src: "{{ package.file }}"
         dest: /opt/inventory/incoming/{{ package.file | basename }}
         mode: "0600"
 
     - name: Fetch {{ target_version }}, check its SHA-256, unpack it into releases/{{ target_version }}
-      when: package is defined and (action == 'deploy' or target_version not in before.releases)
+      when: package is defined and (rollout_action == 'deploy' or target_version not in before.releases)
       ansible.builtin.command: >-
         /opt/inventory/bin/inventory-release install
         --version {{ target_version | quote }} --sha256 {{ package.sha256 | quote }}

@@ -1,16 +1,15 @@
-# One JSON line for this server in the results file on the controller. The
-# stage scripts read it for Slack, the change, Splunk and the run state.
+# This server's result as one JSON file in the results folder on the
+# controller, a file per server so servers checked at once don't collide.
+# The stage scripts read them for Slack, the change, Splunk and the run state.
 
 - name: Record {{ inventory_hostname }}'s result
   become: false
   delegate_to: localhost
-  ansible.builtin.lineinfile:
-    path: "{{ results_file }}"
-    create: true
+  ansible.builtin.copy:
+    dest: "{{ results_dir }}/{{ inventory_hostname }}.json"
     mode: "0644"
-    insertafter: EOF
-    line: >-
-      {{ {'server': inventory_hostname, 'site': site, 'location': server_location, 'action': action,
+    content: >-
+      {{ {'server': inventory_hostname, 'site': site, 'location': server_location, 'action': rollout_action,
           'result': result | trim, 'target': target_version, 'running': running | trim,
           'previous': before.current, 'java': before.java, 'started_at': started_at | float,
           'finished_at': lookup('pipe', 'date +%s.%N') | float, 'detail': detail | trim,
