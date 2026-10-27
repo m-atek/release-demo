@@ -22,13 +22,17 @@ def main():
         "sonar.projectName": name,
         "sonar.projectVersion": version,
         "sonar.sources": path,
-        "sonar.exclusions": f"{path}/tests/**",
-        "sonar.tests": f"{path}/tests",
-        "sonar.python.version": config["runtime"].removeprefix("python"),
-        "sonar.python.coverage.reportPaths": ".release/reports/coverage.xml",
         "sonar.qualitygate.wait": "true",
         "sonar.qualitygate.timeout": "300",
     }
+    if (config["dir"] / "tests").is_dir():
+        args["sonar.exclusions"] = f"{path}/tests/**"
+        args["sonar.tests"] = f"{path}/tests"
+    if config.get("runtime", "").startswith("python"):
+        args["sonar.python.version"] = config["runtime"].removeprefix("python")
+        args["sonar.python.coverage.reportPaths"] = ".release/reports/coverage.xml"
+    # A demo's own scanner settings, for example its language's coverage report.
+    args.update({key: str(value) for key, value in config["sonarqube"].get("properties", {}).items()})
     if os.environ.get("GIT_COMMIT"):
         args["sonar.scm.revision"] = os.environ["GIT_COMMIT"]
     print(" ".join(f"-D{key}={value}" for key, value in args.items()))

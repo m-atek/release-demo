@@ -20,21 +20,24 @@ def call() {
                 --slack-channel "$SLACK_CHANNEL" --slack-ts "$SLACK_TS"
         '''
         String version = state('version')
+        Map cfg = serviceConfig(service)
+        String deploy = serviceConfig.command(cfg, 'deploy')
+        String publish = serviceConfig.command(cfg, 'publish')
         currentBuild.displayName = "#${env.BUILD_NUMBER} ${service} ${version}"
         currentBuild.description = "${params.JIRA_KEY}${params.OPTION ? ', ' + params.OPTION : ''}, asked by ${params.REQUESTED_BY ? 'Slack' : 'the Jenkins UI'}"
         sh 'python3 scripts/jira.py fix-version'
 
         try {
-            releaseStage('Build') { toolchain.build(service, params.JIRA_KEY) }
-            releaseStage('Test') { toolchain.test(service) }
+            releaseStage('Build') { toolchain.build(service, params.JIRA_KEY, cfg) }
+            releaseStage('Test') { toolchain.test(service, cfg) }
             releaseStage('Quality gate') { toolchain.qualityGate(service, version) }
             releaseStage('SBOM and scan') { toolchain.sbomAndScan(service) }
             archiveArtifacts artifacts: '.release/reports/*, dist/**/build-info.json', allowEmptyArchive: true
-            releaseStage('Publish') { sh "python3 scripts/publish.py ${service}" }
-            releaseStage('Staging', environment: 'staging') { sh "python3 scripts/deploy.py ${service} staging" }
+            releaseStage('Publish') { sh "${publish} ${service}" }
+            releaseStage('Staging', environment: 'staging') { sh "${deploy} ${service} staging" }
             releaseStage('Check staging', environment: 'staging') {
-                if (check(service, 'staging', version) != 0) {
-                    sh "python3 scripts/deploy.py ${service} staging --back"
+                if (check(cfg, service, 'staging', version) != 0) {
+                    sh "${deploy} ${service} staging --back"
                     error "Staging check failed: staging is back on ${state('deploys.staging.previous_version')}."
                 }
             }
@@ -51,18 +54,18 @@ def call() {
             }
             releaseStage('Production', environment: 'production', deploy: true) {
                 sh 'python3 scripts/change.py implement'
-                sh "python3 scripts/deploy.py ${service} production"
+                sh "${deploy} ${service} production"
             }
             releaseStage('Check production', environment: 'production') {
-                if (check(service, 'production', version) != 0) {
-                    rollBack(service)
+                if (check(cfg, service, 'production', version) != 0) {
+                    rollBack(cfg, service)
                     error "Production check failed: rolled back to ${state('deploys.production.previous_version')}."
                 }
             }
             releaseStage('Record') {
-                withEnv(["VERSION=${version}"]) {
+                withEnv(["VERSION=${version}", "PUBLISH=${publish}"]) {
                     sh '''
-                        python3 scripts/publish.py "$SERVICE" --release
+                        $PUBLISH "$SERVICE" --release
                         python3 scripts/notify.py finish live
                         python3 scripts/jira.py comment "Released $SERVICE $VERSION in $(python3 scripts/run_state.py get change.number). Live in $(python3 scripts/run_state.py get total). Build: $BUILD_URL"
                         python3 scripts/jira.py release
@@ -80,21 +83,21 @@ def call() {
 }
 
 // The pipeline's check: /health within the environment's timeout, then the check paths.
-int check(String service, String environment, String version) {
+int check(Map cfg, String service, String environment, String version) {
     String url = state("deploys.${environment}.url")
     return withEnv(["CHECK_VERSION=${version}", "CHECK_URL=${url}"]) {
         sh(returnStatus: true,
-            script: "python3 scripts/check.py ${service} ${environment} --version \"\$CHECK_VERSION\" --url \"\$CHECK_URL\"")
+            script: "${serviceConfig.command(cfg, 'check')} ${service} ${environment} --version \"\$CHECK_VERSION\" --url \"\$CHECK_URL\"")
     }
 }
 
 // After a failed production check: the previous version back, checked, and recorded everywhere.
-void rollBack(String service) {
+void rollBack(Map cfg, String service) {
     long started = System.currentTimeMillis()
     String previous = state('deploys.production.previous_version')
-    sh "python3 scripts/deploy.py ${service} production --back"
+    sh "${serviceConfig.command(cfg, 'deploy')} ${service} production --back"
     withEnv(["PREVIOUS=${previous}"]) {
-        if (check(service, 'production', previous) != 0) {
+        if (check(cfg, service, 'production', previous) != 0) {
             sh 'python3 scripts/notify.py line "The previous version, $PREVIOUS, fails its check too. Look now."'
             error "Rolled back to ${previous}, but it fails its check too."
         }
