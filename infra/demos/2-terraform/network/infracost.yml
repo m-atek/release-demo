@@ -1,0 +1,7 @@
+# Infracost scans this directory on every pull request, and again as it is on
+# main; the pipeline subtracts the two monthly totals.
+version: "0.3"
+usage_file: infracost-usage.yml
+projects:
+  - path: .
+    name: network-stack

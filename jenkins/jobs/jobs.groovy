@@ -99,3 +99,58 @@ buildMonitorView('Monitor') {
     description('One tile per job: green, red or running.')
     jobs { names(*demoJobs) }
 }
+
+// Demo 2: every pull request on the network stack, and the morning drift
+// check. GitHub can't reach Jenkins, so the job scans every minute. It builds
+// pull requests from branches in this repository only, never from forks. The
+// GitHub App credential lets the GitHub Checks plugin publish each check run;
+// the plugin's own overall check and GitHub Branch Source's commit statuses
+// are off, so the pull request lists exactly the checks the ruleset requires.
+String repositoryOwner = repository.tokenize('/')[0]
+String repositoryName = repository.tokenize('/')[1]
+
+multibranchPipelineJob('network-stack') {
+    displayName('network-stack pull requests')
+    description('Demo 2: for every pull request, the checks, a saved plan with its cost, a ServiceNow change, and after approval the apply of exactly that plan and the merge. Scans GitHub every minute; never builds forks.')
+    branchSources {
+        branchSource {
+            source {
+                github {
+                    id('network-stack')
+                    repoOwner(repositoryOwner)
+                    delegate.repository(repositoryName)
+                    repositoryUrl("https://github.com/${repository}")
+                    configuredByUrl(false)
+                    credentialsId('github-app')
+                    traits {
+                        gitHubPullRequestDiscovery { strategyId(1) }
+                        gitHubStatusChecks {
+                            skip(true)
+                            skipNotifications(true)
+                            suppressLogs(true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    factory {
+        workflowBranchProjectFactory { scriptPath('infra/demos/2-terraform/Jenkinsfile') }
+    }
+    triggers {
+        periodicFolderTrigger { interval('1m') }
+    }
+    orphanedItemStrategy {
+        discardOldItems { numToKeep(20) }
+    }
+}
+
+pipelineJob('network-drift') {
+    description('Demo 2: does the network stack in AWS still match main? Weekdays at 07:00, when the tools host is up, or by hand. Drift goes to Slack and opens a ServiceNow incident.')
+    properties {
+        disableConcurrentBuilds()
+        pipelineTriggers { triggers { cron { spec('TZ=Europe/Amsterdam\n0 7 * * 1-5') } } }
+    }
+    logRotator { numToKeep(60) }
+    definition fromRepository('infra/demos/2-terraform/drift.Jenkinsfile')
+}

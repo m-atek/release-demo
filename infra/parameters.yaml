@@ -226,3 +226,8 @@ pricing-api/production/api-url:
   source: terraform
   secure: false
   help: "pricing-api's API Gateway address in production. Written by infra/demos/4-apis."
+
+infracost/cli-token:
+  source: you
+  secure: true
+  help: "Infracost Cloud, Org settings, CLI tokens (dashboard.infracost.io/org/<org>/settings/cli-tokens): a service account token for CI. Demo 2 prices pull requests with it."

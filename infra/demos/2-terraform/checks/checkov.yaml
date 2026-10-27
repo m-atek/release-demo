@@ -1,0 +1,14 @@
+# Checkov for the network stack: every Terraform check, except these few,
+# each skipped for a reason a reviewer can read. A public bucket still fails.
+framework:
+  - terraform
+skip-check:
+  # VPC flow logs: the stack runs no instances, so there is no traffic to log.
+  - CKV2_AWS_11
+  # The store services' group is attached when the services move in.
+  - CKV2_AWS_5
+  # Exports are copies the stores can send again: no access log, no replica in
+  # a second region, and S3's own encryption instead of a customer-managed key.
+  - CKV_AWS_18
+  - CKV_AWS_144
+  - CKV_AWS_145

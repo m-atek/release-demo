@@ -1,0 +1,13 @@
+# What the store exports are expected to use each month, so the usage-priced
+# bucket and queue show a real cost instead of zero. Resources not in the code
+# yet are ignored.
+version: 0.1
+resource_usage:
+  aws_s3_bucket.exports:
+    standard:
+      storage_gb: 200 # a month of nightly exports from every store
+      monthly_tier_1_requests: 30000 # PUT and LIST: the exports themselves
+      monthly_tier_2_requests: 300000 # GET: the reporting job reading them
+  aws_sqs_queue.exports:
+    monthly_requests: 5000000 # send, receive and delete, with polling
+    request_size_kb: 4

@@ -1,0 +1,98 @@
+// Every pull request on the network stack (infra/demos/2-terraform/network):
+// the checks, each its own GitHub check run; a plan saved to a file, with its
+// summary and monthly cost difference on the pull request; a normal change in
+// ServiceNow; and after Change approvers approve it, the apply of exactly
+// that file, a check of what it made, and the merge through the GitHub App.
+//
+// Run by the multibranch job network-stack (jenkins/jobs/jobs.groovy), which
+// scans GitHub every minute and never builds pull requests from forks. A new
+// push stops the build still running for the same pull request.
+//
+// Values from outside the pipeline reach the shell as environment variables,
+// never quoted into the script.
+
+properties([disableConcurrentBuilds(abortPrevious: true)])
+
+node('tools-host') {
+    checkout scm
+    def demo = load 'infra/demos/2-terraform/pipeline.groovy'
+    String pr = 'python3 scripts/demos/terraform/pr.py'
+    sh 'rm -rf .release'
+    demo.started(demo.checks())
+    sh "${pr} init"
+    currentBuild.description = env.CHANGE_TITLE ?: ''
+    def tools = demo.image()
+
+    try {
+        stage('Checks') {
+            tools.inside('-e HOME=/tmp') {
+                sh 'python3 scripts/demos/terraform/checks.py static'
+            }
+            demo.publish(['terraform fmt', 'terraform validate', 'tflint', 'Checkov'])
+            sh "${pr} sync"
+        }
+        demo.step('Plan') {
+            sh 'python3 scripts/demos/terraform/stack.py credentials plan'
+            int planned = 0
+            tools.inside('-e HOME=/tmp') {
+                planned = sh(returnStatus: true, script: "${pr} plan")
+                sh 'python3 scripts/demos/terraform/checks.py conftest'
+            }
+            demo.publish(['Conftest', 'Plan'])
+            if (planned != 0) {
+                error 'terraform plan failed'
+            }
+        }
+        sh "${pr} gate"
+        demo.step('Cost') {
+            sh 'python3 scripts/demos/terraform/stack.py infracost-token'
+            tools.inside('-e HOME=/tmp') {
+                sh "${pr} cost"
+            }
+            demo.publish(['Plan'])
+        }
+        sh "${pr} comment"
+        if (sh(returnStatus: true, script: "${pr} has-changes") != 0) {
+            sh "${pr} finish no-changes"
+            return
+        }
+        demo.step('Change') {
+            sh "${pr} change open"
+        }
+        demo.step('Approval') {
+            sh "${pr} change wait"
+        }
+        demo.step('Apply') {
+            sh 'python3 scripts/demos/terraform/stack.py credentials apply'
+            sh "${pr} change implement"
+            int applied = 0
+            tools.inside('-e HOME=/tmp') {
+                applied = sh(returnStatus: true, script: "${pr} apply")
+            }
+            if (applied == 3) {
+                error 'Terraform refused the saved plan, because the state changed since the plan. Nothing was applied.'
+            }
+            if (applied != 0) {
+                error 'terraform apply failed'
+            }
+            sh "${pr} verify"
+        }
+        demo.step('Merge') {
+            sh "${pr} merge"
+        }
+        sh "${pr} finish applied"
+    } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException aborted) {
+        withEnv(['REASON=Aborted: a newer commit or a person stopped this build.']) {
+            sh(returnStatus: true, script: "${pr} stopped \"\$REASON\"")
+        }
+        throw aborted
+    } catch (error) {
+        withEnv(["REASON=${error.message ?: error.toString()}"]) {
+            sh(returnStatus: true, script: "${pr} stopped \"\$REASON\"")
+        }
+        throw error
+    } finally {
+        // The temporary AWS credentials and the Infracost token.
+        sh 'rm -rf .release/aws .release/secrets'
+    }
+}

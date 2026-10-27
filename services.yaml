@@ -212,3 +212,39 @@ catalog:
       check:
         timeout_seconds: 60
         paths: [/ready, /api/products]
+
+network-stack:
+  platform: terraform
+  # Changes arrive as pull requests, not as releases from Slack: the Jenkins
+  # multibranch job network-stack runs infra/demos/2-terraform/Jenkinsfile on
+  # each one. The CI job on main and /release leave this service out.
+  pipeline: pull-request
+  path: infra/demos/2-terraform/network
+  toolchain: jenkins/toolchain/terraform.Dockerfile
+
+  jira:
+    project: ORD
+
+  slack:
+    options: []
+
+  scripts:
+    checks: scripts/demos/terraform/checks.py
+    pull_request: scripts/demos/terraform/pr.py
+    drift: scripts/demos/terraform/drift.py
+    reset: scripts/demos/terraform/reset.py
+
+  servicenow:
+    cmdb_item: network-stack
+    assignment_group: Platform team
+    approvers: Change approvers
+    # Every change is a normal change, approved by Change approvers.
+    templates: {}
+
+  terraform:
+    plan_role: release-demo-deploy-network-plan
+    apply_role: release-demo-deploy-network-apply
+    # The pull request the video uses: scripts/demo.sh open-pr terraform.
+    demo_branch: demo-2/store-exports
+    demo_title: ORD-22 Store exports bucket and queue
+    demo_file: infra/demos/2-terraform/network/exports.tf
