@@ -449,6 +449,9 @@ quote-service:
       aws: quote-service on AWS
       azure: quote-service on Azure
       gcp: quote-service on Google Cloud
+    # change.py adds them when the change opens: once it is in Assess,
+    # ServiceNow refuses new affected items (Change Model: Read only CI).
+    servers: [quote-service on Google Cloud, quote-service on Azure, quote-service on AWS]
     assignment_group: Platform team
     approvers: Change approvers
     templates:
