@@ -259,7 +259,9 @@ output "quote_service_gcp_urls" {
 
 # For up.sh: where seed.py copies 1.1.0 before the services exist.
 output "registry" {
-  value = var.apps ? local.registry : ""
+  # From the repository, not local.registry alone: up.sh's targeted apply
+  # updates only outputs that depend on what it targets.
+  value = var.apps ? "${google_artifact_registry_repository.quote[0].location}-docker.pkg.dev" : ""
 }
 
 output "repository" {
