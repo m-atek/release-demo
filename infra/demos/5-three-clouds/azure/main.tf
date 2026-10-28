@@ -159,6 +159,12 @@ resource "azurerm_container_app_environment" "quote" {
   resource_group_name = azurerm_resource_group.quote.name
   location            = local.region
   tags                = local.tags
+
+  # Azure gives every new environment this profile; declared so plans leave it alone.
+  workload_profile {
+    name                  = "Consumption"
+    workload_profile_type = "Consumption"
+  }
 }
 
 resource "azurerm_container_app" "quote" {
@@ -166,6 +172,7 @@ resource "azurerm_container_app" "quote" {
   name                         = each.value.name
   resource_group_name          = azurerm_resource_group.quote.name
   container_app_environment_id = azurerm_container_app_environment.quote[0].id
+  workload_profile_name        = "Consumption"
   # Several revisions stay active, so going back is moving traffic.
   revision_mode = "Multiple"
   tags          = local.tags
