@@ -666,6 +666,9 @@ store-assistant:
       sonar.sources: services/store-assistant/mac/Sources
       sonar.tests: services/store-assistant/mac/Tests
       sonar.coverageReportPaths: .release/reports/coverage-mac.xml
+      # The SwiftUI views have no unit tests (the pilot Mac is their test), so
+      # coverage counts StoreAssistantCore, where the logic and its tests are.
+      sonar.coverage.exclusions: services/store-assistant/mac/Sources/StoreAssistant/**
 
   jamf:
     policy: Store Assistant
