@@ -250,7 +250,7 @@ inventory, a Java web app on Tomcat 9, on four Ubuntu 24.04 servers: inv-cloud-0
 | 2.7.3 | | Every server before the take; built for Java 8 | |
 | 2.8.0 | ORD-44 | Stock per store in the inventory API (`/api/items/<sku>`); built for Java 11, the baseline | inv-dc-01, which still runs Java 8 (planted): its check fails, its symlink goes back to 2.7.3, Tomcat restarts, the rollout stops before inv-dc-02 |
 
-Once: `brew install tmux` and `brew install --cask session-manager-plugin` (the server panes), and Multipass (`brew install --cask multipass`). In System Settings, Privacy and Security, Local Network: allow Multipass, or `multipass exec` can't reach the machines.
+Once: `brew install tmux` and `brew install --cask session-manager-plugin` (the server panes), and Multipass (`brew install --cask multipass`). In System Settings, Privacy and Security, Local Network: allow Multipass, or `multipass exec` can't reach the machines. After the first `scripts/demo.sh up linux`: `.venv/bin/python scripts/demos/linux/jcr_token.py` (the servers' read-only JCR token; then reload Jenkins' configuration so dc-agent gets it too) and `.venv/bin/python scripts/demos/linux/servicenow_setup.py` (the four servers as CIs, after `scripts/servicenow_setup.py`).
 
 Before the call:
 
@@ -343,7 +343,7 @@ Setup once, after infra/ has the new parameter names:
 1. `scripts/demos/mobile/tf.sh init` and `apply`: the bucket, the deploy role and two SSM values.
 2. `.venv/bin/python scripts/demos/mobile/signing_setup.py android-upload-key`: the upload key into SSM. It prints the certificate's fingerprint, never the key.
 3. In JFrog Container Registry's UI, the shared repositories `demos-candidates` and `demos-releases` if no other demo made them.
-4. On the Mac agent: Xcode 26 or later (the Mac needs macOS 15.6 or later for it), Flutter 3.44.0 on the PATH, and `python3 -m pip install --user PyYAML`.
+4. On the Mac agent: Xcode 26 or later (the Mac needs macOS 15.6 or later for it), Flutter 3.44.0 on the PATH (`brew install --cask flutter`, then `git -C /opt/homebrew/share/flutter fetch --depth 1 origin tag 3.44.0 && git -C /opt/homebrew/share/flutter checkout 3.44.0`), and `python3 -m pip install --user PyYAML` (Homebrew's Python also wants `--break-system-packages`).
 
 For the real services, set `STANDIN` to `0` (or name only the stand-ins to keep), and:
 
