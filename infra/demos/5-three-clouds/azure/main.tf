@@ -32,6 +32,10 @@ terraform {
 # your az login signs in.
 provider "azurerm" {
   features {}
+
+  # A new subscription has none of these registered; only what demo 5 uses.
+  resource_provider_registrations = "none"
+  resource_providers_to_register  = ["Microsoft.App", "Microsoft.ContainerRegistry", "Microsoft.ManagedIdentity"]
 }
 
 provider "aws" {

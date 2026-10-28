@@ -3,7 +3,7 @@
 #
 #   scripts/demos/clouds/bootstrap.sh aws     the Jenkins issuer bucket, AWS's trust in it, ECR with 1.1.0, both functions
 #   scripts/demos/clouds/bootstrap.sh azure   the deploy identity with its federated credential
-#   scripts/demos/clouds/bootstrap.sh gcp     the workload identity pool and provider, the deploy service account, the budget alert
+#   scripts/demos/clouds/bootstrap.sh gcp     the APIs, the workload identity pool and provider, the deploy service account
 #
 # After that the pipeline needs no login of yours: each cloud trusts the
 # build's ID token. Azure's and Google Cloud's registries and apps come and go

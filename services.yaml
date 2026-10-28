@@ -471,7 +471,7 @@ quote-service:
   # A failed check moves that cloud back and stops the rest.
   clouds:
     - {key: gcp, name: Google Cloud, region: europe-west4}
-    - {key: azure, name: Azure, region: westeurope}
+    - {key: azure, name: Azure, region: northeurope}
     - {key: aws, name: AWS, region: eu-west-1}
 
   environments:
