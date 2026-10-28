@@ -53,8 +53,9 @@ esac
 state_bucket=$(aws ssm get-parameter --name /release-demo/terraform/state-bucket --query Parameter.Value --output text)
 
 # The budget email, as infra/ has it. Terraform warns about the file's other values.
+# A saved plan (an existing file as the last argument) carries its own values.
 var_file=()
-[[ -f $ROOT/infra/local.auto.tfvars && $1 =~ ^(plan|apply|destroy|import|refresh|console)$ ]] &&
+[[ -f $ROOT/infra/local.auto.tfvars && $1 =~ ^(plan|apply|destroy|import|refresh|console)$ && ! -f ${!#} ]] &&
   var_file=(-var-file="$ROOT/infra/local.auto.tfvars")
 
 [[ -f $dir/.terraform/terraform.tfstate ]] ||
