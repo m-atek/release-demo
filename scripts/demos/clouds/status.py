@@ -72,10 +72,20 @@ def main():
 
     if not args.wait:
         return
-    deadline = time.monotonic() + 300
+    # A target that scaled to zero (Azure's apps do when idle) may take longer to
+    # start than one call waits: say when each answers, so "Ready" follows its line.
+    started = time.monotonic()
+    deadline = started + 300
     while waiting and time.monotonic() < deadline:
         time.sleep(5)
-        waiting = [w for w in waiting if not version(w[2])]
+        still = []
+        for cloud_name, environment, url in waiting:
+            seen = version(url)
+            if seen:
+                print(f"  {cloud_name} {environment}: answers {seen} after {time.monotonic() - started:.0f}s")
+            else:
+                still.append((cloud_name, environment, url))
+        waiting = still
     if waiting:
         print("Not answering after 5 minutes: " + ", ".join(f"{c} {e}" for c, e, _ in waiting))
         raise SystemExit(1)
