@@ -113,9 +113,11 @@ resource "aws_instance" "tools_host" {
     http_put_response_hop_limit = 1
   }
 
+  # 60 GB: Docker 29's containerd image store keeps image layers in
+  # /var/lib/containerd on this disk, not in the data volume's data-root.
   root_block_device {
     volume_type = "gp3"
-    volume_size = 30
+    volume_size = 60
     encrypted   = true
   }
 
