@@ -137,7 +137,9 @@ class Jamf:
         if self.standin and len(data) > UPLOAD_LIMIT:
             # Too big for the stand-in's Lambda function URL: the file goes to S3 first.
             ticket = self.api("POST", "/standin/v1/uploads", {"fileName": filename})
-            put = urllib.request.Request(ticket["url"], data=data, method="PUT")
+            # The signed URL covers an empty Content-Type: urllib's default
+            # (application/x-www-form-urlencoded) makes S3 answer SignatureDoesNotMatch.
+            put = urllib.request.Request(ticket["url"], data=data, method="PUT", headers={"Content-Type": ""})
             urllib.request.urlopen(put, timeout=300).read()
             return self._send("POST", path, b"", {"X-Standin-Upload": ticket["key"]})
         boundary = uuid.uuid4().hex
