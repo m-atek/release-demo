@@ -133,6 +133,14 @@ def check_stores(state, environment, version, timeout, checks, clock=time.monoto
         checks.line(bool(notes), f"Google Play: release notes: {(notes or 'none').splitlines()[0]}")
 
 
+def channel(state, environment):
+    """jamf or stores, as deploy.py chose: a /rollback run has no option, and
+    deploy.py --previous rolls back through Jamf."""
+    if state.get("option"):
+        return state["option"]
+    return "jamf" if state.get("deploys", {}).get(environment, {}).get("rolled_back_to") else "stores"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("service", choices=[SERVICE])
@@ -148,7 +156,7 @@ def main():
     if args.url:
         print(f"     {args.url}")
     try:
-        check = check_jamf if state.get("option") == "jamf" else check_stores
+        check = check_jamf if channel(state, args.environment) == "jamf" else check_stores
         check(state, args.environment, args.version, timeout, checks)
     except ServiceError as error:
         checks.line(False, error.message)

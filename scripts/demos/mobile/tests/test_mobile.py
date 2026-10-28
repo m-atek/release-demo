@@ -397,3 +397,12 @@ def test_build_job_runs_and_its_files_come_back(tmp_path, monkeypatch):
         server.shutdown()
     assert (target / "a.ipa").read_bytes() == b"ipa bytes"
     assert "STORE_BUILD=57.1" in started["parameters"] and "SOURCE=demo-state%3A2.3.0" in started["parameters"]
+
+
+def test_a_rollback_run_is_checked_through_jamf_like_its_deploy():
+    """/rollback has no option; deploy.py --previous goes through Jamf, so the check does too."""
+    assert check.channel({"option": "stores"}, "production") == "stores"
+    assert check.channel({"option": "jamf"}, "production") == "jamf"
+    rolled_back = {"deploys": {"production": {"rolled_back_to": "2.3.0", "rolled_back_number": "39.1"}}}
+    assert check.channel(rolled_back, "production") == "jamf"
+    assert check.channel({}, "production") == "stores"
