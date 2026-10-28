@@ -20,11 +20,16 @@ aws ssm get-parameter --name /release-demo/store-floor/bucket --query Parameter.
 (cd "$ROOT" && "$PY" - <<'PY'
 import sys
 sys.path.insert(0, "scripts/demos/mobile")
-import mobile, reset
+import jamf_apps, mobile, reset
 store = mobile.state_store()
 if not store.read("testflight.json"):
     reset.initial_standins(store)
     print("Stand-ins: created, everything on 2.3.0")
+# Demo 6's Jamf stand-in keeps its own state: Store Floor's app in it, if missing.
+client = jamf_apps.jamf()
+if isinstance(client, jamf_apps.SharedJamf):
+    config = mobile.config()
+    client.ensure_app(config["jamf"]["app"], config["app"]["bundle_id"], config["jamf"]["pilot_group"])
 PY
 )
 
