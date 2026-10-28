@@ -29,5 +29,6 @@ def test_the_bands_use_the_canary_tags():
     assert '["canary-window"]' in source and '["canary-alarm"]' in source
 
 
-def test_it_says_demo_system():
-    assert "Demo system, not a client's." in json.dumps(DASHBOARD)
+def test_it_carries_the_demo_tag():
+    # The videos open with their own disclaimer, so no panel says it on screen.
+    assert "release-demo" in DASHBOARD.get("tags", [])

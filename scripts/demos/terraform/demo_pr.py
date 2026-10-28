@@ -21,9 +21,7 @@ from common import fail
 STATES = stack.ROOT / "demo-states" / stack.SERVICE
 BODY = """Store exports for ORD-22: each store's nightly export lands in an S3 bucket, and S3 puts a message on an SQS queue, so the reporting job picks it up.
 
-Jenkins runs the checks on every push, posts the plan and its monthly cost here, and opens a change in ServiceNow. After approval it applies exactly that plan and merges this pull request.
-
-Demo system, not a client's."""
+Jenkins runs the checks on every push, posts the plan and its monthly cost here, and opens a change in ServiceNow. After approval it applies exactly that plan and merges this pull request."""
 
 
 def open_pr(gh, config):

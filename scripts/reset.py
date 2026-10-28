@@ -61,7 +61,7 @@ from history import BASELINE, PLAN, SERVICE
 from release_job import ReleaseJob
 
 DEMO_ISSUES = ["ORD-12", "ORD-13"]
-NOTE = "Cancelled by reset.py before the next take. Demo system, not a client's."
+NOTE = "Cancelled by reset.py before the next take."
 CHANGE_STATES = {"-5": "New", "-4": "Assess", "-3": "Authorize", "-2": "Scheduled", "-1": "Implement", "0": "Review"}
 STOP_WAIT_SECONDS = 60
 JOBS = ["release", "rollback"]

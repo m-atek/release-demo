@@ -198,7 +198,7 @@ def main():
         kind = kind if kind in types else "Task"
         fields = {"project": {"key": PROJECT}, "issuetype": {"id": types[kind]}, "summary": summary,
                   "reporter": {"id": owner}, "assignee": {"id": owner},
-                  "description": paragraph(f"{summary}. Demo system, not a client's.")}
+                  "description": paragraph(f"{summary}.")}
         if label:
             fields["labels"] = [label]
         created = jira.call("POST", "/rest/api/3/issue", {"fields": fields})

@@ -127,7 +127,7 @@ def main():
 
     # The main reset's steps, for this service and its baseline.
     shared.SERVICE, shared.BASELINE, shared.DEMO_ISSUES = SERVICE, BASELINE, ISSUES
-    shared.NOTE = "Cancelled by reset.py desktop before the next take. Demo system, not a client's."
+    shared.NOTE = "Cancelled by reset.py desktop before the next take."
     started = time.monotonic()
     config = service(SERVICE)
     client = desktop.jamf(config)

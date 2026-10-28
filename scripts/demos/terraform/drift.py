@@ -123,7 +123,7 @@ def open_incident(lines, summary, build_url):
             "Changed outside Terraform:\n" + "\n".join(f"- {line}" for line in lines or ["nothing, but main differs"])
             + f"\n\nTo match main again, Terraform would: {summary}.\nPlan: attached as drift.txt."
             f"\nBuild: {build_url}\n\nTo fix: revert the change by hand, or bring it into the code in a pull request. "
-            "reset.py terraform applies main again. Demo system, not a client's.")
+            "reset.py terraform applies main again.")
     query = f"active=true^short_description={INCIDENT_TITLE}" + (f"^cmdb_ci={item['sys_id']}" if item else "")
     existing = sn.find("incident", query, "sys_id,number")
     if existing:

@@ -134,7 +134,7 @@ pipelineJob('store-floor-build') {
 List<String> demoJobs = ['release', 'rollback', 'ci', 'tools-smoke']
 
 dashboardView('Releases') {
-    description('Releases and CI runs on the demo platform. Demo system, not a client\'s.')
+    description('Releases and CI runs on the demo platform.')
     jobs { names(*demoJobs) }
     columns {
         status()

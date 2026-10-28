@@ -87,7 +87,7 @@ def open_change(sn, ssm, state):
     fields = {
         "short_description": f"Release {state['service']} {state['version']} ({state['jira_key']})",
         "description": f"Release of {state['service']} {state['version']} for {state['jira_key']}, started from Slack "
-                       f"and run by the release pipeline. Demo system, not a client's.",
+                       f"and run by the release pipeline.",
         "cmdb_ci": ci, "assignment_group": groups["Platform team"], "requested_by": asked_by["sys_id"],
         "category": "Software",
         "justification": f"{state['jira_key']}: {links(state, ssm)['Jira']}",
@@ -224,7 +224,7 @@ def record_rollback(sn, ssm, state, code, notes):
     fields = {
         "short_description": f"Rollback of {state['service']} in production: {was} to {back}",
         "description": f"/rollback in Slack moved {state['service']} in production from {was} back to {back}, the "
-                       "release before it, and checked it. Recorded by the rollback job. Demo system, not a client's.",
+                       "release before it, and checked it. Recorded by the rollback job.",
         "cmdb_ci": ci, "assignment_group": group, "requested_by": asked_by["sys_id"], "category": "Software",
         "justification": f"Roll back the release of {state['service']} {was}. Its issue: {issue}",
         "implementation_plan": f"The rollback job moved production from version {was_number} ({was}) to version "

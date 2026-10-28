@@ -209,8 +209,7 @@ def template_texts(service, kind):
         texts = {
             "short_description": f"Routine release of {service}",
             "description": f"A pre-approved release of {service}, started from Slack and run by the release pipeline: "
-                           "tests, quality gate, SBOM and scan, staging and its check, then production and its check. "
-                           "Demo system, not a client's.",
+                           "tests, quality gate, SBOM and scan, staging and its check, then production and its check.",
             "implementation_plan": "The pipeline deploys the package stored in JFrog Container Registry, verified by its "
                                    "SHA-256, to staging and checks it, then deploys the same package to production and "
                                    "moves the live alias. Each stage adds a work note to this change.",

@@ -24,7 +24,7 @@ def notes(state):
         f"- SHA-256: `{state['package']['sha256']}`",
         f"- Total time: {state.get('total', 'n/a')}",
         "",
-        "Released by the release-demo pipeline. Demo system, not a client's.",
+        "Released by the release-demo pipeline.",
     ]
     return "\n".join(lines)
 

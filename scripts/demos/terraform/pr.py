@@ -251,8 +251,7 @@ def comment_body(state, status):
         lines += ["", "Prices from Infracost, with the expected use in "
                       "`infra/demos/2-terraform/network/infracost-usage.yml`."]
     lines += ["", status, "",
-              f"<sub>Jenkins build #{state['build']['number']}, commit {state['commit'][:7]}. "
-              "Demo system, not a client's.</sub>"]
+              f"<sub>Jenkins build #{state['build']['number']}, commit {state['commit'][:7]}.</sub>"]
     return "\n".join(lines)
 
 
@@ -290,7 +289,7 @@ def change_open(state, ssm):
     fields = {
         "short_description": f"{pr['title']} (network-stack, pull request #{pr['number']})",
         "description": (f"Infrastructure change to network-stack from pull request #{pr['number']}, checked, planned "
-                        f"and priced by Jenkins. Demo system, not a client's.\n\nPlan: {stack.summary_line(plan)}\n"
+                        f"and priced by Jenkins.\n\nPlan: {stack.summary_line(plan)}\n"
                         f"{resources}\n\n{cost_text}\n\nThe full plan is attached as plan.txt (terraform show "
                         "-no-color, sensitive values masked)."),
         "cmdb_ci": item["sys_id"], "assignment_group": group, "requested_by": asked_by["sys_id"],

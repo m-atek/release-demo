@@ -635,7 +635,7 @@ store-assistant:
     template_texts:
       pilot:
         short_description: Pilot of Store Assistant
-        description: Delivers a new Store Assistant to the Macs in the Jamf group Pilot only, through the Jamf policy Store Assistant. Demo system, not a client's.
+        description: Delivers a new Store Assistant to the Macs in the Jamf group Pilot only, through the Jamf policy Store Assistant.
         implementation_plan: Upload the notarized package from JFrog Container Registry, verified by its SHA-256, to Jamf; point the policy at it; scope it to Pilot; flush the policy's logs.
         backout_plan: Point the policy back at the previous package and flush its logs. The pilot Macs reinstall the previous version at their next check-in.
         test_plan: The pilot Macs report the new version in Jamf inventory.
@@ -643,7 +643,7 @@ store-assistant:
         risk_impact_analysis: Low, the pilot group only, and the rollback is one step.
       standard:
         short_description: Routine release of store-assistant
-        description: A pre-approved release of Store Assistant, started from Slack and run by the release pipeline. Demo system, not a client's.
+        description: A pre-approved release of Store Assistant, started from Slack and run by the release pipeline.
         implementation_plan: The pipeline signs, notarizes and stores the installers once, delivers the Mac package through Jamf to Pilot, checks it, then widens the policy's scope to All managed Macs.
         backout_plan: Point the Jamf policy back at the previous package and flush its logs.
         test_plan: Unit tests, the quality gate, an SBOM scan with no critical findings, notarization, and the pilot Macs reporting the new version.

@@ -302,7 +302,7 @@ def open_pilot_change(state, config, scope):
     fields = {
         "short_description": f"Pilot of {config['name']} {state['version']} ({state['jira_key']})",
         "description": f"Deliver {config['name']} {state['version']} to the Macs in the Jamf group {scope} only, "
-                       f"through the Jamf policy {config['jamf']['policy']}. Demo system, not a client's.",
+                       f"through the Jamf policy {config['jamf']['policy']}.",
         "cmdb_ci": ci["sys_id"] if ci else "", "assignment_group": group["sys_id"] if group else "",
         "requested_by": asked_by["sys_id"], "category": "Software",
         "justification": f"{state['jira_key']}: the pilot group tries the release before every other Mac.",

@@ -3,7 +3,7 @@
 # Other ${NAME} values come from the controller's environment (docker-compose.yml).
 
 jenkins:
-  systemMessage: "release-demo tools host. Demo system, not a client's."
+  systemMessage: "release-demo tools host."
   # Builds run on the tools-host agent only, never on the controller.
   numExecutors: 0
   # Agents connect over WebSocket through the same port as the UI.

@@ -78,7 +78,7 @@ def test_a_service_without_hooks_opens_the_change_as_before(servicenow):
     path, fields, rest = opened(servicenow, release_state())
     assert path == "/api/sn_chg_rest/change/normal"
     assert fields["short_description"] == "Release orders-service 1.4.0 (ORD-12)"
-    assert fields["description"].endswith("Demo system, not a client's.")
+    assert fields["description"].endswith("run by the release pipeline.")
     assert rest == [("PATCH", "/api/sn_chg_rest/change/normal/change-id", {"state": change.ASSESS})]
 
 
@@ -94,7 +94,7 @@ def test_extras_and_details_reach_the_change_and_affected_items_go_on_before_ass
         "affected_cis": ["ci-a", "ci-b"]}, change_details=["Build 57", "Pilot first"])
     _, fields, rest = opened(servicenow, state)
     assert fields["implementation_plan"] == "Wave 1: STORE-001" and fields["backout_plan"] == "Per server"
-    assert fields["description"].endswith("Demo system, not a client's.\n\nBuild 57\nPilot first")
+    assert fields["description"].endswith("run by the release pipeline.\n\nBuild 57\nPilot first")
     assert rest == [
         ("POST", "/api/now/table/task_ci", {"task": "change-id", "ci_item": "ci-a"}),
         ("POST", "/api/now/table/task_ci", {"task": "change-id", "ci_item": "ci-b"}),
