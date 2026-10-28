@@ -9,10 +9,15 @@ data "aws_iam_policy_document" "deploy_trust" {
       type        = "AWS"
       identifiers = ["arn:aws:iam::${local.account_id}:root"]
     }
+    # The tools host, and your own sign-in on the Mac, where reset.py desktop
+    # runs (it reaches the pilot Mac over SSH), as demos 3 and 4 allow.
     condition {
-      test     = "ArnEquals"
+      test     = "ArnLike"
       variable = "aws:PrincipalArn"
-      values   = [data.aws_iam_role.tools_host.arn]
+      values = [
+        data.aws_iam_role.tools_host.arn,
+        "arn:aws:iam::${local.account_id}:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_AdministratorAccess_*",
+      ]
     }
   }
 }
