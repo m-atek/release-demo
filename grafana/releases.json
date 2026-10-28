@@ -163,28 +163,13 @@
   },
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "",
-      "gridPos": {
-        "x": 0,
-        "y": 0,
-        "w": 24,
-        "h": 2
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "**Demo system, not a client's.** The releases, events and metrics on this dashboard come from real runs of the release pipeline."
-      }
-    },
-    {
       "id": 2,
       "type": "row",
       "title": "orders-service",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 2,
+        "y": 0,
         "w": 24,
         "h": 1
       },
@@ -197,7 +182,7 @@
       "description": "The version that last passed its check in each environment. After a rollback, production shows the version it went back to.",
       "gridPos": {
         "x": 0,
-        "y": 3,
+        "y": 1,
         "w": 6,
         "h": 5
       },
@@ -302,7 +287,7 @@
       "description": "From the pipeline's production events in Grafana Cloud Logs, which keeps 14 days. Deployment frequency: production deployments per day. Lead time for changes: median time from the commit to its production deployment. Change failure rate: production deployments that failed their production check. Failed deployment recovery time: mean time from a failed production check to the previous version being back and checked.",
       "gridPos": {
         "x": 6,
-        "y": 3,
+        "y": 1,
         "w": 18,
         "h": 5
       },
@@ -481,7 +466,7 @@
       "description": "Errors of each environment's function, per minute, from CloudWatch. Green marks are releases, red marks are rollbacks.",
       "gridPos": {
         "x": 0,
-        "y": 8,
+        "y": 6,
         "w": 12,
         "h": 8
       },
@@ -604,7 +589,7 @@
       "description": "Average duration of each environment's function, per minute, from CloudWatch. Green marks are releases, red marks are rollbacks.",
       "gridPos": {
         "x": 12,
-        "y": 8,
+        "y": 6,
         "w": 12,
         "h": 8
       },
@@ -726,7 +711,7 @@
       "description": "One row per release run in the last 14 days, newest first, with how it ended.",
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 14,
         "w": 24,
         "h": 9
       },
@@ -968,7 +953,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 25,
+        "y": 23,
         "w": 24,
         "h": 1
       },
@@ -981,7 +966,7 @@
       "description": "What each cloud's staging target answers on /health, from the prober on the tools host, which calls every target every 5 seconds during a release. Side by side with the other environment, a grid of cloud by environment.",
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 24,
         "w": 6,
         "h": 7
       },
@@ -1109,7 +1094,7 @@
       "description": "What each cloud's production target answers on /health, from the prober on the tools host, which calls every target every 5 seconds during a release. Side by side with the other environment, a grid of cloud by environment.",
       "gridPos": {
         "x": 6,
-        "y": 26,
+        "y": 24,
         "w": 6,
         "h": 7
       },
@@ -1237,7 +1222,7 @@
       "description": "How long each cloud takes to answer /health, staging and production together, measured from the tools host in eu-west-1 every 5 seconds during a release. Green marks are releases, red marks are rollbacks.",
       "gridPos": {
         "x": 12,
-        "y": 26,
+        "y": 24,
         "w": 12,
         "h": 7
       },

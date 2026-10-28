@@ -62,13 +62,10 @@ def test_dashboards_never_name_dora():
 
 
 def test_dashboards_carry_the_demo_label():
-    # The shared dashboard says it in a text panel. A demo's own dashboard,
-    # made to be read at a glance in its video, carries the release-demo tag.
-    texts = [panel["options"]["content"] for panel in panels(load(ROOT / "grafana" / "releases.json"))
-             if panel["type"] == "text"]
-    assert any("Demo system, not a client's." in text for text in texts)
+    # Every dashboard carries the release-demo tag; the videos open with their
+    # own disclaimer, so no panel says it on screen.
     for path in DASHBOARDS:
-        assert "release-demo" in load(path).get("tags", []) or path.name == "releases.json", path.name
+        assert "release-demo" in load(path).get("tags", []), path.name
 
 
 def test_files_have_no_long_dashes():
