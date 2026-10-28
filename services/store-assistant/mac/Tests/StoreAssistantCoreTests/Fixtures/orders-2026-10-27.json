@@ -7,7 +7,7 @@
       "items": [
         "Sports socks, 3 pairs"
       ],
-      "total": 14.99,
+      "total_eur": 14.99,
       "status": "received"
     },
     {
@@ -17,7 +17,7 @@
         "Sports socks, 3 pairs",
         "Running shoes"
       ],
-      "total": 104.94,
+      "total_eur": 104.94,
       "status": "shipped"
     },
     {
@@ -27,7 +27,7 @@
         "Training shirt",
         "Sports socks, 3 pairs"
       ],
-      "total": 39.98,
+      "total_eur": 39.98,
       "status": "packed"
     }
   ]
