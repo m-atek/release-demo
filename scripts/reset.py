@@ -274,6 +274,10 @@ def jfrog_takes(reset):
     status, body = jcr_request("GET", f"api/storage/{root}", password)
     if status == 401:
         fail("JCR refused the admin password in SSM (jcr/admin-password).")
+    if status == 404 and "/" in root:
+        # A service in the shared repositories gets its folder with its first release.
+        print(f"  no release copies yet: {root} doesn't exist")
+        return
     if status != 200:
         fail(f"JCR didn't list {root} ({status}): {body[:200].decode(errors='replace')}")
     folders = [child["uri"].strip("/") for child in json.loads(body).get("children", []) if child.get("folder")]

@@ -422,3 +422,12 @@ def test_main_hands_itself_to_the_tools_host_with_the_slack_handlers_url(monkeyp
     assert calls == [(("reset", "reset.py", ["main", "--dry-run", "--slack-handler-url",
                                              "https://abc.lambda-url.eu-west-1.on.aws/"]),
                       {"follow_only": False, "title": "reset.py main --dry-run"})]
+
+
+def test_a_shared_service_without_releases_has_no_copies_to_archive(world, monkeypatch, capsys):
+    """demos-releases/<service> exists only once the service has a release."""
+    monkeypatch.setattr(reset, "SERVICE", "pricing-api")
+    monkeypatch.setattr(reset, "jcr_request", lambda method, path, password, data=None, headers=None: (404, b"{}"))
+    dry = reset.Reset(dry_run=False, stamp=STAMP)
+    reset.jfrog_takes(dry)
+    assert dry.actions == 0 and "no release copies yet: demos-releases/pricing-api" in capsys.readouterr().out
