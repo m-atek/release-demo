@@ -2,14 +2,14 @@ import Foundation
 import Testing
 @testable import StoreAssistantCore
 
-/// A response recorded from orders-service's /api/orders, three orders long.
+/// Three orders, as the orders API returns them.
 private func fixture() throws -> Data {
     let url = try #require(Bundle.module.url(forResource: "orders-2026-10-27", withExtension: "json",
                                              subdirectory: "Fixtures"))
     return try Data(contentsOf: url)
 }
 
-@Test func readsEveryOrderFromTheRecordedResponse() throws {
+@Test func readsEveryOrder() throws {
     let day = try OrdersDay.parse(fixture())
     #expect(day.date == "2026-10-27")
     #expect(day.count == 3)
@@ -21,7 +21,7 @@ private func fixture() throws -> Data {
 @Test func skipsAnOrderItCantReadAndKeepsTheRest() throws {
     let json = #"""
     {"date": "2026-10-27", "orders": [
-      {"id": "1", "store": "Utrecht Centraal", "items": ["Rain jacket"], "total_eur": 74.5, "status": "packed"},
+      {"id": "1", "store": "Utrecht Centraal", "items": ["Rain jacket"], "total": 74.5, "status": "packed"},
       {"id": "2", "store": "Utrecht Centraal"}
     ]}
     """#
