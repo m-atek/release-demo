@@ -370,11 +370,11 @@ def test_build_job_runs_and_its_files_come_back(tmp_path, monkeypatch):
             self.reply(b"", 201, [("Location", f"http://127.0.0.1:{port}/queue/item/7/")])
 
         def do_GET(self):
-            base = f"http://127.0.0.1:{port}"
             if self.path.startswith("/label/mac/"):
                 self.reply({"nodes": [{"nodeName": "mac", "offline": False}]})
             elif self.path.startswith("/queue/item/7/"):
-                self.reply({"executable": {"number": 12, "url": f"{base}/job/store-floor-build/12/"}})
+                # Jenkins answers with its public address, which the client must not follow.
+                self.reply({"executable": {"number": 12, "url": "https://jenkins-demo.es.nl/job/store-floor-build/12/"}})
             elif self.path.startswith("/job/store-floor-build/12/api/json"):
                 self.reply({"building": False, "result": "SUCCESS",
                             "artifacts": [{"relativePath": "dist/store-floor/parts/ios/a.ipa"}]})

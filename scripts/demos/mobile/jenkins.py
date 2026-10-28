@@ -27,7 +27,12 @@ class Jenkins:
         self.auth = "Basic " + base64.b64encode(f"{user}:{token}".encode()).decode()
 
     def call(self, method, path, data=None, raw=False):
-        url = path if path.startswith("http") else self.url + path
+        if path.startswith("http"):
+            # Jenkins names a build by its public address, behind Cloudflare,
+            # which turns this client away (403, error 1010): stay on self.url.
+            parts = urllib.parse.urlsplit(path)
+            path = parts.path + (f"?{parts.query}" if parts.query else "")
+        url = self.url + path
         request = urllib.request.Request(url, data=data, method=method, headers={"Authorization": self.auth})
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
