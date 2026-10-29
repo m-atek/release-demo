@@ -1,20 +1,25 @@
 # Demo 2, infrastructure changes with Terraform: the two roles the pipeline
-# plans and applies the network stack in network/ with. Applied from the Mac
+# plans and applies the network stack in network/ with, and what starts the
+# drift check after a change made outside Terraform. Applied from the Mac
 # with your short-lived credentials (scripts/demo.sh up terraform), never by
 # the pipeline, so a pull request can't widen its own permissions.
 #
 # - release-demo-deploy-network-plan reads the stack and its state: the plan
-#   on every pull request, and the morning drift check.
+#   on every pull request, and the drift check.
 # - release-demo-deploy-network-apply changes the stack's own resources only,
 #   after the change is approved in ServiceNow.
+# - drift_trigger.tf and trail.tf: CloudTrail, an EventBridge rule and a
+#   Lambda function that start the drift check a minute or two after someone
+#   changes the stack's security groups or buckets outside Terraform.
 #
-# The tools host assumes either one (its policy allows release-demo-deploy-*).
+# The tools host assumes either role (its policy allows release-demo-deploy-*).
 # So can the account's administrators, to run the same steps from the Mac.
 
 terraform {
   required_version = ">= 1.10"
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 6.69.0" }
+    aws     = { source = "hashicorp/aws", version = "~> 6.69.0" }
+    archive = { source = "hashicorp/archive", version = "~> 2.8.0" }
   }
   # The bucket comes from SSM at init: scripts/demos/terraform/stack.py.
   backend "s3" {
@@ -47,10 +52,11 @@ locals {
   state_bucket = "arn:aws:s3:::${nonsensitive(data.aws_ssm_parameter.state_bucket.value)}"
   state_object = "${local.state_bucket}/release-demo/demos/2-terraform/network.tfstate"
   # The stack's resources, by name. bucket_prefix adds a random suffix.
-  exports_buckets = ["arn:aws:s3:::release-demo-store-exports-*", "arn:aws:s3:::release-demo-store-exports-*/*"]
-  exports_queues  = ["arn:aws:sqs:eu-west-1:${local.account_id}:release-demo-store-exports*"]
-  ec2_arn         = "arn:aws:ec2:eu-west-1:${local.account_id}"
-  demo_tag        = "2-terraform"
+  exports_bucket_prefix = "release-demo-store-exports-"
+  exports_buckets       = ["arn:aws:s3:::${local.exports_bucket_prefix}*", "arn:aws:s3:::${local.exports_bucket_prefix}*/*"]
+  exports_queues        = ["arn:aws:sqs:eu-west-1:${local.account_id}:release-demo-store-exports*"]
+  ec2_arn               = "arn:aws:ec2:eu-west-1:${local.account_id}"
+  demo_tag              = "2-terraform"
 }
 
 data "aws_iam_policy_document" "assume" {

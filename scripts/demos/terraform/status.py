@@ -29,6 +29,14 @@ def main():
         except ClientError:
             print(f"role {name}: missing (scripts/demo.sh up terraform)")
 
+    # infra/demos/2-terraform/drift_trigger.tf and trail.tf
+    try:
+        session.client("lambda").get_function(FunctionName="release-demo-drift-trigger")
+        logging = session.client("cloudtrail").get_trail_status(Name="release-demo-management-events")["IsLogging"]
+        print(f"drift trigger: there, CloudTrail {'logging' if logging else 'NOT logging, so no run starts by itself'}")
+    except ClientError:
+        print("drift trigger: missing (scripts/demo.sh up terraform): network-drift runs at 07:00 and by hand only")
+
     vpcs = ec2.describe_vpcs(Filters=demo)["Vpcs"]
     subnets = ec2.describe_subnets(Filters=demo)["Subnets"]
     groups = ec2.describe_security_groups(Filters=demo + [{"Name": "group-name", "Values": ["network-stack-app"]}])

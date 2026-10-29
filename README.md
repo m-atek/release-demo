@@ -276,7 +276,7 @@ The two commits are in `demo-states/network-stack/`. Infracost prices the bucket
 Once, after the merge:
 
 1. GitHub App: in its settings, Permissions, set Checks, Pull requests and Commit statuses to Read and write, then accept the new permissions on the installation (Settings, Applications, the app, Review request).
-2. `scripts/demo.sh up terraform` applies `infra/demos/2-terraform` (the plan and apply roles the tools host assumes) and the network stack's baseline. Terraform shows each plan and asks first.
+2. `scripts/demo.sh up terraform` applies `infra/demos/2-terraform` (the plan and apply roles the tools host assumes, and the drift trigger: a CloudTrail trail, an EventBridge rule and the Lambda function `release-demo-drift-trigger`) and the network stack's baseline. Terraform shows each plan and asks first.
 3. `.venv/bin/python scripts/demos/terraform/ruleset.py --apply`, with your own `gh` login: the ruleset "main: infrastructure checks". The GitHub App and repository admins may go past it, so `stage.py`, `reset.py` and your own pushes still reach main.
 4. `.venv/bin/python scripts/servicenow_setup.py` adds the CMDB item network-stack.
 5. Infracost: a free account and a CI token, then `.venv/bin/python scripts/secrets.py set infracost`. Without it the pull request says "not priced" and everything else runs.
@@ -289,13 +289,13 @@ On the call:
 1. `scripts/demos/terraform/open-pr.sh`: the first commit and the pull request "ORD-22 Store exports bucket and queue". The checks finish about 2 minutes after the push.
 2. `scripts/demos/terraform/fix-pr.sh`: the second commit. The checks pass, and the plan and cost reach the pull request about 3 minutes after the push.
 3. Approve the change in ServiceNow as Alex. Jenkins applies within 20 seconds, checks the bucket, merges, and Slack says "Applied".
-4. In the AWS console, add an inbound rule to the security group `network-stack-app`, then run the Jenkins job `network-drift` by hand. Slack shows the rule and the incident it opened. The job also runs at 07:00 on weekdays when the tools host is up.
+4. In the AWS console, add an inbound rule to the security group `network-stack-app`. The Jenkins job `network-drift` starts by itself: CloudTrail hands the call to EventBridge, usually within a minute or two, and `release-demo-drift-trigger` queues the job with a quiet period of 60 seconds, so changes made within a minute share one run. Slack shows the rule, a line that says how many seconds after the console change the drift was found, and the incident it opened. The job also runs at 07:00 on weekdays when the tools host is up, and by hand (Build with Parameters, the parameters left empty).
 
 Rollback is a revert: GitHub's Revert button on the merged pull request opens one, and the same flow plans, prices, approves and applies it.
 
-What to say if asked: every tool is real, on a real AWS stack. The plan role reads only; the apply role changes only the stack's resources, and neither can change its own permissions, which live in `infra/demos/2-terraform/main.tf`, applied from the Mac. The change gets `terraform show -no-color`, which masks sensitive values; the plan file itself never leaves the build.
+What to say if asked: every tool is real, on a real AWS stack. The plan role reads only; the apply role changes only the stack's resources, and neither can change its own permissions, which live in `infra/demos/2-terraform/main.tf`, applied from the Mac. The change gets `terraform show -no-color`, which masks sensitive values; the plan file itself never leaves the build. The drift trigger leaves alone what the stack's own roles do, so an apply or a reset starts no drift run; with the tools host stopped, it logs the change and the 07:00 run finds it.
 
-After the call: nothing to stop. The stack has nothing that runs by the hour; the bucket and queue cost cents a month until reset removes them. `scripts/demo.sh status terraform` shows what exists.
+After the call: nothing to stop. The stack has nothing that runs by the hour; the bucket and queue cost cents a month until reset removes them. The drift trigger stays on: the trail's first copy of management events is free, and its bucket keeps a week of logs for cents a month. `scripts/demo.sh status terraform` shows what exists.
 
 ## Demo on a call: one release, three clouds (demo 5)
 
