@@ -1,5 +1,6 @@
-"""The PowerShell each step sends, the answers it reads, the Slack rows and
-the fleet check's expectations, without AWS.
+"""The PowerShell each step sends, the answers it reads, the Slack rows, the
+fleet check's expectations, the stop's close notes and the reset's warm-up,
+without AWS.
 
     .venv/bin/python -m pytest -q scripts/demos/windows/tests
 """
@@ -169,3 +170,23 @@ def test_without_slack_the_close_notes_still_give_a_total(tmp_path, monkeypatch)
     assert [what[0] for what in happened] == ["close"]
     assert "Total time: 5m 04s." in happened[0][2]
     assert "total" not in saved
+
+
+def test_the_reset_warms_the_slack_handler_with_the_main_resets_step(monkeypatch, capsys):
+    reset = demo_module("reset")
+    names = ("check", "host")
+    before = {name: sys.modules.get(name) for name in names}
+    main = reset.main_reset()
+    # The shared check.py and host.py, not this folder's, and this folder's names left as they were.
+    scripts = Path(__file__).resolve().parents[3]
+    assert Path(main.wait_for_version.__code__.co_filename) == scripts / "check.py"
+    assert Path(main.host.__file__) == scripts / "host.py"
+    assert {name: sys.modules.get(name) for name in names} == before
+
+    calls = []
+    monkeypatch.setattr(reset, "main_reset", lambda: main)
+    monkeypatch.setattr(main, "warm_slack_handler", lambda step, url: calls.append(url))
+    assert reset.warm_slack_handler() is True and calls == [None]
+    monkeypatch.setattr(main, "warm_slack_handler", lambda step, url: main.fail("The Slack handler answered 500"))
+    assert reset.warm_slack_handler() is False
+    assert "The Slack handler, one call\n  failed" in capsys.readouterr().out

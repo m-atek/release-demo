@@ -8,14 +8,16 @@ The fleet part is one Run Command for all six servers (bootstrap.ps1): the
 baseline from JCR, verified by the SHA-256 services.yaml pins, as the service
 StoreSync, and the store's own config, without UploadEndpoint on the drifted
 server. The tiles in Grafana go back to "waiting" on 3.2.0. A reset also
-cancels store-sync changes still open and reopens ORD-31 with its version
-unreleased. Like the main reset it keeps the past: earlier changes, notes and
-events stay, and a take that releases 3.3.0 again finds its tag and its
-release copy in place (the build is reproducible, so the copy matches). Safe
-to run twice; under two minutes on a running fleet.
+cancels store-sync changes still open, reopens ORD-31 with its version
+unreleased, and warms the Slack handler as the main reset does, so Sam's
+first /release isn't a cold start. Like the main reset it keeps the past:
+earlier changes, notes and events stay, and a take that releases 3.3.0 again
+finds its tag and its release copy in place (the build is reproducible, so
+the copy matches). Safe to run twice; under two minutes on a running fleet.
 """
 
 import argparse
+import importlib.util
 import subprocess
 import sys
 import time
@@ -86,6 +88,38 @@ def shared(*args):
     print("  " + (result.stdout.strip() or result.stderr.strip()[-200:]).replace("\n", "\n  "))
 
 
+def main_reset():
+    """scripts/reset.py as a module. It imports the shared check.py and host.py,
+    which this folder's own would shadow by name, so scripts/ goes first while
+    it loads, and the names are put back after."""
+    scripts, names = str(ROOT / "scripts"), ("check", "host")
+    path, before = list(sys.path), {name: sys.modules.pop(name, None) for name in names}
+    sys.path.insert(0, scripts)
+    try:
+        spec = importlib.util.spec_from_file_location("shared_reset", ROOT / "scripts" / "reset.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = path
+        for name in names:
+            if before[name] is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = before[name]
+    return module
+
+
+def warm_slack_handler():
+    """The main reset's step 8: one signed call to the Slack handler as Mateusz,
+    who isn't a releaser, so it answers "You can't start releases here." and
+    starts nothing. Cold, the handler takes about 2 seconds of Slack's 3 to
+    answer Sam's /release. Returns False when the step failed."""
+    main = main_reset()
+    reset = main.Reset(dry_run=False)
+    reset.step("The Slack handler, one call", lambda: main.warm_slack_handler(reset, None))
+    return not reset.failed
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     which = parser.add_mutually_exclusive_group()
@@ -105,12 +139,15 @@ def main():
         sys.exit(1)
     print(f"Fleet: {fleet.env['baseline']['version']} on every server")
     ok = bootstrap(fleet, ids)
+    warm = True
     if not args.bootstrap:
         print("Records")
         cancel_open_changes()
         shared("jira.py", "reopen", JIRA_KEY, f"{SERVICE} {RELEASE}")
-    print(f"{'Done' if ok else 'Not all servers are on the baseline'} in {waves.duration(time.monotonic() - started)}.")
-    sys.exit(0 if ok else 1)
+        warm = warm_slack_handler()
+    print(f"{'Done' if ok else 'Not all servers are on the baseline'} in {waves.duration(time.monotonic() - started)}"
+          f"{'' if warm else ', but the Slack handler did not answer as it should (above)'}.")
+    sys.exit(0 if ok and warm else 1)
 
 
 if __name__ == "__main__":
