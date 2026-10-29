@@ -47,8 +47,8 @@
       "gridPos": {
         "x": 0,
         "y": 1,
-        "w": 24,
-        "h": 3
+        "w": 18,
+        "h": 4
       },
       "timeFrom": "14d",
       "hideTimeOverride": true,
@@ -133,7 +133,7 @@
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "center",
-        "orientation": "vertical",
+        "orientation": "horizontal",
         "wideLayout": true,
         "showPercentChange": false
       }
@@ -145,7 +145,7 @@
       "description": "store-sync on STORE-001: the version it runs and its status in the upgrade.",
       "gridPos": {
         "x": 0,
-        "y": 4,
+        "y": 5,
         "w": 12,
         "h": 5
       },
@@ -252,7 +252,7 @@
         "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "center",
-        "orientation": "vertical",
+        "orientation": "horizontal",
         "wideLayout": true,
         "showPercentChange": false
       }
@@ -264,7 +264,7 @@
       "description": "store-sync on STORE-006: the version it runs and its status in the upgrade.",
       "gridPos": {
         "x": 12,
-        "y": 4,
+        "y": 5,
         "w": 12,
         "h": 5
       },
@@ -371,7 +371,7 @@
         "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "center",
-        "orientation": "vertical",
+        "orientation": "horizontal",
         "wideLayout": true,
         "showPercentChange": false
       }
@@ -383,7 +383,7 @@
       "description": "store-sync on STORE-002: the version it runs and its status in the upgrade.",
       "gridPos": {
         "x": 0,
-        "y": 9,
+        "y": 10,
         "w": 12,
         "h": 5
       },
@@ -490,7 +490,7 @@
         "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "center",
-        "orientation": "vertical",
+        "orientation": "horizontal",
         "wideLayout": true,
         "showPercentChange": false
       }
@@ -502,7 +502,7 @@
       "description": "store-sync on STORE-003: the version it runs and its status in the upgrade.",
       "gridPos": {
         "x": 12,
-        "y": 9,
+        "y": 10,
         "w": 12,
         "h": 5
       },
@@ -609,7 +609,7 @@
         "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "center",
-        "orientation": "vertical",
+        "orientation": "horizontal",
         "wideLayout": true,
         "showPercentChange": false
       }
@@ -621,7 +621,7 @@
       "description": "store-sync on STORE-004: the version it runs and its status in the upgrade.",
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 15,
         "w": 12,
         "h": 5
       },
@@ -728,7 +728,7 @@
         "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "center",
-        "orientation": "vertical",
+        "orientation": "horizontal",
         "wideLayout": true,
         "showPercentChange": false
       }
@@ -740,7 +740,7 @@
       "description": "store-sync on STORE-005: the version it runs and its status in the upgrade.",
       "gridPos": {
         "x": 12,
-        "y": 14,
+        "y": 15,
         "w": 12,
         "h": 5
       },
@@ -847,7 +847,7 @@
         "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "center",
-        "orientation": "vertical",
+        "orientation": "horizontal",
         "wideLayout": true,
         "showPercentChange": false
       }

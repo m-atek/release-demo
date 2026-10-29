@@ -4,11 +4,17 @@
     python scripts/demos/windows/grafana.py --check    only the check
 
 grafana/store-fleet.json: the wave progress, and below it one tile per
-server, two columns and three rows, with the version and the status (waiting,
-upgrading, healthy, failed, rolled back) in type of 40 px and more, so it reads
-in a 960 px browser pane at 125%. It refreshes every 10 seconds. The rows
-follow the waves: STORE-001 and STORE-006 (the one-server waves), STORE-002
-and STORE-003, STORE-004 and STORE-005. The data comes from fleet_events.py.
+server, two columns and three rows, with the version above the status
+(waiting, upgrading, healthy, failed, rolled back) in type of 40 px and more,
+so it reads in a 960 px browser pane at 125%. That pane is 768 px wide to the
+page: side by side, "upgrading" wouldn't fit half a tile, so each tile and
+the progress stack their two lines. The progress leaves the pane's top right
+free, where the videos put the face bubble. All of it fits the pane's height
+in the kiosk view with the time controls hidden:
+/d/release-demo-store-fleet/store-fleet?kiosk=true&_dash.hideTimePicker=true
+It refreshes every 10 seconds. The rows follow the waves: STORE-001 and
+STORE-006 (the one-server waves), STORE-002 and STORE-003, STORE-004 and
+STORE-005. The data comes from fleet_events.py.
 
 scripts/grafana_setup.py saves it with the other dashboards in grafana/; this
 saves and checks it alone. Uses grafana_setup.py's client, folder and check,
