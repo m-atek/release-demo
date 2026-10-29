@@ -164,8 +164,8 @@ buildMonitorView('Monitor') {
     jobs { names(*demoJobs) }
 }
 
-// Demo 2: every pull request on the network stack, and the morning drift
-// check. GitHub can't reach Jenkins, so the job scans every minute. It builds
+// Demo 2: every pull request on the network stack, and the drift check.
+// GitHub can't reach Jenkins, so the job scans every minute. It builds
 // pull requests from branches in this repository only, never from forks. The
 // GitHub App credential lets the GitHub Checks plugin publish each check run;
 // the plugin's own overall check and GitHub Branch Source's commit statuses
@@ -210,8 +210,19 @@ multibranchPipelineJob('network-stack') {
     }
 }
 
+// The drift check runs weekdays at 07:00, by hand, and a minute or two after a
+// change made outside Terraform: the Lambda function release-demo-drift-trigger
+// starts it as release-bot then, with the change as its parameters and a quiet
+// period of 60 seconds. Runs by hand leave the parameters empty.
 pipelineJob('network-drift') {
-    description('Demo 2: does the network stack in AWS still match main? Weekdays at 07:00, when the tools host is up, or by hand. Drift goes to Slack and opens a ServiceNow incident.')
+    description('Demo 2: does the network stack in AWS still match main? A minute or two after a change made outside Terraform, weekdays at 07:00 when the tools host is up, or by hand. Drift goes to Slack and opens a ServiceNow incident.')
+    parameters {
+        stringParam('TRIGGER', '', 'event when a change in AWS started this run. Empty for the 07:00 run and runs by hand.')
+        stringParam('EVENT_NAME', '', 'The call that changed the stack, such as AuthorizeSecurityGroupIngress.')
+        stringParam('EVENT_TIME', '', "The call's time in CloudTrail, in UTC, such as 2026-10-29T16:54:24Z.")
+        stringParam('RESOURCE_ID', '', 'What the call changed: a security group id or a bucket name.')
+        booleanParam('FROM_CONSOLE', false, 'The call came from the AWS console.')
+    }
     properties {
         disableConcurrentBuilds()
         pipelineTriggers { triggers { cron { spec('TZ=Europe/Amsterdam\n0 7 * * 1-5') } } }

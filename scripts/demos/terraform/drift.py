@@ -4,14 +4,18 @@
     python scripts/demos/terraform/drift.py report    on the host: Slack and a ServiceNow incident if it differs
 
 The Jenkins job network-drift runs both on main at 07:00 on weekdays, when the
-tools host is up, or when started by hand. Exit code 2 from the plan means
-the stack differs from main. What changed outside Terraform, such as an
-inbound rule added in the console, goes to Slack, and an incident opens in
-ServiceNow through the Table API; while that incident is still open, later
-runs add a work note to it instead of opening another.
+tools host is up, when started by hand, and a minute or two after a change made
+outside Terraform: drift_trigger.py, a Lambda function, starts it then with
+TRIGGER=event and the change's call, time and resource. Exit code 2 from the
+plan means the stack differs from main. What changed outside Terraform, such
+as an inbound rule added in the console, goes to Slack, and an incident opens
+in ServiceNow through the Table API; while that incident is still open, later
+runs add a work note to it instead of opening another. A run a change started
+also says how long after that change it found the drift.
 """
 
 import argparse
+import datetime
 import json
 import os
 import sys
@@ -83,6 +87,48 @@ def describe(plan):
     return lines
 
 
+def resource_name(plan, resource_id):
+    """What a reader knows a resource by, such as network-stack-app or a bucket's name,
+    from the plan's state; the id itself when the plan doesn't have it."""
+    modules = [((plan.get("prior_state") or {}).get("values") or {}).get("root_module") or {}]
+    resources = []
+    while modules:
+        module = modules.pop(0)
+        resources += [resource.get("values") or {} for resource in module.get("resources", [])]
+        modules += module.get("child_modules", [])
+    resources += [drift["change"].get("before") or {} for drift in plan.get("resource_drift", [])]
+    for values in resources:
+        if resource_id and values.get("id") == resource_id:
+            return (values.get("tags") or {}).get("Name") or values.get("name") or values.get("bucket") or resource_id
+    return resource_id or "the network stack"
+
+
+# The change that started the run, when one did
+
+def change_that_started(environ=None):
+    """The change drift_trigger.py started this run for, from the job's parameters,
+    or None for the 07:00 run and runs started by hand."""
+    environ = os.environ if environ is None else environ
+    if environ.get("DRIFT_TRIGGER") != "event" or not environ.get("EVENT_NAME"):
+        return None
+    try:
+        made = datetime.datetime.fromisoformat(environ.get("EVENT_TIME", "").replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if made.tzinfo is None:
+        made = made.replace(tzinfo=datetime.timezone.utc)
+    return {"name": environ["EVENT_NAME"], "time": made.timestamp(), "resource": environ.get("RESOURCE_ID", ""),
+            "console": environ.get("FROM_CONSOLE") == "true"}
+
+
+def found_line(change, plan, now):
+    """How long after the change the drift was found, measured from the call's time in
+    CloudTrail, and what the call was. It names no person and no account."""
+    how = "a console change" if change["console"] else "a change through the API"
+    return (f"Found {max(0, round(now - change['time']))} s after {how}: "
+            f"{change['name']} on {resource_name(plan, change['resource'])}.")
+
+
 # Steps
 
 def plan(args):
@@ -111,7 +157,33 @@ def plan(args):
         result.returncode, "The drift check failed."))
 
 
-def open_incident(lines, summary, build_url):
+def incident_text(lines, summary, build_url, found=None):
+    """The incident's description. A run a change started opens with its found line."""
+    opening = ("The morning drift check found the network stack in AWS different from main." if found is None else
+               f"The drift check found the network stack in AWS different from main.\n{found}")
+    return (opening + "\n\nChanged outside Terraform:\n"
+            + "\n".join(f"- {line}" for line in lines or ["nothing, but main differs"])
+            + f"\n\nTo match main again, Terraform would: {summary}.\nPlan: attached as drift.txt."
+            f"\nBuild: {build_url}\n\nTo fix: revert the change by hand, or bring it into the code in a pull request. "
+            "reset.py terraform applies main again.")
+
+
+def drift_message(lines, summary, link, incident, by_timer, found=None):
+    """The Slack message. The 07:00 run and a run started by hand say which they were;
+    a run a change started says, on a line of its own, how long after the change it
+    found the drift."""
+    shown_lines = "\n".join(f"• {line}" for line in lines) or "• Nothing changed by hand, but the stack differs from main."
+    if found is None:
+        when = ("the 07:00 check on main" if by_timer else
+                "the drift check on main (it runs weekdays at 07:00; this run was started by hand)")
+        last = f"Found by {when}. {link} · {incident}"
+    else:
+        last = f"{found}\n{link} · {incident}"
+    return (f":warning: *Drift in network-stack*: AWS no longer matches main.\n{shown_lines}\n"
+            f"To match main again, Terraform would: {summary}.\n{last}")
+
+
+def open_incident(lines, summary, build_url, found=None):
     """A new incident, or a work note on the one still open. Returns (number, url, new)."""
     from change import connect
 
@@ -119,11 +191,7 @@ def open_incident(lines, summary, build_url):
     item = sn.find("cmdb_ci_appl", "name=network-stack", "sys_id")
     group = sn.find("sys_user_group", "name=Platform team", "sys_id")
     caller = sn.find("sys_user", "user_name=release.pipeline", "sys_id")
-    text = ("The morning drift check found the network stack in AWS different from main.\n\n"
-            "Changed outside Terraform:\n" + "\n".join(f"- {line}" for line in lines or ["nothing, but main differs"])
-            + f"\n\nTo match main again, Terraform would: {summary}.\nPlan: attached as drift.txt."
-            f"\nBuild: {build_url}\n\nTo fix: revert the change by hand, or bring it into the code in a pull request. "
-            "reset.py terraform applies main again.")
+    text = incident_text(lines, summary, build_url, found)
     query = f"active=true^short_description={INCIDENT_TITLE}" + (f"^cmdb_ci={item['sys_id']}" if item else "")
     existing = sn.find("incident", query, "sys_id,number")
     if existing:
@@ -159,7 +227,7 @@ def report(args):
     build = {"number": os.environ.get("BUILD_NUMBER", "local"), "url": os.environ.get("BUILD_URL", "")}
     commit = os.environ.get("GIT_COMMIT") or git("rev-parse", "HEAD").stdout.strip()
     by_timer = os.environ.get("DRIFT_TRIGGER") == "timer"
-    when = "the 07:00 check on main" if by_timer else "the drift check on main (it runs weekdays at 07:00; this run was started by hand)"
+    change = change_that_started()
     token = get_parameter(ssm, "slack/bot-token")
     channel = get_parameter(ssm, "slack/channel-id")
     link = f"<{build['url']}|Drift check #{build['number']}>" if build["url"] else f"Drift check #{build['number']}"
@@ -178,11 +246,11 @@ def report(args):
     plan = stack.read_json(PLAN_JSON, {})
     lines = describe(plan)
     summary = stack.summary_line(stack.plan_summary(plan))
-    number, url, new = open_incident(lines, summary, build["url"])
-    shown_lines = "\n".join(f"• {line}" for line in lines) or "• Nothing changed by hand, but the stack differs from main."
-    text = (f":warning: *Drift in network-stack*: AWS no longer matches main.\n{shown_lines}\n"
-            f"To match main again, Terraform would: {summary}.\n"
-            f"Found by {when}. {link} · <{url}|{number}>{'' if new else ' (still open, updated)'}")
+    # Measured once, so the incident and Slack give the same time.
+    found = found_line(change, plan, time.time()) if change else None
+    number, url, new = open_incident(lines, summary, build["url"], found)
+    incident = f"<{url}|{number}>{'' if new else ' (still open, updated)'}"
+    text = drift_message(lines, summary, link, incident, by_timer, found)
     notify.slack("chat.postMessage", token, channel=channel, text=text, unfurl_links=False)
     send(ssm, build, commit, "drift", incident=number)
     print(text.replace("*", ""))
