@@ -25,7 +25,8 @@ production, per server in its wave, never more than `parallel` at once:
 The stop rule: when a server fails, the servers already running finish, no
 new one starts, and the change closes as "Successful with issues". Slack gets
 "STORE-004 failed its check, back on 3.2.0. Wave stopped." and the run's
-finish line, and the script exits 1 so the pipeline stops.
+finish line, whose total time the close notes repeat, and the script exits 1
+so the pipeline stops.
 
 Every server gets a work note in the change (pre-checks, versions before and
 after, checksum, health result, duration), a Splunk event, and a Grafana tile
@@ -233,14 +234,20 @@ def health_text(answer, target):
 
 
 def stopped(release, results, stopped_by):
-    """The stop rule's record: the change closes as successful with issues, Slack says where."""
+    """The stop rule's record: Slack's last line says where, then the change
+    closes as successful with issues. Slack's line comes first, and its total,
+    from Sam's command to that line, is the total the close notes give, so the
+    two always agree. With the total in the run state, the pipeline's own
+    stop leaves Slack and the change alone."""
     state, target = release.state, release.target
     plan = state["plan"]
     text = waves.summary(results, plan["waves"], target, stopped_by)
     state["finish_line"] = waves.finish_line(results, plan["waves"], list(plan.get("others", {})), target, stopped_by)
     release.save()
+    release.notify("finish", "failed")
     if release.sn:
-        took = run_state.duration(run_state.now() - state["started_at"])
+        # Without Slack (RELEASE_DEMO_SLACK=off) there is no last line and no total: count it here.
+        took = state.get("total") or run_state.duration(run_state.now() - state["started_at"])
         release.change.close(release.sn, state, "successful_issues",
                              f"{text} The wave stopped at {stopped_by}; the servers not on {target} are upgraded "
                              f"with /release {state['service']} {state['jira_key']} resume. Total time: {took}. "

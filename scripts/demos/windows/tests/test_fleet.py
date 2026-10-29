@@ -107,3 +107,65 @@ def test_after_back_the_check_expects_the_version_given():
 
 def test_without_a_run_every_server_must_report_the_version():
     assert check.expected_versions({}, ["STORE-001", "STORE-002"], "3.2.0") == {"STORE-001": "3.2.0", "STORE-002": "3.2.0"}
+
+
+WAVES = [["STORE-001"], ["STORE-002", "STORE-003"], ["STORE-004", "STORE-005"], ["STORE-006"]]
+RUN_1 = {"STORE-001": {"status": "healthy"}, "STORE-002": {"status": "healthy"}, "STORE-003": {"status": "healthy"},
+         "STORE-005": {"status": "healthy"},
+         "STORE-004": {"status": "rolled back", "after": "3.2.0", "reason": "UploadEndpoint is not set"}}
+
+
+def stopped_run(tmp_path, monkeypatch, slack=True):
+    """deploy.stopped for run 1 of the video, with the real notify.py in this process
+    and a clock that moves 11 seconds at every reading, as the pipeline's steps take time.
+    Returns what happened, in order: Slack's lines and the change's close."""
+    import notify
+    import run_state
+
+    monkeypatch.setattr(run_state, "PATH", tmp_path / "state.json")
+    clock = iter(range(1304, 2000, 11))  # Sam's command at 1000: the first reading is 5m 04s later
+    monkeypatch.setattr(run_state, "now", lambda: next(clock))
+    happened = []
+    monkeypatch.setattr(notify, "post", lambda state: happened.append(("slack", state["lines"][-1])))
+
+    def run_notify(command, check=False):
+        monkeypatch.setattr(sys, "argv", ["notify.py", *command[2:]])
+        notify.main()
+
+    monkeypatch.setattr(deploy.subprocess, "run", run_notify)
+    if not slack:
+        monkeypatch.setenv("RELEASE_DEMO_SLACK", "off")
+
+    class Change:
+        @staticmethod
+        def close(sn, state, code, notes):
+            happened.append(("close", code, notes))
+
+    state = {"service": "store-sync", "version": "3.3.0", "jira_key": "ORD-31", "started_at": 1000,
+             "build": {"number": 23, "url": "https://jenkins/job/release/23/"}, "stages": {}, "lines": [],
+             "plan": {"waves": WAVES, "others": {}}, "deploys": {"production": {"number": "3.3.0"}}}
+    release = deploy.Release(service("store-sync"), state, fleet=object())
+    release.sn, release.change = object(), Change
+    state["change"] = {"number": "CHG0030031", "sys_id": "c1", "type": "normal"}
+    deploy.stopped(release, RUN_1, "STORE-004")
+    return happened, run_state.load()
+
+
+def test_the_close_notes_give_the_total_of_slacks_last_line(tmp_path, monkeypatch):
+    happened, saved = stopped_run(tmp_path, monkeypatch)
+    assert [what[0] for what in happened] == ["slack", "close"]
+    assert happened[0][1] == "Wave stopped at STORE-004 after 5m 04s. STORE-006 was not touched; the others run 3.3.0."
+    code, notes = happened[1][1:]
+    assert code == "successful_issues"
+    assert "Total time: 5m 04s." in notes
+    assert notes.startswith("4 of 6 servers on 3.3.0. STORE-004 failed (UploadEndpoint is not set) and is on 3.2.0. "
+                            "Not started: STORE-006.")
+    # The pipeline's stop sees both done: the total is set and the change is closed.
+    assert saved["total"] == "5m 04s" and saved["change"]["closed"] == "successful_issues"
+
+
+def test_without_slack_the_close_notes_still_give_a_total(tmp_path, monkeypatch):
+    happened, saved = stopped_run(tmp_path, monkeypatch, slack=False)
+    assert [what[0] for what in happened] == ["close"]
+    assert "Total time: 5m 04s." in happened[0][2]
+    assert "total" not in saved

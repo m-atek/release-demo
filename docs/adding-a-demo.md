@@ -75,7 +75,7 @@ What else a stage script may put in the run state for the shared scripts:
 - `change_extras`: `fields` for the change and `affected_cis` (CMDB sys_ids), which `change.py open` adds while the change is still New: ServiceNow refuses affected items once it is in Assess. Set it before the Change stage, in staging or the Plan stage.
 - `change_details`: lines added to the change's description, so the approver sees them.
 - `rows`: lines Slack's message shows under the stages (demo 1's waves).
-- `change.closed`: the deploy script closed the change itself (demo 1's stop rule), so the pipeline's stop leaves it alone.
+- `change.closed`: the deploy script closed the change itself (demo 1's stop rule), so the pipeline's stop leaves it alone. Post Slack's last line first (`notify.py finish failed`, which sets `total`) and give that `total` in the close notes, so the change and Slack name the same time; with `total` set, the pipeline's stop leaves Slack alone too.
 - `check.notes`: what the change's close notes start with after a rollback.
 
 The shared scripts (`change.py`, `notify.py`, `events.py`, `jira.py`,
