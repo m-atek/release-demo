@@ -1,0 +1,25 @@
+# Day one only, then deleted: does production's check wait for ServiceNow, pass
+# on Alex's approval, and, after an owner's bypass, does the stage's first step
+# still wait for ServiceNow? One stage on the environment bridge-test, which
+# has the same check as production. day_one.py queues it and opens its test change.
+
+trigger: none
+pr: none
+
+pool: release-demo
+
+stages:
+  - stage: Check
+    jobs:
+      - deployment: Waits
+        environment: bridge-test
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  clean: true
+                - bash: python3 scripts/demos/azure_devops/day_one.py wait-in-run
+                  displayName: Wait for the ServiceNow approval
+                - bash: echo "The stage went on, with the approval in ServiceNow."
+                  displayName: After the approval

@@ -451,6 +451,32 @@ The reset runs from the Mac only, since it cancels GitLab pipelines and pushes G
 
 After the call: `scripts/demo.sh down gitlab-port` puts /release back on Jenkins, then stops the runner. GitLab costs nothing: the project runner has no minute limit, and artifacts expire after a day.
 
+## Demo on a call: Azure DevOps (demo 22)
+
+The main release, orders-service 1.4.0 for ORD-12, run from `azure-pipelines.yml` on a self-hosted agent on the tools host, with the code still on GitHub. The environment production has no approvers: its one check, Invoke REST API "ServiceNow change approved" in callback mode, asks the approval bridge (`bridge/handler.py`, its `/azure-devops/check` route), which reads the run with the token Azure DevOps hands the check and answers once Alex approves in ServiceNow. An administrator of the environment can still bypass the check; then Production's first step, "Wait for the ServiceNow approval" (`change.py wait`), waits for Alex as Jenkins' Approval stage does, and nothing deploys before. The Slack handler queues runs as Release Bot, an Entra app with no secret: AWS signs a short-lived token for the handler's role and Entra exchanges it (`infra/demos/22-azure-devops-approval`). `scripts/tests/test_azure_pipelines.py` holds the pipeline to `releasePipeline.groovy`. Azure DevOps holds no secrets: no variable groups, secure files or secret variables.
+
+Once, after the merge:
+
+1. A new Azure DevOps organization at dev.azure.com, signed in with your es.nl account, region West Europe, and in it the private project release-demo. Pipelines, New pipeline, GitHub: install the Azure Pipelines GitHub App on the repository only, and stop at the review step.
+2. `scripts/tf.sh apply` (the bridge's pending-checks table and the new parameter names), then `scripts/demos/azure_devops/tf.sh apply` (Release Bot in Entra, AWS's outbound identity federation, and the two roles' leave to ask for its token). Show both plans first: es.nl is the company's tenant, and IAM changes are yours to apply.
+3. `.venv/bin/python scripts/demos/azure_devops/setup.py --apply --organization <name>` with your az login: the pool, both environments, the check, the pipeline and Release Bot's rights. `--check` prints what the acceptance checks need.
+4. `.venv/bin/python scripts/servicenow_setup.py`: the business rule now covers Azure Pipelines runs too.
+5. A personal access token with the scope Agent Pools (Read & manage), expiring in a day, into `.venv/bin/python scripts/secrets.py set azure-devops`. The agent registers with it once at `scripts/demo.sh up azure-devops`.
+6. The first checks: `setup.py --apply --bridge-test`, then `.venv/bin/python scripts/demos/azure_devops/day_one.py token` (Release Bot signs in) and `day_one.py run` (approve one test change as Alex, reject another, bypass a third as the owner). `day_one.py clean --yes` removes the throwaway pipeline and environment.
+
+Before each call or take:
+
+```bash
+scripts/tools.sh up
+scripts/demo.sh up azure-devops                      # the agent on, then /release on Azure Pipelines
+.venv/bin/python scripts/reset.py azure-devops       # production on 1.3.0, 1.4.0 on main
+scripts/demo.sh status azure-devops                  # the switch and the agent
+```
+
+The reset runs on the tools host, where Release Bot can sign in: from the Mac it hands itself over, as `reset.py` does, and the Jenkins job reset with DEMO=azure-devops runs it there too. On the call: `/release orders-service ORD-12` as Sam. Slack says "Starting on Azure Pipelines", then every stage with its time. Production waits; its checks panel shows "ServiceNow change CHG... is waiting for approval." Alex approves in ServiceNow, the check passes with "Approved by Alex in ServiceNow. Change CHG...", and the stage starts by itself.
+
+After the call: `scripts/demo.sh down azure-devops` puts /release back on Jenkins, then stops the agent. One self-hosted parallel job is free, Basic access is free for the first five users, and the pending-checks table costs cents a month.
+
 ## Layout
 
 ```
