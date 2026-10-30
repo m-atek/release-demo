@@ -16,6 +16,9 @@ A version released again from another build, with no reset in between (two
 takes of one video), keeps its first release copy: the same package is not
 copied twice, and a different one goes next to it, under
 <releases>/<version>/<build>/.
+
+A candidate the cost check measured (video 18) has its cost.json next to the
+package; --release copies it with the package, so the release copy keeps it.
 """
 
 import argparse
@@ -71,6 +74,14 @@ def download(token, path):
     return body
 
 
+def copy_cost(token, candidate, base):
+    """The candidate's cost.json, if the cost check left one, next to its release copy."""
+    source, target = f"{candidate}/cost.json", f"{base}/cost.json"
+    if stored_sha256(token, source) and not stored_sha256(token, target):
+        upload(token, target, download(token, source))
+        print(f"Copied {source} to {target}")
+
+
 def candidates_root(name):
     """Where a service's candidates live: its own repository or its folder in the shared one."""
     return f"demos-candidates/{name}" if service(name).get("jcr", {}).get("shared") else f"{name}-candidates"
@@ -110,10 +121,12 @@ def main():
         fail(f"{state['package']['path']} no longer matches its SHA-256: not copying it to releases.")
     base = f"{releases_root(args.service)}/{info['version']}"
     existing = stored_sha256(token, f"{base}/{info['package']}")
+    candidate = state["package"]["path"].rsplit("/", 1)[0]
     if existing == state["package"]["sha256"]:
         state["package"]["release_path"] = f"{base}/{info['package']}"
         run_state.save(state)
         print(f"{base}/{info['package']} is already this package (same SHA-256): nothing to copy")
+        copy_cost(token, candidate, base)
         return
     if existing:
         print(f"{base}/ holds an earlier build of {info['version']}: this one goes to {base}/{state['build']['number']}/")
@@ -121,6 +134,7 @@ def main():
     target = f"{base}/{info['package']}"
     upload(token, target, package)
     upload(token, f"{base}/build-info.json", (out / "build-info.json").read_bytes())
+    copy_cost(token, candidate, base)
     state["package"]["release_path"] = target
     run_state.save(state)
     print(f"Copied to {target}")

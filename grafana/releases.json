@@ -1330,6 +1330,85 @@
           "sort": "none"
         }
       }
+    },
+    {
+      "id": 60,
+      "type": "row",
+      "title": "orders-service cost",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 61,
+      "type": "bargauge",
+      "title": "Monthly cost at expected volume, by version (USD)",
+      "description": "Measured in staging on 50 page views, projected at services.yaml's expected volume.",
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "timeFrom": "14d",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "last_over_time({source=\"release-demo\", service=\"orders-service\", kind=\"cost_check\", environment=\"staging\"} | json | result != \"no-measurement\" | unwrap monthly_usd | __error__=\"\" [$__range]) by (version)",
+          "queryType": "instant",
+          "legendFormat": "{{version}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "min": 0,
+          "displayName": "${__field.labels.version}",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "noValue": "No cost check yet"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizHeight": 24,
+        "minVizWidth": 8,
+        "maxVizHeight": 60,
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "text": {
+          "titleSize": 18,
+          "valueSize": 22
+        },
+        "legend": {
+          "showLegend": false
+        }
+      }
     }
   ]
 }

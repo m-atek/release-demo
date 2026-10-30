@@ -22,3 +22,11 @@ alex:
   slack: false
   servicenow_user: alex.change.manager
   approver: true
+
+fiona:
+  # Video 18: the cost approver, the only member of Cost approvers in
+  # ServiceNow. No Slack account; Slack shows her name as ServiceNow records it.
+  display_name: Fiona Finance
+  slack: false
+  servicenow_user: fiona.finance
+  cost_approver: true

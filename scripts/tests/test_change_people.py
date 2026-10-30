@@ -174,3 +174,38 @@ def test_without_a_cost_review_nothing_changes_and_cost_json_joins_the_attachmen
     assert opening == ["junit.xml", "sbom.cdx.json", "grype.json", "build-info.json", "cost.json"]
     notes = [body["work_notes"] for method, path, body in sn.calls if method == "PATCH" and "work_notes" in (body or {})]
     assert notes[-1] == "Cost check: +USD 0 a month.\nPrices: ..."
+
+
+def test_a_release_copy_keeps_the_candidate_s_cost_json(tmp_path, monkeypatch):
+    import hashlib
+    import json as json_module
+
+    import publish
+
+    package = b"the package of build 70"
+    out = tmp_path / "dist" / "orders-service"
+    out.mkdir(parents=True)
+    (out / "build-info.json").write_text(json_module.dumps({"version": "1.7.0", "package": "orders-service-1.7.0.zip",
+                                                            "sha256": hashlib.sha256(package).hexdigest()}))
+    files = {"orders-service-candidates/1.7.0/70/orders-service-1.7.0.zip": package,
+             "orders-service-candidates/1.7.0/70/cost.json": b'{"result": "above"}'}
+
+    def request(method, path, token, data=None, headers=None):
+        if method == "GET" and path.startswith("api/storage/"):
+            content = files.get(path.removeprefix("api/storage/"))
+            return (200, json_module.dumps({"checksums": {"sha256": hashlib.sha256(content).hexdigest()}}).encode()) \
+                if content is not None else (404, b"{}")
+        if method == "GET":
+            return (200, files[path]) if path in files else (404, b"")
+        files[path] = data
+        return 201, b""
+    monkeypatch.setenv("WORKSPACE", str(tmp_path))
+    monkeypatch.setattr(publish, "get_parameter", lambda ssm, name: "token")
+    monkeypatch.setattr(publish, "ssm_client", lambda: None)
+    monkeypatch.setattr(publish, "request", request)
+    monkeypatch.setattr(sys, "argv", ["publish.py", "orders-service", "--release"])
+    run_state.save({"service": "orders-service", "version": "1.7.0", "build": {"number": "70"}, "jira_key": "ORD-55",
+                    "package": {"path": "orders-service-candidates/1.7.0/70/orders-service-1.7.0.zip",
+                                "sha256": hashlib.sha256(package).hexdigest(), "name": "orders-service-1.7.0.zip"}})
+    publish.main()
+    assert files["orders-service-releases/1.7.0/cost.json"] == b'{"result": "above"}'
