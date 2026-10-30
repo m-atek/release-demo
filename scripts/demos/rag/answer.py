@@ -29,7 +29,6 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.append(str(HERE.parents[1]))
 import rag  # noqa: E402
-from common import fail  # noqa: E402
 
 CITED_UNKNOWN = "No answer: it cited a page it wasn't given."
 

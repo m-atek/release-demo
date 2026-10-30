@@ -371,9 +371,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    callers = CALLERS
+
     def do_POST(self):
         caller = ipaddress.ip_address(self.client_address[0])
-        if not any(caller in network for network in CALLERS):
+        if not any(caller in network for network in self.callers):
             return self.reply(403)
         if not hmac.compare_digest(self.headers.get("Authorization", "").encode(), f"Bearer {self.token}".encode()):
             return self.reply(401)
@@ -397,6 +399,7 @@ def worker(work):
 def serve():
     address = json.loads(ssm_value("cluster-host/settings"))["address"]
     Handler.token = TOKEN.read_text().strip()
+    Handler.callers = [*CALLERS, ipaddress.ip_network(f"{address}/32")]  # a pod's call may arrive from the node's address
     Handler.work = queue.Queue()
     threading.Thread(target=worker, args=(Handler.work,), daemon=True).start()
     server = http.server.ThreadingHTTPServer((address, PORT), Handler)

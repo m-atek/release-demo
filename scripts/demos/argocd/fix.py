@@ -44,7 +44,7 @@ sys.path.append(str(HERE.parent / "terraform"))  # demo 2's GitHub App client
 import gitops  # noqa: E402
 import github  # noqa: E402
 import run_state  # noqa: E402
-from common import ROOT, fail, get_parameter, people, service, ssm_client  # noqa: E402
+from common import ROOT, fail, get_parameter, service, ssm_client  # noqa: E402
 
 STAGES = ["Checks", "Change", "Approval", "Merge", "Sync", "Record"]
 CHECKS = ["helm template", "kubeconform", "Image in JFrog", "Only deploy/production/catalog"]

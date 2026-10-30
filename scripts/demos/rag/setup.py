@@ -20,7 +20,6 @@
 """
 
 import argparse
-import base64
 import json
 import re
 import sys

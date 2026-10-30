@@ -22,7 +22,6 @@ MARKER = "RELEASE_DEMO_RAG_VENV"
 def present():
     try:
         import anthropic  # noqa: F401
-        import mlflow  # noqa: F401
         import mlflow.genai  # noqa: F401
     except ImportError:
         return False
