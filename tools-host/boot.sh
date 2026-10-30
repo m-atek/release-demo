@@ -168,6 +168,11 @@ release_bot_token() {
   "$VENV/bin/python" "$HERE/release_bot_token.py" "$SECRETS" || echo "release-bot token: will retry at next boot"
 }
 
+# Demo 17: the GitLab runner, installed and registered, but started only by scripts/demo.sh up gitlab-port.
+gitlab_runner() {
+  "$HERE/gitlab-runner.sh" || echo "GitLab runner: will retry at next boot"
+}
+
 arm_idle_stop() {
   cat > /etc/systemd/system/release-demo-idle.service <<EOF
 [Unit]
@@ -206,5 +211,6 @@ publish_oidc_issuer
 agent_secrets
 kube_token_helper
 release_bot_token
+gitlab_runner
 arm_idle_stop
 echo "== boot done"

@@ -2,9 +2,10 @@
 
     idle_stop.py /run/release-demo/secrets
 
-Idle means: no running or queued Jenkins build, and cloudflared's request
-counter unchanged, so nobody used Jenkins, JCR or Splunk through the tunnel.
-The host powers off; its shutdown behaviour is "stop", so the data stays.
+Idle means: no running or queued Jenkins build, no job on the GitLab runner
+(demo 17), and cloudflared's request counter unchanged, so nobody used
+Jenkins, JCR or Splunk through the tunnel. The host powers off; its shutdown
+behaviour is "stop", so the data stays.
 """
 
 import base64
@@ -35,6 +36,17 @@ def jenkins_busy(secrets):
         return False  # Jenkins down counts as idle: a broken host shouldn't run all night
 
 
+def gitlab_busy():
+    """A job on the GitLab runner, from its metrics on localhost: the Approval
+    job waiting for Alex keeps the host up. No runner running counts as idle."""
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:9252/metrics", timeout=5) as response:
+            lines = response.read().decode().splitlines()
+    except Exception:
+        return False
+    return sum(float(line.rsplit(" ", 1)[1]) for line in lines if line.startswith("gitlab_runner_jobs{")) > 0
+
+
 def tunnel_requests():
     try:
         with urllib.request.urlopen("http://127.0.0.1:2000/metrics", timeout=5) as response:
@@ -55,7 +67,7 @@ def main():
     state["last_active"] = max(state["last_active"], booted)
 
     requests = tunnel_requests()
-    if jenkins_busy(secrets) or requests != state["requests"]:
+    if jenkins_busy(secrets) or gitlab_busy() or requests != state["requests"]:
         state["last_active"] = now
     state["requests"] = requests
     STATE.parent.mkdir(parents=True, exist_ok=True)

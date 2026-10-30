@@ -22,7 +22,10 @@ JENKINS_GID = 1000  # the jenkins user's group inside the controller image
 CLOUDFLARED_UID = 65532  # the nonroot user inside the cloudflared image
 NOT_ON_HOST = {"cloudflare/api-token", "cloudflare/account-id", "cloudflare/zone-id",
                "grafana/external-id", "terraform/state-bucket", "servicenow/admin-password",
-               "servicenow/sam-password", "servicenow/alex-password", "grafana/setup-token"}
+               "servicenow/sam-password", "servicenow/alex-password", "grafana/setup-token",
+               # Demo 17: the GitLab account's token is the Mac's only (an IAM deny), and the
+               # runner reads its own token from SSM once, so neither goes on the tmpfs.
+               "gitlab/api-token", "gitlab/runner-token", "gitlab/trigger-token"}
 
 
 def write(directory, name, value, uid=0, gid=JENKINS_GID, mode=0o640):

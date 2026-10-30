@@ -1,0 +1,30 @@
+#!/opt/release-demo-venv/bin/python
+"""Print one SSM value for a CI job on the tools host, the way Jenkins'
+credential binding hands a step its token.
+
+    release-demo-parameter sonar/token
+
+Only the names below: a job hands the value to the one tool that needs it,
+the SonarQube scanner, in an environment variable. Read through the
+instance role. Installed root-owned in /usr/local/bin by gitlab-runner.sh.
+"""
+
+import sys
+
+import boto3
+
+ALLOWED = {"sonar/token"}
+
+
+def main():
+    if len(sys.argv) != 2 or sys.argv[1] not in ALLOWED:
+        sys.exit(f"usage: release-demo-parameter {' | '.join(sorted(ALLOWED))}")
+    value = boto3.client("ssm", region_name="eu-west-1").get_parameter(
+        Name=f"/release-demo/{sys.argv[1]}", WithDecryption=True)["Parameter"]["Value"]
+    if value == "unset":
+        sys.exit(f"/release-demo/{sys.argv[1]} isn't set yet. See: python scripts/secrets.py")
+    sys.stdout.write(value)
+
+
+if __name__ == "__main__":
+    main()
