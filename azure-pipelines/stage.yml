@@ -1,0 +1,79 @@
+# What releaseStage.groovy does under Jenkins, for azure-pipelines.yml: one
+# step that runs a stage's script, with Slack's row running, then ok or failed
+# with its seconds, the event, and the work note once the change exists.
+#
+# A Slack stage may take more than one step: the first begins it, the last
+# ends it, and any step that fails ends it as failed. startedAt names a run
+# state key for a stage that began in an earlier job: the approval, which
+# waits between Change and Production. Steps run without set -e, so a
+# script of more than one command chains them with && or returns early.
+
+parameters:
+  - name: stage
+    type: string
+  - name: displayName
+    type: string
+  - name: script
+    type: string
+  - name: environment
+    type: string
+    default: ""
+  - name: deploy
+    type: boolean
+    default: false
+  - name: begins
+    type: boolean
+    default: true
+  - name: ends
+    type: boolean
+    default: true
+  - name: startedAt
+    type: string
+    default: ""
+  - name: condition
+    type: string
+    default: succeeded()
+
+steps:
+  - bash: |
+      state() { python3 scripts/run_state.py get "$1"; }
+      # The service's toolchain image, tagged with a hash of its inputs as toolchain.groovy's image()
+      # does, with the job's directory mounted, as docker.inside does under Jenkins.
+      toolchain() {
+        local dockerfile=jenkins/toolchain/python.Dockerfile image
+        image=release-demo/python-tools:$(cat "$dockerfile" requirements-dev.txt | sha256sum | cut -c1-12)
+        docker image inspect "$image" >/dev/null 2>&1 || docker build -q -t "$image" -f "$dockerfile" . >/dev/null
+        docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:$PWD" -w "$PWD" \
+          -e RELEASE_CI_NAME -e RELEASE_RUN_ID -e RELEASE_RUN_URL -e RELEASE_BUILD_ID -e RELEASE_COMMIT \
+          "$image" "$@"
+      }
+      body() {
+      ${{ parameters.script }}
+      }
+      VERSION=$(state version)
+      if [ "$STAGE_BEGINS" = True ]; then
+        date +%s.%N > .release/stage-started
+        python3 scripts/notify.py stage "$STAGE" running
+      fi
+      [ -n "$STAGE_STARTED_AT" ] && state "$STAGE_STARTED_AT" > .release/stage-started
+      result=ok
+      body || result=failed
+      if [ "$result" = failed ] || [ "$STAGE_ENDS" = True ]; then
+        seconds=$(python3 -c 'import sys, time; print(f"{time.time() - float(open(sys.argv[1]).read()):.1f}")' .release/stage-started)
+        extra=()
+        [ -n "$STAGE_ENVIRONMENT" ] && extra+=(--environment "$STAGE_ENVIRONMENT")
+        [ "$STAGE_DEPLOY" = True ] && [ "$result" = ok ] && extra+=(--deploy)
+        python3 scripts/notify.py stage "$STAGE" "$result" --seconds "$seconds"
+        python3 scripts/events.py --stage "$STAGE" --result "$result" --seconds "$seconds" "${extra[@]}"
+        python3 scripts/change.py note "$STAGE: $result in ${seconds}s"
+      fi
+      [ "$result" = ok ]
+    displayName: ${{ parameters.displayName }}
+    condition: ${{ parameters.condition }}
+    env:
+      STAGE: ${{ parameters.stage }}
+      STAGE_ENVIRONMENT: ${{ parameters.environment }}
+      STAGE_DEPLOY: ${{ parameters.deploy }}
+      STAGE_BEGINS: ${{ parameters.begins }}
+      STAGE_ENDS: ${{ parameters.ends }}
+      STAGE_STARTED_AT: ${{ parameters.startedAt }}
