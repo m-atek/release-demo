@@ -31,6 +31,8 @@ only frees what a take must create again, and archives instead of deleting:
    that doesn't exist. It answers "You can't start releases here." and starts
    nothing. The tools host may not look up the handler's URL, so from the Mac
    reset.py looks it up and passes it on; without it the step is skipped.
+9. Turns the demos' switches off: the AI notes (videos 12 and 13) and the
+   cost check (video 18), so the main video runs as it always has.
 
 Each step looks before it acts, so a second run finds nothing to do. A step
 that fails doesn't stop the others, and the exit code says so. Under two
@@ -55,8 +57,8 @@ import urllib.request
 import host
 import run_state
 from check import wait_for_version
-from common import (ROOT, aws_session, fail, get_parameter, github_api, github_app_token, http_get, service,
-                    ssm_client)
+from common import (ROOT, SSM_PREFIX, aws_session, fail, get_parameter, github_api, github_app_token, http_get,
+                    service, ssm_client)
 from history import BASELINE, PLAN, SERVICE
 from release_job import ReleaseJob
 
@@ -69,6 +71,8 @@ SLACK_HANDLER = "release-demo-slack-handler"
 NOT_A_RELEASER = "You can't start releases here."
 # A releaser would get "no option warm-up" instead: nothing starts either way.
 WARM_UP = {"command": "/release", "text": "orders-service ORD-12 warm-up"}
+# Each demo's switch, off after the main reset (scripts/demos/ai_notes and cost_gate).
+SWITCHES = ["ai-notes/enabled", "cost-check/enabled"]
 
 
 class HistoryRunning(Exception):
@@ -399,6 +403,21 @@ def warm_slack_handler(reset, url):
     print(f"  the Slack handler answered \"{NOT_A_RELEASER}\" in {took:.1f}s: warm")
 
 
+def switches_off(reset):
+    ssm = ssm_client()
+    for name in SWITCHES:
+        try:
+            value = ssm.get_parameter(Name=SSM_PREFIX + name)["Parameter"]["Value"]
+        except Exception as error:  # not there yet (infra/ not applied): nothing to turn off
+            print(f"  {name}: not readable ({error.__class__.__name__}), so nothing to turn off")
+            continue
+        if value == "on":
+            reset.act(f"turn {name} off", lambda name=name: ssm.put_parameter(
+                Name=SSM_PREFIX + name, Value="off", Type="String", Overwrite=True))
+        else:
+            print(f"  {name}: off")
+
+
 def reset_main(dry_run, slack_url=None):
     started = time.monotonic()
     reset = Reset(dry_run)
@@ -415,6 +434,7 @@ def reset_main(dry_run, slack_url=None):
     reset.step(f"6. {SERVICE} on main", lambda: stage_baseline(reset))
     reset.step("7. Lambda aliases, and one call each", lambda: lambda_aliases(reset))
     reset.step("8. The Slack handler, one call", lambda: warm_slack_handler(reset, slack_url))
+    reset.step("9. The demos' switches", lambda: switches_off(reset))
 
     took = run_state.duration(time.monotonic() - started)
     if reset.failed:
@@ -428,7 +448,10 @@ def reset_main(dry_run, slack_url=None):
 
 
 def other_demo(demo, args):
+    # reset.py ai-notes runs scripts/demos/ai_notes/reset.py: without a folder of its own name, a dash is an underscore.
     folder = ROOT / "scripts" / "demos" / demo
+    if not folder.is_dir():
+        folder = folder.with_name(demo.replace("-", "_"))
     if not folder.is_dir():
         demos = sorted(p.name for p in folder.parent.iterdir() if p.is_dir()) if folder.parent.is_dir() else []
         fail(f"No demo {demo}. Demos: {', '.join(['main', *demos])}")

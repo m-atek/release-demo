@@ -22,6 +22,9 @@ orders-service:
     change: scripts/change.py
     notify: scripts/notify.py
     events: scripts/events.py
+    # Video 18: the stage Cost check after Check staging, while
+    # scripts/demos/cost_gate/switch.py is on.
+    cost_check: scripts/demos/cost_gate/cost_check.py
 
   servicenow:
     cmdb_item: orders-service
@@ -34,6 +37,25 @@ orders-service:
   sonarqube:
     # A monorepo project in the organization m-atek: one project per service.
     project_key: m-atek_release-demo_orders-service
+
+  # Videos 12 and 13: Claude's notes, checked by script, while
+  # scripts/demos/ai_notes/switch.py is on. A model change is a commit and a
+  # release of the platform.
+  ai_notes:
+    change_summary: true      # normal changes only: a person reads them
+    likely_cause: true        # after a failed production check and its rollback
+    model: claude-opus-5-5
+    effort: {change_summary: medium, likely_cause: medium}
+    log_lines: 200
+
+  # Video 18: what the cost check sends to staging, and the month it projects.
+  cost_check:
+    limit_usd_month: 100            # above it, a cost approver decides
+    approvers: Cost approvers
+    sample: {page_views: 50, path: /, concurrency: 5}
+    expected_month:                 # the team's own estimate; shown in the change and on screen
+      page_views: 3000000
+      new_orders: 60000
 
   environments:
     staging:

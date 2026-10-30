@@ -11,11 +11,20 @@
 Works through ServiceNow's Change Management API as release.pipeline. The
 change names the service's CMDB item, who asked (Sam), the plans, the
 evidence as attachments, and the links. An approval by the person who asked
-is refused, whatever ServiceNow says.
+is refused, whatever ServiceNow says, and so is one recorded by a machine
+user: release.pipeline, ai.notes or evidence.reader.
+
+With the run state cost_review (video 18's cost check, above its limit or
+without a measurement), the change is a normal one even when the option asks
+for standard, and its field Cost review says whom ServiceNow asks: "Cost
+approvers" when the option asked for a standard change, "Cost and change
+approvers" when it asked for a normal one. cost.json joins the attachments
+when it exists.
 """
 
 import argparse
 import mimetypes
+import re
 import sys
 import time
 import urllib.parse
@@ -26,7 +35,12 @@ from common import ROOT, fail, get_parameter, people, service, ssm_client
 from servicenow_setup import ServiceNow
 
 ASSESS, SCHEDULED, IMPLEMENT, REVIEW, CLOSED, CANCELED = "-4", "-2", "-1", "0", "3", "4"
-EVIDENCE = ["junit.xml", "sbom.cdx.json", "grype.json", "build-info.json"]
+EVIDENCE = ["junit.xml", "sbom.cdx.json", "grype.json", "build-info.json", "cost.json"]
+# Users that may write to a change but never approve one (videos 11, 12 and 13).
+MACHINE_USERS = ["release.pipeline", "ai.notes", "evidence.reader"]
+# u_cost_review's values (servicenow_setup.py), by whether a standard change was asked for.
+COST_REVIEW = {True: "cost_approvers", False: "cost_and_change_approvers"}
+REJECTION_COMMENT_LIMIT = 120
 
 
 def connect():
@@ -73,13 +87,17 @@ def open_change(sn, ssm, state):
     """The change, plus what a deploy script may have put in the run state:
     change_extras (fields for the change, and affected_cis, the sys_ids of the
     CMDB items it touches) and change_details (lines added to the description,
-    so the approver sees them). The servers a service lists in services.yaml
+    so the approver sees them), and change_work_notes (lines for one work note
+    once it exists). The servers a service lists in services.yaml
     (servicenow.servers, CI names of any class) are affected items too."""
     config = service(state["service"])
     # A service may release as standard changes by default (services.yaml servicenow.change),
     # or name the Slack options that make one (servicenow.standard_options, by default standard).
     standard = (state.get("option") in config["servicenow"].get("standard_options", ["standard"])
                 or config["servicenow"].get("change") == "standard")
+    # Video 18: a cost check above its limit, or without a measurement, makes it a normal change.
+    cost_review = COST_REVIEW[standard] if state.get("cost_review") else None
+    standard = standard and not cost_review
     groups = {g: sn.find("sys_user_group", f"name={g}", "sys_id")["sys_id"] for g in ("Platform team",)}
     ci = sn.find("cmdb_ci_appl", f"name={config['servicenow']['cmdb_item']}", "sys_id")["sys_id"]
     asked_by = requester_user(sn, state.get("requested_by"))
@@ -103,6 +121,8 @@ def open_change(sn, ssm, state):
     }
     extras = state.get("change_extras") or {}
     fields.update(extras.get("fields") or {})
+    if cost_review:
+        fields["u_cost_review"] = cost_review
     if state.get("change_details"):
         fields["description"] += "\n\n" + "\n".join(state["change_details"])
     if standard:
@@ -124,6 +144,8 @@ def open_change(sn, ssm, state):
             attach(sn, change_id, path)
     note(sn, state, "Evidence:\n" + "\n".join(f"{k}: {v}" for k, v in links(state, ssm).items()))
     note(sn, state, "Stages so far:\n" + stage_summary(state))
+    if state.get("change_work_notes"):
+        note(sn, state, "\n".join(state["change_work_notes"]))
     # Affected items go on while the change is New: in Assess ServiceNow refuses them.
     affected = list(extras.get("affected_cis") or [])
     for name in config["servicenow"].get("servers", []):
@@ -136,7 +158,9 @@ def open_change(sn, ssm, state):
         sn.call("POST", "/api/now/table/task_ci", {"task": change_id, "ci_item": ci_id})
     if not standard:
         sn.call("PATCH", f"/api/sn_chg_rest/change/normal/{change_id}", {"state": ASSESS})
-    print(f"{number}: {'standard, pre-approved' if standard else 'normal, waiting for Change approvers'}")
+    waiting = {"cost_approvers": "Cost approvers", "cost_and_change_approvers": "Cost approvers and Change approvers"}
+    print(f"{number}: standard, pre-approved" if standard else
+          f"{number}: normal, waiting for {waiting.get(cost_review, 'Change approvers')}")
 
 
 def attach(sn, change_id, path):
@@ -156,12 +180,68 @@ def note(sn, state, text):
         sn.call("PATCH", f"/api/now/table/change_request/{change['sys_id']}", {"work_notes": text})
 
 
+def first_name(sn, sys_id):
+    user = sn.find("sys_user", f"sys_id={sys_id}", "first_name,name") or {}
+    return user.get("first_name") or user.get("name") or "someone"
+
+
+def names(people):
+    return people[0] if len(people) == 1 else ", ".join(people[:-1]) + " and " + people[-1]
+
+
+def journal_text(value):
+    """The newest entry of a journal field as the Table API shows it: its text
+    without the "<time> - <name> (Comments)" line ServiceNow puts above it."""
+    entries = re.split(r"(?m)^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} - .*\n", (value or "").strip())
+    texts = [entry.strip() for entry in entries if entry.strip()]
+    return texts[0] if texts else ""
+
+
+def rejection_comment(sn, approval):
+    """What the approver wrote when rejecting: the approval record's comments,
+    or, where the API leaves that field empty, its newest journal entry."""
+    record = sn.call("GET", f"/api/now/table/sysapproval_approver/{approval['sys_id']}", sysparm_fields="comments",
+                     sysparm_display_value="true") or {}
+    text = journal_text(record.get("comments"))
+    if not text:
+        entry = sn.find("sys_journal_field", f"element_id={approval['sys_id']}^element=comments^ORDERBYDESCsys_created_on",
+                        "value")
+        text = (entry or {}).get("value", "").strip()
+    return " ".join(text.split())
+
+
+def rejection_line(sn, change):
+    """Slack's line for a rejection: "Rejected by Alex in ServiceNow: <comment>", cut at 120 characters."""
+    rejected = sn.call("GET", "/api/now/table/sysapproval_approver", sysparm_query=f"sysapproval={change['sys_id']}^state=rejected",
+                       sysparm_fields="sys_id,approver") or []
+    if not rejected:
+        return "Rejected in ServiceNow."
+    name = first_name(sn, rejected[0]["approver"]["value"])
+    comment = rejection_comment(sn, rejected[0])
+    if not comment:
+        return f"Rejected by {name} in ServiceNow."
+    if len(comment) > REJECTION_COMMENT_LIMIT:
+        comment = comment[:REJECTION_COMMENT_LIMIT - 3].rstrip() + "..."
+    return f"Rejected by {name} in ServiceNow: {comment}"
+
+
+def machine_ids(sn):
+    found = (sn.find("sys_user", f"user_name={user}", "sys_id") for user in MACHINE_USERS)
+    return {user["sys_id"] for user in found if user}
+
+
 def wait(sn, state, timeout, interval):
+    from notify import post
+
     change = state["change"]
+    machines = machine_ids(sn)
     deadline = time.time() + timeout
     while time.time() < deadline:
         record = sn.call("GET", f"/api/now/table/change_request/{change['sys_id']}", sysparm_fields="approval,state")
         if record["approval"] == "rejected":
+            state.setdefault("lines", []).append(rejection_line(sn, change))
+            run_state.save(state)
+            post(state)
             cancel(sn, state, "Rejected in ServiceNow. The release stopped before production.")
             fail("The change was rejected.")
         approvals = sn.call("GET", "/api/now/table/sysapproval_approver", sysparm_query=f"sysapproval={change['sys_id']}^state=approved",
@@ -171,9 +251,11 @@ def wait(sn, state, timeout, interval):
             cancel(sn, state, "Approved by the person who asked for the release. Refused by the pipeline: "
                               "the person who asks can't approve.")
             fail("The change was approved by the person who asked for it. Refused.")
+        if machines & set(approvers):
+            cancel(sn, state, "Approved by a machine user. Refused by the pipeline: only a person approves a change.")
+            fail("The change was approved by a machine user. Refused.")
         if record["approval"] == "approved" and approvers:
-            approver = sn.find("sys_user", f"sys_id={approvers[0]}", "first_name,name")
-            state["change"]["approved_by"] = approver["first_name"] or approver["name"]
+            state["change"]["approved_by"] = names([first_name(sn, sys_id) for sys_id in dict.fromkeys(approvers)])
             run_state.save(state)
             print(f"Approved by {state['change']['approved_by']} in ServiceNow.")
             return
@@ -250,9 +332,14 @@ def record_rollback(sn, ssm, state, code, notes):
 
 
 def cancel(sn, state, notes):
+    """Cancel the change. One cancelled already keeps its first close notes,
+    so a rejection's stays when the stopped run cancels again: it gets the note only."""
     change = state.get("change")
     if change:
         note(sn, state, notes)
+        current = sn.call("GET", f"/api/now/table/change_request/{change['sys_id']}", sysparm_fields="state") or {}
+        if current.get("state") == CANCELED:
+            return
         sn.call("PATCH", f"/api/sn_chg_rest/change/{change['type']}/{change['sys_id']}",
                 {"state": CANCELED, "close_notes": notes})
 

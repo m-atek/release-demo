@@ -16,7 +16,16 @@ on the REST API for users without snc_basic_auth_api_access. Then it creates:
 - normal change approval by Change approvers only, once, at Assess. Out of the
   box the Normal Change Policy asks the assignment group at Assess, which
   would let Sam approve his own change, and a manager or the CAB at Authorize;
-- the standard change templates from services.yaml, pre-approved.
+- the standard change templates from services.yaml, pre-approved;
+- for videos 12 and 13, the user ai.notes: web service access only, roles
+  itil and snc_basic_auth_api_access, a generated password in SSM, in no
+  group. It writes work notes and attaches evidence.json, and approves nothing;
+- for video 18, Fiona Finance (fiona.finance, itil and approver_user, her
+  password from SSM, which you set) as the only member of Cost approvers, the
+  change field Cost review (u_cost_review) next to Type, and the Normal Change
+  Policy's decisions at Assess: empty asks Change approvers, as before; "Cost
+  approvers" asks Cost approvers only; "Cost and change approvers" asks both,
+  and both must approve. Without Fiona's password this part waits for it.
 
 Every call detects the hibernation page: wake the instance at
 developer.servicenow.com.
@@ -45,14 +54,36 @@ PEOPLE = {
                             "roles": ["itil", "approver_user"]},
     "release.pipeline": {"first_name": "Release", "last_name": "Pipeline", "password": "servicenow/release-pipeline-password",
                          "roles": ["itil", "snc_basic_auth_api_access"], "machine": True},
+    # Videos 12 and 13: writes the AI notes on changes. In no group, never an approver.
+    "ai.notes": {"first_name": "AI", "last_name": "Notes", "password": "servicenow/ai-notes-password",
+                 "roles": ["itil", "snc_basic_auth_api_access"], "machine": True, "generated": True},
+    # Video 18: the cost approver. Set up once her password is in SSM.
+    "fiona.finance": {"first_name": "Fiona", "last_name": "Finance", "password": "servicenow/fiona-password",
+                      "roles": ["itil", "approver_user"], "optional": "video 18"},
 }
 GROUPS = {
     "Platform team": {"members": ["sam.developer", "release.pipeline"],
                       "description": "Builds and runs the order services. Asks for releases; can't approve them."},
     "Change approvers": {"members": ["alex.change.manager"],
                          "description": "Approves normal changes. Nobody in it asks for releases."},
+    "Cost approvers": {"members": ["fiona.finance"], "optional": "video 18",
+                       "description": "Approves releases whose cost check is above the limit. Nobody in it asks for releases."},
 }
 APPROVAL_DEFINITION = "Change approvers Approval"
+# Video 18: the change field the cost check sets, and the decision it adds at Assess.
+COST_FIELD = "u_cost_review"
+COST_CHOICES = [("cost_approvers", "Cost approvers"), ("cost_and_change_approvers", "Cost and change approvers")]
+COST_DEFINITION = "Cost approvers Approval"
+COST_DECISION = "Assess: Cost approvers"
+# Change approvers are asked at Assess when Cost review is empty or asks both groups.
+CHANGE_APPROVERS_CLAUSE = f"change_request.{COST_FIELD}ISEMPTY^ORchange_request.{COST_FIELD}=cost_and_change_approvers"
+COST_CONDITION = f"change_request.state=-4^change_request.{COST_FIELD}ISNOTEMPTY^EQ"
+COST_FIELD_STEPS = """\
+  Make the field by hand, once: open any change, right-click the form header,
+  Configure, Form Layout, Create new field: name Cost review, type Choice,
+  choices cost_approvers (Cost approvers) and cost_and_change_approvers (Cost
+  and change approvers), with -- None --. Put it right under Type, Save, and
+  run this script again."""
 
 
 class ServiceNow:
@@ -117,10 +148,14 @@ def setup_people(sn, ssm):
     users = {}
     for user_name, person in PEOPLE.items():
         password = get_parameter_or_none(ssm, person["password"])
-        if password is None and user_name == "release.pipeline":
+        if password is None and (person.get("machine") or person.get("generated")):
             password = generated_password()
             put_parameter(ssm, person["password"], password)
-            print("  release.pipeline: generated a password and stored it in SSM")
+            print(f"  {user_name}: generated a password and stored it in SSM")
+        elif password is None and person.get("optional"):
+            print(f"  {user_name}: skipped for now ({person['optional']}): set /release-demo/{person['password']} "
+                  f"with scripts/secrets.py, then run this again")
+            continue
         elif password is None:
             fail(f"/release-demo/{person['password']} isn't set yet. See: python scripts/secrets.py set servicenow")
         # Web service access only: no UI. Not an internal integration user: those can't hold a password.
@@ -145,7 +180,10 @@ def setup_people(sn, ssm):
 
 
 def get_parameter_or_none(ssm, name):
-    value = ssm.get_parameter(Name=f"/release-demo/{name}", WithDecryption=True)["Parameter"]["Value"]
+    try:
+        value = ssm.get_parameter(Name=f"/release-demo/{name}", WithDecryption=True)["Parameter"]["Value"]
+    except ssm.exceptions.ParameterNotFound:
+        fail(f"/release-demo/{name} doesn't exist yet. Apply infra/ first: scripts/tf.sh apply")
     return None if value == "unset" else value
 
 
@@ -156,6 +194,9 @@ def setup_groups(sn, users):
                            f"group {name}")
         groups[name] = record["sys_id"]
         for member in group["members"]:
+            if member not in users:
+                print(f"  member {member}: skipped for now ({group.get('optional')})")
+                continue
             sn.ensure("sys_user_grmember", f"group={record['sys_id']}^user={users[member]}",
                       {"group": record["sys_id"], "user": users[member]}, f"  member {member}")
     return groups
@@ -176,28 +217,115 @@ def setup_cmdb(sn, groups):
     return items
 
 
-def setup_approvals(sn, groups):
-    """One approval, by Change approvers, at Assess. Nothing at Authorize."""
+def approval_definition(sn, template, name, group):
+    return sn.ensure("chg_approval_def", f"name={name}", {
+        "name": name, "table": "change_request", "approver_source": template["approver_source"],
+        "approval_action": template["approval_action"], "group": group,
+        "mandatory": "true", "wait_for": template["wait_for"], "advanced": "false"}, f"approval definition {name}")
+
+
+def with_clause(condition, clause):
+    """A decision's condition with one more clause, before its closing ^EQ."""
+    if clause in condition:
+        return condition
+    base = condition[:-3] if condition.endswith("^EQ") else condition
+    return f"{base}^{clause}^EQ"
+
+
+def setup_approvals(sn, groups, cost=False):
+    """One approval, by Change approvers, at Assess. Nothing at Authorize. With cost
+    (video 18, once Fiona is set up), the change's Cost review decides whom Assess asks."""
     policy = sn.find("chg_policy", "name=Normal Change Policy", "sys_id")
     if not policy:
         fail("No Normal Change Policy on this instance: the approval steps need the UI. See RUNBOOK.md.")
     template = sn.find("chg_approval_def", "name=CAB Approval")
-    definition = sn.ensure("chg_approval_def", f"name={APPROVAL_DEFINITION}", {
-        "name": APPROVAL_DEFINITION, "table": "change_request", "approver_source": template["approver_source"],
-        "approval_action": template["approval_action"], "group": groups["Change approvers"],
-        "mandatory": "true", "wait_for": template["wait_for"], "advanced": "false"}, f"approval definition {APPROVAL_DEFINITION}")
+    definition = approval_definition(sn, template, APPROVAL_DEFINITION, groups["Change approvers"])
 
     decisions = sn.call("GET", "/api/now/table/sys_decision_question", sysparm_query=f"decision_table={policy['sys_id']}",
-                        sysparm_fields="sys_id,label,condition,answer,active")
+                        sysparm_fields="sys_id,label,condition,answer,active,order")
+    assess = None
     for decision in decisions:
+        if decision["label"] == COST_DECISION:
+            continue
         at_assess = "change_request.state=-4" in decision["condition"]
         wanted = ({"answer": definition["sys_id"], "active": "true"} if at_assess else {"active": "false"})
+        if at_assess and cost:
+            wanted["condition"] = with_clause(decision["condition"], CHANGE_APPROVERS_CLAUSE)
+        assess = assess or (decision if at_assess else None)
         changed = {k: v for k, v in wanted.items() if str(raw(decision.get(k, ""))) != v}
         if changed:
             sn.call("PATCH", f"/api/now/table/sys_decision_question/{decision['sys_id']}", changed)
-        what = "asks Change approvers" if at_assess else "off"
+        what = ("asks Change approvers" + (" unless Cost review asks Cost approvers only" if cost else "")) if at_assess else "off"
         print(f"  decision '{decision['label']}': {what}{' (changed)' if changed else ''}")
+    if cost:
+        cost_definition = approval_definition(sn, template, COST_DEFINITION, groups["Cost approvers"])
+        setup_cost_decision(sn, policy["sys_id"], assess, cost_definition["sys_id"])
     return definition
+
+
+# Video 18: the field Cost review on the change, and the decision that asks Cost approvers.
+
+def setup_cost_field(sn):
+    """u_cost_review, a choice next to Type on the change form. False if it needs the UI."""
+    field = sn.find("sys_dictionary", f"name=change_request^element={COST_FIELD}", "sys_id")
+    if field is None:
+        try:
+            sn.call("POST", "/api/now/table/sys_dictionary", {
+                "name": "change_request", "element": COST_FIELD, "column_label": "Cost review",
+                "internal_type": "choice", "max_length": "40", "choice": "1", "active": "true"})
+            print(f"  field Cost review ({COST_FIELD}): created")
+        except SystemExit:
+            print(f"  field Cost review ({COST_FIELD}): the Table API can't make it here.\n{COST_FIELD_STEPS}")
+            return False
+    else:
+        print(f"  field Cost review ({COST_FIELD}): already there")
+    for sequence, (value, label) in enumerate(COST_CHOICES, start=1):
+        sn.ensure("sys_choice", f"name=change_request^element={COST_FIELD}^value={value}", {
+            "name": "change_request", "element": COST_FIELD, "value": value, "label": label,
+            "sequence": str(sequence * 10), "language": "en", "inactive": "false"}, f"  choice {label}")
+    place_next_to_type(sn)
+    return True
+
+
+def place_next_to_type(sn):
+    """Cost review right under Type in the change form's default view."""
+    rows = sn.call("GET", "/api/now/table/sys_ui_element", sysparm_fields="sys_id,sys_ui_section,position",
+                   sysparm_query="element=type^sys_ui_section.name=change_request^sys_ui_section.view.title=Default view") or []
+    if not rows:
+        print("  form: Type isn't on the default view here; put Cost review under it by hand (Configure, Form Layout)")
+        return
+    section, position = raw(rows[0]["sys_ui_section"]), int(rows[0]["position"])
+    if sn.find("sys_ui_element", f"sys_ui_section={section}^element={COST_FIELD}", "sys_id"):
+        print("  form: Cost review is on the form already")
+        return
+    below = sn.call("GET", "/api/now/table/sys_ui_element", sysparm_fields="sys_id,position",
+                    sysparm_query=f"sys_ui_section={section}^position>{position}^ORDERBYDESCposition") or []
+    for element in below:
+        sn.call("PATCH", f"/api/now/table/sys_ui_element/{element['sys_id']}", {"position": str(int(element["position"]) + 1)})
+    sn.call("POST", "/api/now/table/sys_ui_element", {"sys_ui_section": section, "element": COST_FIELD,
+                                                      "position": str(position + 1)})
+    print("  form: Cost review placed under Type")
+
+
+def setup_cost_decision(sn, policy_id, assess, definition_id):
+    """The decision at Assess that asks Cost approvers when Cost review is set, beside
+    the one that asks Change approvers: with "Cost and change approvers" both apply."""
+    values = {"decision_table": policy_id, "label": COST_DECISION, "condition": COST_CONDITION,
+              "answer": definition_id, "active": "true"}
+    existing = sn.find("sys_decision_question", f"decision_table={policy_id}^label={COST_DECISION}")
+    if existing:
+        changed = {k: v for k, v in values.items() if str(raw(existing.get(k, ""))) != v}
+        if changed:
+            sn.call("PATCH", f"/api/now/table/sys_decision_question/{existing['sys_id']}", changed)
+        print(f"  decision '{COST_DECISION}': asks Cost approvers when Cost review is set{' (changed)' if changed else ''}")
+        return
+    if assess is None:
+        fail("The Normal Change Policy has no decision at Assess to model the cost decision on. See RUNBOOK.md.")
+    model = sn.call("GET", f"/api/now/table/sys_decision_question/{assess['sys_id']}") or {}
+    copy = {key: raw(value) for key, value in model.items() if not key.startswith("sys_")}
+    copy.update(values, order=str(int(raw(model.get("order")) or 100) + 10))
+    sn.call("POST", "/api/now/table/sys_decision_question", copy)
+    print(f"  decision '{COST_DECISION}': created, asks Cost approvers when Cost review is set")
 
 
 def template_texts(service, kind):
@@ -329,6 +457,63 @@ def prove_approvals(sn, users, groups, items):
         fail(f"After Alex's approval the change should be Scheduled, it is {state}: a second approval step is left.")
 
 
+def approvers_at_assess(sn, change_id):
+    approvals = sn.call("GET", "/api/now/table/sysapproval_approver", sysparm_query=f"sysapproval={change_id}",
+                        sysparm_fields="sys_id,approver,state", sysparm_display_value="true") or []
+    return approvals, sorted({a["approver"]["display_value"] for a in approvals})
+
+
+def change_state(sn, change_id, wanted, tries=10):
+    state = None
+    for _ in range(tries):
+        time.sleep(3)
+        state = sn.call("GET", f"/api/now/table/change_request/{change_id}", sysparm_fields="state",
+                        sysparm_display_value="true")["state"]
+        if state == wanted:
+            break
+    return state
+
+
+def approve(sn, approvals, name):
+    for approval in approvals:
+        if approval["approver"]["display_value"] == name:
+            sn.call("PATCH", f"/api/now/table/sysapproval_approver/{approval['sys_id']}", {"state": "approved"})
+
+
+def prove_cost_routes(sn, users, groups, items):
+    """Video 18's three routes, each with a test change cancelled right after: Cost
+    review empty asks Alex (prove_approvals), "Cost approvers" asks Fiona only,
+    "Cost and change approvers" asks both and needs both."""
+    problems = []
+    for value, wanted in (("cost_approvers", ["Fiona Finance"]),
+                          ("cost_and_change_approvers", ["Alex Change Manager", "Fiona Finance"])):
+        change = sn.call("POST", "/api/sn_chg_rest/change/normal", {
+            "short_description": f"Cost review check by servicenow_setup.py ({value}): cancelled right after",
+            "assignment_group": groups["Platform team"], "requested_by": users["sam.developer"],
+            "cmdb_ci": next(iter(items.values())), COST_FIELD: value})
+        change_id, number = change["sys_id"]["value"], change["number"]["value"]
+        sn.call("PATCH", f"/api/sn_chg_rest/change/normal/{change_id}", {"state": ASSESS})
+        approvals, asked = approvers_at_assess(sn, change_id)
+        result = "not checked"
+        if asked == wanted:
+            approve(sn, approvals, wanted[0])
+            if len(wanted) > 1:
+                early = change_state(sn, change_id, "Scheduled", tries=2)
+                if early == "Scheduled":
+                    problems.append(f"{value}: Scheduled after {wanted[0]} alone; both must approve")
+                approve(sn, approvals, wanted[1])
+            result = change_state(sn, change_id, "Scheduled")
+        sn.call("PATCH", f"/api/sn_chg_rest/change/normal/{change_id}", {"state": CANCELED,
+                "close_notes": "Cost review check by servicenow_setup.py."})
+        print(f"  test change {number} ({value}): asked {asked or 'nobody'}; after approval: {result}; cancelled")
+        if asked != wanted:
+            problems.append(f"{value}: asked {asked or 'nobody'}, not {wanted}")
+        elif result != "Scheduled":
+            problems.append(f"{value}: {result} after approval, not Scheduled")
+    if problems:
+        fail("The cost routes aren't right: " + "; ".join(problems) + ". See RUNBOOK.md for the UI steps.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--test", action="store_true", help="prove the approval rule with a test change")
@@ -343,8 +528,12 @@ def main():
     groups = setup_groups(sn, users)
     print("CMDB")
     items = setup_cmdb(sn, groups)
+    print("Cost review (video 18)")
+    cost = "fiona.finance" in users and setup_cost_field(sn)
+    if "fiona.finance" not in users:
+        print("  waits for Fiona's password: set servicenow/fiona-password, then run this again")
     print("Normal change approval")
-    setup_approvals(sn, groups)
+    setup_approvals(sn, groups, cost=cost)
     print("Standard change templates")
     setup_templates(sn, groups, items)
     print("Pipeline access")
@@ -353,6 +542,9 @@ def main():
         print("Approval check")
         prove_approvals(sn, users, groups, items)
         prove_standard(sn, ssm)
+        if cost:
+            print("Cost review check (video 18)")
+            prove_cost_routes(sn, users, groups, items)
     print("Done.")
 
 

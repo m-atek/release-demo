@@ -26,6 +26,9 @@ def call() {
         currentBuild.displayName = "#${env.BUILD_NUMBER} ${service} ${version}"
         currentBuild.description = "${params.JIRA_KEY}${params.OPTION ? ', ' + params.OPTION : ''}, asked by ${params.REQUESTED_BY ? 'Slack' : 'the Jenkins UI'}"
         sh 'python3 scripts/jira.py fix-version'
+        // Videos 12, 13 and 18, each behind its own switch: off, nothing changes.
+        env.AI_NOTES = aiNotes.on() ? 'on' : 'off'
+        boolean costCheckOn = costCheck.on(cfg)
 
         try {
             releaseStage('Build') { toolchain.build(service, params.JIRA_KEY, cfg) }
@@ -47,6 +50,9 @@ def call() {
                         error "Staging check failed: staging is back on ${state('deploys.staging.previous_version')}."
                     }
                 }
+                if (costCheckOn) {
+                    releaseStage('Cost check', environment: 'staging') { costCheck.run(cfg) }
+                }
             } else {
                 // Production only (demos 1 and 3): the deploy script is never called for staging.
                 releaseStage.skip('Staging', "${service} has no staging environment.")
@@ -56,7 +62,15 @@ def call() {
                 // What the change needs from the target before it opens (demo 1: the wave plan).
                 releaseStage('Plan') { sh "${serviceConfig.command(cfg, 'plan')} ${service}" }
             }
-            releaseStage('Change') { sh 'python3 scripts/change.py open' }
+            releaseStage('Change') {
+                if (env.AI_NOTES == 'on') {
+                    aiNotes.beforeChange()
+                }
+                sh 'python3 scripts/change.py open'
+                if (env.AI_NOTES == 'on') {
+                    aiNotes.afterChange(cfg)
+                }
+            }
             if (state('change.type') == 'standard') {
                 releaseStage.skip('Approval', 'A standard change is pre-approved.')
             } else {
@@ -99,13 +113,24 @@ def call() {
 
 // The pipeline's check: /health within the environment's timeout, then the check paths.
 int check(Map cfg, String service, String environment, String version) {
+    return checkTo(cfg, service, environment, version, "check-${environment}.txt")
+}
+
+// The check, its output also kept in .release/<file> and archived, where the
+// AI notes read it (video 13: check-production.txt holds the failed check).
+int checkTo(Map cfg, String service, String environment, String version, String file) {
     String url = state("deploys.${environment}.url")
-    return withServiceCredentials(cfg) {
+    int status = withServiceCredentials(cfg) {
         withEnv(["CHECK_VERSION=${version}", "CHECK_URL=${url}"]) {
-            sh(returnStatus: true,
-                script: "${serviceConfig.command(cfg, 'check')} ${service} ${environment} --version \"\$CHECK_VERSION\" --url \"\$CHECK_URL\"")
+            sh(returnStatus: true, script: """#!/bin/bash
+                set -o pipefail
+                export PYTHONUNBUFFERED=1
+                ${serviceConfig.command(cfg, 'check')} ${service} ${environment} --version "\$CHECK_VERSION" --url "\$CHECK_URL" 2>&1 | tee .release/${file}
+            """)
         }
     }
+    archiveArtifacts artifacts: ".release/${file}", allowEmptyArchive: true
+    return status
 }
 
 // After a failed production check: the previous version back, checked, and recorded everywhere.
@@ -113,8 +138,9 @@ void rollBack(Map cfg, String service) {
     long started = System.currentTimeMillis()
     String previous = state('deploys.production.previous_version')
     withServiceCredentials(cfg) { sh "${serviceConfig.command(cfg, 'deploy')} ${service} production --back" }
+    long rolledBackAt = System.currentTimeMillis().intdiv(1000)
     withEnv(["PREVIOUS=${previous}"]) {
-        if (check(cfg, service, 'production', previous) != 0) {
+        if (checkTo(cfg, service, 'production', previous, 'check-production-rollback.txt') != 0) {
             sh 'python3 scripts/notify.py line "The previous version, $PREVIOUS, fails its check too. Look now."'
             error "Rolled back to ${previous}, but it fails its check too."
         }
@@ -130,6 +156,8 @@ void rollBack(Map cfg, String service) {
             '''
         }
     }
+    // Video 13: only now, with the rollback recorded everywhere, the likely cause.
+    aiNotes.cause(previous, rolledBackAt)
 }
 
 // Any other failure: Slack says where it stopped. Before production, the open

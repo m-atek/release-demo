@@ -445,3 +445,23 @@ cloudflare/dc-agent-client-secret:
   source: terraform
   secure: true
   help: "Cloudflare Access service token for dc-agent, demo 3's data-center Jenkins agent: client secret."
+
+# Videos 12 and 13, the AI notes (scripts/demos/ai_notes), and video 18, the
+# cost check (scripts/demos/cost_gate). Both use anthropic/api-key above: the
+# AI notes in Jenkins, and orders-service 1.7.0 and 1.7.1 in Lambda.
+ai-notes/enabled:
+  source: script
+  secure: false
+  help: "on or off; unset is off. Written by scripts/demos/ai_notes/switch.py. The main reset turns it off, reset.py ai-notes on."
+servicenow/ai-notes-password:
+  source: script
+  secure: true
+  help: "Password of the ServiceNow user ai.notes, which writes the AI notes on changes and approves nothing. Written by scripts/servicenow_setup.py."
+cost-check/enabled:
+  source: script
+  secure: false
+  help: "on or off; unset is off. Written by scripts/demos/cost_gate/switch.py. The main reset turns it off, reset.py cost-gate on."
+servicenow/fiona-password:
+  source: you
+  secure: true
+  help: "A password you choose for Fiona Finance in ServiceNow (video 18). You sign in as Fiona to decide as the cost approver."

@@ -49,6 +49,8 @@ Optional keys, each with its default where it is missing:
 | `servicenow.standard_options` | The Slack options that make a standard change; default `[standard]` (demo 7: `[stores]`). |
 | `servicenow.servers` | CI names, of any class, added to the change as affected items when it opens (demo 3). |
 | `servicenow.template_texts` | `{<template kind>: {field: text}}`, the texts `servicenow_setup.py` gives that template instead of the shared ones (demo 6). |
+| `ai_notes` | Claude's change summary and likely cause for this service while `scripts/demos/ai_notes/switch.py` is on (videos 12 and 13): `change_summary`, `likely_cause`, `model`, `effort` per task and `log_lines`. |
+| `scripts.cost_check` with `cost_check` | The stage Cost check after Check staging while `scripts/demos/cost_gate/switch.py` is on (video 18): its limit, approvers, sample and expected month. |
 
 ## 2. The stage scripts
 
@@ -77,6 +79,11 @@ What else a stage script may put in the run state for the shared scripts:
 - `rows`: lines Slack's message shows under the stages (demo 1's waves).
 - `change.closed`: the deploy script closed the change itself (demo 1's stop rule), so the pipeline's stop leaves it alone. Post Slack's last line first (`notify.py finish failed`, which sets `total`) and give that `total` in the close notes, so the change and Slack name the same time; with `total` set, the pipeline's stop leaves Slack alone too.
 - `check.notes`: what the change's close notes start with after a rollback.
+- `change_work_notes`: lines for one work note right after the change opens
+  (video 18's cost lines within its limit).
+- `cost_review`: makes `change.py open` open a normal change even for a
+  standard option, with the field Cost review set, so ServiceNow asks Cost
+  approvers (video 18's cost check above its limit or without a measurement).
 
 The shared scripts (`change.py`, `notify.py`, `events.py`, `jira.py`,
 `tag.py`, `publish.py`) are the same for every service. A demo doesn't

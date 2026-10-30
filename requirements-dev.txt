@@ -1,5 +1,8 @@
 # Tools for the stage scripts and the tests. The function itself uses the
 # standard library only, so its package has no dependencies.
+# The official Claude SDK, for scripts/llm.py (videos 12 and 13), on the tools
+# host and in the Python toolchain image.
+anthropic==2.3.0
 boto3==1.43.113
 pytest==9.1.1
 pytest-cov==7.1.0
