@@ -1,5 +1,7 @@
 # Tools for the stage scripts and the tests. The function itself uses the
 # standard library only, so its package has no dependencies.
+# The official Python SDK for scripts/llm.py (videos 12, 13 and 23).
+anthropic==1.15.0
 boto3==1.43.113
 pytest==9.1.1
 pytest-cov==7.1.0
