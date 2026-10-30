@@ -117,8 +117,12 @@ def fake_aws(tmp_path, monkeypatch, answers):
     script.write_text("#!/usr/bin/env python3\n"
                       "import json, sys\n"
                       f"answers = json.loads({json.dumps(json.dumps(answers))})\n"
+                      "import os, pathlib\n"
                       "args = sys.argv[1:]\n"
                       "open(" + repr(str(tmp_path / "calls.log")) + ", 'a').write(' '.join(args) + '\\n')\n"
+                      "# As AWS CLI v2 does on every call: its own session cache, never a credential.\n"
+                      "cache = pathlib.Path(os.environ['HOME'], '.aws', 'cli', 'cache')\n"
+                      "cache.mkdir(parents=True, exist_ok=True); (cache / 'session.db').touch()\n"
                       "code, out, err = answers.get(' '.join(args[:2]), [0, '', ''])\n"
                       "sys.stdout.write(out); sys.stderr.write(err); sys.exit(code)\n")
     script.chmod(script.stat().st_mode | stat.S_IEXEC)

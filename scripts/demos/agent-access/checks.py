@@ -88,7 +88,9 @@ def check_platform(account):
     return first and second
 
 
-def check_nothing_else(allowed):
+def credential_files():
+    """What the container holds before anything runs in it. Taken first, because
+    AWS CLI v2 makes ~/.aws/cli/cache/session.db itself on its first call."""
     home = Path.home()
     found = [str(path) for path in (home / ".aws", home / ".ssh", home / ".git-credentials", home / ".config" / "gh",
                                     home / ".docker", Path("/root/.aws"))
@@ -96,6 +98,10 @@ def check_nothing_else(allowed):
     gitconfig = home / ".gitconfig"
     if gitconfig.exists() and "credential" in gitconfig.read_text():
         found.append(f"{gitconfig} (a credential helper)")
+    return found
+
+
+def check_nothing_else(allowed, found):
     extra = sorted(name for name in os.environ if name not in allowed)
     first = line(not found, "5. no ~/.aws, SSH keys or git credentials" + (f": {', '.join(found)}" if found else ""))
     second = line(not extra, "5. environment holds only the listed variables"
@@ -108,10 +114,11 @@ def main():
     parser.add_argument("--account", required=True)
     parser.add_argument("--allowed-env", required=True)
     args = parser.parse_args()
+    found = credential_files()
     scratch = Path("/tmp/checks")
     scratch.mkdir(exist_ok=True)
     results = [check_identity(), check_staging_logs(), check_production(scratch), check_platform(args.account),
-               check_nothing_else(set(args.allowed_env.split(",")))]
+               check_nothing_else(set(args.allowed_env.split(",")), found)]
     print(json.dumps({"passed": sum(results), "of": len(results)}))
     return 0 if all(results) else 1
 
