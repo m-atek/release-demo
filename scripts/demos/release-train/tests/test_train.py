@@ -131,6 +131,12 @@ def test_a_timer_tick_that_isnt_a_departure_or_while_switched_off_leaves_nothing
     monkeypatch.setattr(train, "get_parameter", lambda ssm, name: "off")
     monkeypatch.setattr(train, "ssm_client", lambda: None)
     assert train.main() == train.NOT_DEPARTING
+
+    def missing(ssm, name):
+        raise SystemExit(f"/release-demo/{name} doesn't exist yet.")
+
+    monkeypatch.setattr(train, "get_parameter", missing)  # before this demo's Terraform
+    assert train.main() == train.NOT_DEPARTING
     assert recorder.posted == [] and recorder.started == []
 
 

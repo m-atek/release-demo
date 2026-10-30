@@ -180,7 +180,10 @@ def main():
         if not at:
             note(f"No departure at {moment:%H:%M}: the train leaves at {', '.join(departures)} on weekdays.")
             return NOT_DEPARTING
-        enabled = get_parameter(ssm_client(), "release-train/enabled")
+        try:
+            enabled = get_parameter(ssm_client(), "release-train/enabled")
+        except SystemExit:  # infra/demos/21-release-train-flags isn't applied yet: the train is off
+            enabled = "off"
         if enabled != "on":
             note("The train is switched off: scripts/demo.sh up release-train switches it on.")
             return NOT_DEPARTING
