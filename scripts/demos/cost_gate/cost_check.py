@@ -252,6 +252,8 @@ def event_body(record, state):
             "per_page_view_lambda_usd": round(page.get("lambda_usd", 0), 8) if page else None,
             "per_page_view_dynamodb_usd": round(page.get("dynamodb_usd", 0), 8) if page else None,
             "per_new_order_usd": round(order.get("total_usd", 0), 8) if order else None,
+            "per_new_order_claude_usd": round(order.get("claude_usd", 0), 8) if order else None,
+            "per_new_order_dynamodb_usd": round(order.get("dynamodb_usd", 0), 8) if order else None,
             "monthly_usd": record.get("monthly_usd"), "delta_usd": record.get("delta_usd"),
             "limit_usd": record["limit_usd"]}
 

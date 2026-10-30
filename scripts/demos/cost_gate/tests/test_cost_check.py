@@ -209,3 +209,12 @@ def test_amounts_are_whole_dollars_with_separators():
     assert costs.signed(41235) == "+USD 41,235" and costs.signed(-12) == "-USD 12" and costs.signed(0) == "+USD 0"
     assert [costs.price_text(v) for v in (4.0, 0.2, 0.1415, 0.0000166667, 20)] == ["4", "0.20", "0.1415",
                                                                                    "0.0000166667", "20"]
+
+
+def test_the_event_carries_each_part_and_never_a_key_or_a_message(production):
+    record = run("1.7.1", logs_171())
+    body = cost_check.event_body(record, state("1.7.1"))
+    assert body["event"] == "cost_check" and body["sample_size"] == 50 and body["limit_usd"] == 100
+    assert body["per_new_order_claude_usd"] > 0 and body["per_page_view_lambda_usd"] > 0
+    assert body["monthly_usd"] == record["monthly_usd"] and body["delta_usd"] == record["delta_usd"]
+    assert "text" not in json.dumps(body) and "sk-ant" not in json.dumps(body)
