@@ -1,0 +1,21 @@
+# The cluster host's audit policy (k3s --audit-policy-file). It records only
+# what the drift recorder and the change board need: every write to the
+# catalog's deployments in production, with the request and the response, so
+# a hand edit's author, time and body are on record; and who asked for and
+# approved a client certificate. Nothing else is logged.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+# One entry per request, written when the response is complete.
+omitStages: [RequestReceived]
+rules:
+  - level: RequestResponse
+    verbs: [create, update, patch, delete]
+    namespaces: [production]
+    resources:
+      - group: apps
+        resources: [deployments, deployments/scale]
+  - level: Metadata
+    resources:
+      - group: certificates.k8s.io
+        resources: [certificatesigningrequests, certificatesigningrequests/approval]
+  - level: None

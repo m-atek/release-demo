@@ -1,0 +1,40 @@
+# The project production may take sources from this repository only, deploy
+# only to the namespace production of this cluster, and hold only the kinds
+# the catalog's chart makes. The application catalog-production syncs
+# deploy/production/catalog on main by itself, prunes what Git no longer has,
+# and puts back any change made to the cluster by hand (self-heal, at Argo
+# CD's default timing). Each automated sync goes to the drift recorder.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata: { name: production }
+spec:
+  description: catalog in production on the cluster host, from Git only.
+  sourceRepos: ["__REPOSITORY__"]
+  destinations:
+    - { server: https://kubernetes.default.svc, namespace: production }
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - { group: apps, kind: Deployment }
+    - { group: "", kind: Service }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: catalog-production
+  annotations:
+    notifications.argoproj.io/subscribe.on-automated-sync.drift-recorder: ""
+spec:
+  project: production
+  source:
+    repoURL: "__REPOSITORY__"
+    targetRevision: main
+    path: deploy/production/catalog
+    helm:
+      releaseName: catalog
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

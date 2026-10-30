@@ -1,0 +1,26 @@
+# catalog in production on the cluster host (demo 19): its whole desired
+# state, and the only way to change it. Argo CD applies this folder from main
+# and puts back any change made to the cluster by hand. To change production,
+# open a pull request to this folder: the job catalog-production checks it,
+# opens an emergency change and merges it once Change approvers approve.
+# Only that pipeline and scripts/demos/argocd/reset.py write here.
+
+image:
+  repository: artifactory-demo.es.nl/docker-local/catalog
+  # 1.9.1's image, as demos-releases/catalog/1.9.1/build-info.json in JFrog
+  # Container Registry names it. Empty until scripts/demos/argocd/reset.py
+  # pins it there; the chart refuses to render without one.
+  digest: ""
+
+environment: production
+replicas: 3
+# The Service's port on the node: none needed here, nothing outside the cluster calls it.
+nodePort: null
+
+# Production's settings from services.yaml (none), merged with the chart's own.
+settings:
+  CATALOG_DB_URL: file:///app/data/catalog.json
+
+resources:
+  requests: { cpu: 10m, memory: 32Mi }
+  limits: { cpu: 250m, memory: 64Mi }

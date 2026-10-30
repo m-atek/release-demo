@@ -1,0 +1,17 @@
+# Argo CD on the cluster host: Argo CD's own install manifest at the pinned
+# release, without Dex and the ApplicationSet controller, plus this demo's
+# settings, the drift recorder's address and the one application.
+# scripts/demos/argocd/host/cluster.py downloads install.yaml next to this
+# file, checks its SHA-256, fills in the repository and the node's address,
+# and applies the result with kubectl apply --server-side.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argocd
+resources:
+  - install.yaml
+  - drift-recorder.yaml
+  - production.yaml
+patches:
+  - path: settings.yaml
+  - path: server-service.yaml
+  - path: without-dex-and-applicationset.yaml

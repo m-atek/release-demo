@@ -230,3 +230,44 @@ pipelineJob('network-drift') {
     logRotator { numToKeep(60) }
     definition fromRepository('infra/demos/2-terraform/drift.Jenkinsfile')
 }
+
+// Demo 19: every pull request to catalog's production on the cluster host,
+// deploy/production/catalog. Like network-stack it scans GitHub every minute
+// and builds pull requests from this repository's own branches only, never
+// from forks, and publishes each check as its own GitHub check run. A pull
+// request that changes nothing in that folder ends at once, unbuilt.
+multibranchPipelineJob('catalog-production') {
+    displayName('catalog-production pull requests')
+    description('Demo 19: for every pull request to deploy/production/catalog, the checks, an emergency change linked to the incident it names, and after approval the merge and Argo CD\'s sync. Scans GitHub every minute; never builds forks.')
+    branchSources {
+        branchSource {
+            source {
+                github {
+                    id('catalog-production')
+                    repoOwner(repositoryOwner)
+                    delegate.repository(repositoryName)
+                    delegate.repositoryUrl("https://github.com/${repository}")
+                    configuredByUrl(false)
+                    credentialsId('github-app')
+                    traits {
+                        gitHubPullRequestDiscovery { strategyId(1) }
+                        gitHubStatusChecks {
+                            skip(true)
+                            skipNotifications(true)
+                            suppressLogs(true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    factory {
+        workflowBranchProjectFactory { scriptPath('deploy/production/Jenkinsfile') }
+    }
+    triggers {
+        periodicFolderTrigger { interval('1m') }
+    }
+    orphanedItemStrategy {
+        discardOldItems { numToKeep(20) }
+    }
+}

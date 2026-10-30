@@ -1,0 +1,98 @@
+// Every pull request to catalog's production on the cluster host
+// (deploy/production/catalog): four checks, each its own GitHub check run;
+// an emergency change in ServiceNow, linked to the incident the pull
+// request names; and after Change approvers approve it, the merge through
+// the GitHub App and Argo CD's sync of the merge commit.
+//
+// Run by the multibranch job catalog-production (jenkins/jobs/jobs.groovy),
+// which scans GitHub every minute and never builds pull requests from forks.
+// A pull request that changes nothing in deploy/production/catalog ends at
+// once, with nothing in Slack. Values from outside the pipeline reach the
+// shell as environment variables, never quoted into the script.
+
+@Library('release-demo') _
+
+properties([disableConcurrentBuilds(abortPrevious: true)])
+
+List<String> checks = ['helm template', 'kubeconform', 'Image in JFrog', 'Only deploy/production/catalog']
+String fix = 'python3 scripts/demos/argocd/fix.py'
+
+// Publishes each check from the file fix.py wrote for it, as demo 2's pipeline does.
+void publish(List<String> names) {
+    for (String name : names) {
+        String path = ".release/checks/${name.toLowerCase().replace(' ', '-').replace('/', '-')}.json"
+        if (!fileExists(path)) {
+            continue
+        }
+        def result = readJSON(file: path)
+        publishChecks(name: name, title: result.title, summary: result.summary, text: result.text ?: '',
+            status: 'COMPLETED', conclusion: result.conclusion == 'success' ? 'SUCCESS' : 'FAILURE',
+            detailsURL: env.BUILD_URL)
+    }
+}
+
+// One stage: Slack shows it running, then ok or failed with its time.
+void step(String fix, String name, Closure body) {
+    stage(name) {
+        sh "${fix} stage '${name}' running"
+        try {
+            body()
+        } catch (error) {
+            sh(returnStatus: true, script: "${fix} stage '${name}' failed")
+            throw error
+        }
+        sh "${fix} stage '${name}' ok"
+    }
+}
+
+node('tools-host') {
+    checkout scm
+    sh 'rm -rf .release'
+    int scope = sh(returnStatus: true, script: "${fix} scope")
+    if (scope == 1) {
+        currentBuild.result = 'NOT_BUILT'
+        currentBuild.description = 'Not for this pipeline.'
+        return
+    }
+    if (scope != 0) {
+        error "Couldn't read the pull request's files from GitHub."
+    }
+    for (String name : checks) {
+        publishChecks(name: name, title: 'Running', summary: 'Jenkins is running this check.',
+            status: 'IN_PROGRESS', detailsURL: env.BUILD_URL)
+    }
+    sh "${fix} init"
+    currentBuild.description = env.CHANGE_TITLE ?: ''
+
+    try {
+        step(fix, 'Checks') {
+            sh "${fix} files"
+            sh(returnStatus: true, script: "${fix} digest")
+            toolchain.image('jenkins/toolchain/gitops.Dockerfile').inside('-e HOME=/tmp') {
+                if (sh(returnStatus: true, script: "${fix} render") == 0) {
+                    sh(returnStatus: true, script: "${fix} validate")
+                }
+            }
+            publish(checks)
+            sh "${fix} gate"
+        }
+        step(fix, 'Change') { sh "${fix} change open" }
+        step(fix, 'Approval') { sh "${fix} change wait" }
+        step(fix, 'Merge') {
+            sh "${fix} change implement"
+            sh "${fix} merge"
+        }
+        step(fix, 'Sync') { sh "${fix} sync" }
+        step(fix, 'Record') { sh "${fix} finish" }
+    } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException aborted) {
+        withEnv(['REASON=Aborted: a newer commit or a person stopped this build.']) {
+            sh(returnStatus: true, script: "${fix} stopped \"\$REASON\"")
+        }
+        throw aborted
+    } catch (error) {
+        withEnv(["REASON=${error.message ?: error.toString()}"]) {
+            sh(returnStatus: true, script: "${fix} stopped \"\$REASON\"")
+        }
+        throw error
+    }
+}

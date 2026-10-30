@@ -1,0 +1,23 @@
+# The drift recorder runs on the node itself (scripts/demos/argocd/recorder.py,
+# a systemd unit), not in a pod: it reads the API server's audit log. This
+# Service without a selector gives the notifications controller a name for
+# it; the EndpointSlice points at the node's private address, which
+# cluster.py fills in. The host's security group keeps port 9095 closed to
+# everything outside the node.
+apiVersion: v1
+kind: Service
+metadata: { name: drift-recorder }
+spec:
+  ports:
+    - { name: http, port: 9095, targetPort: 9095, protocol: TCP }
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: drift-recorder-node
+  labels: { kubernetes.io/service-name: drift-recorder }
+addressType: IPv4
+ports:
+  - { name: http, port: 9095, protocol: TCP }
+endpoints:
+  - addresses: ["__NODE_ADDRESS__"]

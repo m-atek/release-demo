@@ -45,9 +45,14 @@ PEOPLE = {
                             "roles": ["itil", "approver_user"]},
     "release.pipeline": {"first_name": "Release", "last_name": "Pipeline", "password": "servicenow/release-pipeline-password",
                          "roles": ["itil", "snc_basic_auth_api_access"], "machine": True},
+    # Demo 19: the on-call engineer the drift incidents and emergency changes name. He never
+    # signs in, so he has no password; he is in Platform team, not in Change approvers.
+    "pieter.oncall": {"first_name": "Pieter", "last_name": "On Call", "password": None, "roles": ["itil"]},
 }
+# Records read in Dutch time, like Slack's and the terminal's (demos 10 and 19).
+TIME_ZONE = "Europe/Amsterdam"
 GROUPS = {
-    "Platform team": {"members": ["sam.developer", "release.pipeline"],
+    "Platform team": {"members": ["sam.developer", "release.pipeline", "pieter.oncall"],
                       "description": "Builds and runs the order services. Asks for releases; can't approve them."},
     "Change approvers": {"members": ["alex.change.manager"],
                          "description": "Approves normal changes. Nobody in it asks for releases."},
@@ -116,19 +121,23 @@ def generated_password():
 def setup_people(sn, ssm):
     users = {}
     for user_name, person in PEOPLE.items():
-        password = get_parameter_or_none(ssm, person["password"])
+        password = get_parameter_or_none(ssm, person["password"]) if person["password"] else None
         if password is None and user_name == "release.pipeline":
             password = generated_password()
             put_parameter(ssm, person["password"], password)
             print("  release.pipeline: generated a password and stored it in SSM")
-        elif password is None:
+        elif password is None and person["password"]:
             fail(f"/release-demo/{person['password']} isn't set yet. See: python scripts/secrets.py set servicenow")
         # Web service access only: no UI. Not an internal integration user: those can't hold a password.
         values = {"user_name": user_name, "first_name": person["first_name"], "last_name": person["last_name"],
                   "email": f"{user_name}@example.invalid", "active": "true", "password_needs_reset": "false",
                   "web_service_access_only": "true" if person.get("machine") else "false",
-                  "internal_integration_user": "false"}
+                  "internal_integration_user": "false", "time_zone": TIME_ZONE}
         user = sn.ensure("sys_user", f"user_name={user_name}", values, f"user {user_name}")
+        users[user_name] = user["sys_id"]
+        if not person["password"]:
+            add_roles(sn, user, person["roles"])
+            continue
         # Passwords need display-value input. Kept in line with SSM on every run, quietly; a password the
         # instance's policy refuses is dropped without an error, so check it took.
         sn.call("PATCH", f"/api/now/table/sys_user/{user['sys_id']}", {"user_password": password},
@@ -136,12 +145,15 @@ def setup_people(sn, ssm):
         if not sn.find("sys_user", f"sys_id={user['sys_id']}", "user_password").get("user_password"):
             fail(f"ServiceNow refused the password for {user_name}: it doesn't meet the instance's password "
                  f"policy (upper and lower case, a digit, a special character). Set another in SSM.")
-        users[user_name] = user["sys_id"]
-        for role in person["roles"]:
-            role_id = sn.find("sys_user_role", f"name={role}", "sys_id")["sys_id"]
-            sn.ensure("sys_user_has_role", f"user={user['sys_id']}^role={role_id}",
-                      {"user": user["sys_id"], "role": role_id}, f"  role {role}")
+        add_roles(sn, user, person["roles"])
     return users
+
+
+def add_roles(sn, user, roles):
+    for role in roles:
+        role_id = sn.find("sys_user_role", f"name={role}", "sys_id")["sys_id"]
+        sn.ensure("sys_user_has_role", f"user={user['sys_id']}^role={role_id}",
+                  {"user": user["sys_id"], "role": role_id}, f"  role {role}")
 
 
 def get_parameter_or_none(ssm, name):
@@ -198,6 +210,26 @@ def setup_approvals(sn, groups):
         what = "asks Change approvers" if at_assess else "off"
         print(f"  decision '{decision['label']}': {what}{' (changed)' if changed else ''}")
     return definition
+
+
+def setup_emergency_approvals(sn, definition):
+    """Demo 19: an emergency change asks Change approvers once, at Authorize, with the
+    definition normal changes use at Assess; the policy's other approvals are off."""
+    policy = sn.find("chg_policy", "name=Emergency Change Policy", "sys_id")
+    if not policy:
+        print("  No Emergency Change Policy on this instance: demo 19's emergency changes need the UI steps "
+              "in the README (Demo on a call: Argo CD).")
+        return
+    decisions = sn.call("GET", "/api/now/table/sys_decision_question", sysparm_query=f"decision_table={policy['sys_id']}",
+                        sysparm_fields="sys_id,label,condition,answer,active")
+    for decision in decisions:
+        at_authorize = "change_request.state=-3" in decision["condition"]
+        wanted = ({"answer": definition["sys_id"], "active": "true"} if at_authorize else {"active": "false"})
+        changed = {k: v for k, v in wanted.items() if str(raw(decision.get(k, ""))) != v}
+        if changed:
+            sn.call("PATCH", f"/api/now/table/sys_decision_question/{decision['sys_id']}", changed)
+        what = "asks Change approvers" if at_authorize else "off"
+        print(f"  decision '{decision['label']}': {what}{' (changed)' if changed else ''}")
 
 
 def template_texts(service, kind):
@@ -344,7 +376,9 @@ def main():
     print("CMDB")
     items = setup_cmdb(sn, groups)
     print("Normal change approval")
-    setup_approvals(sn, groups)
+    definition = setup_approvals(sn, groups)
+    print("Emergency change approval")
+    setup_emergency_approvals(sn, definition)
     print("Standard change templates")
     setup_templates(sn, groups, items)
     print("Pipeline access")

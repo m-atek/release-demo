@@ -171,6 +171,24 @@ catalog:
     templates:
       standard: Routine release of catalog
       rollback: Rollback of catalog
+      # Demo 19: scripts/demos/argocd/reset.py puts production on the cluster
+      # host back to Git's baseline under this pre-approved change.
+      reset: Reset of catalog production
+    template_texts:
+      reset:
+        short_description: Reset of catalog production
+        description: >-
+          Puts catalog in production on the cluster host back to its baseline before a take: 1.9.1 with
+          3 replicas, as deploy/production/catalog/values.yaml says. reset.py commits the values to main
+          and Argo CD syncs them, so even a reset changes production through Git and on the record.
+        implementation_plan: >-
+          scripts/demos/argocd/reset.py commits deploy/production/catalog/values.yaml to main through the
+          GitHub App, asks Argo CD to refresh catalog-production, and waits until it is Synced at that
+          commit and Healthy.
+        backout_plan: Revert the reset's commit on main; Argo CD syncs the previous values from Git.
+        test_plan: Argo CD reports catalog-production Synced at the reset's commit and Healthy within 3 minutes.
+        justification: A take starts from the same production every time.
+        risk_impact_analysis: "Low: the demo's own production, back to the values it ran before the take."
     backout_plan: >-
       Automatic: Helm releases with --rollback-on-failure and waits up to 3 minutes for the new pods
       to be ready. If they aren't, Helm rolls back to the previous revision by itself, the old pods
@@ -187,6 +205,23 @@ catalog:
     chart: helm-local/catalog
     registry: http://127.0.0.1:8082
     release: catalog
+
+  # Demo 19: production on the cluster host, from Git through Argo CD. Its
+  # desired state is deploy/production/catalog/; a hand edit is put back and
+  # recorded, a change goes through a pull request. scripts/demos/argocd/.
+  # /release catalog still deploys to demo 8's cluster with Helm.
+  gitops:
+    path: deploy/production/catalog
+    application: catalog-production
+    project: production
+    namespace: production
+    deployment: catalog
+    version: "1.9.1"            # whose chart and image the folder holds
+    replicas: 3                 # what reset.py puts back
+    kubernetes_version: 1.37.1  # the cluster host's k3s, for kubeconform
+    sync_timeout_seconds: 180
+    job: catalog-production     # the multibranch job for pull requests to the folder
+    branch_prefix: oncall/      # the on-call engineer's branches, which reset.py closes
 
   environments:
     staging:

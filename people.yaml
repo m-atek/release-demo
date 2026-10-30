@@ -22,3 +22,12 @@ alex:
   slack: false
   servicenow_user: alex.change.manager
   approver: true
+
+pieter:
+  # Demo 19: on call, with break-glass access to production on the cluster
+  # host (scripts/demos/argocd/break_glass.py). No Slack account; the cluster's
+  # audit log names him by his certificate, pieter-oncall.
+  display_name: Pieter On Call
+  slack: false
+  servicenow_user: pieter.oncall
+  kubernetes_user: pieter-oncall
