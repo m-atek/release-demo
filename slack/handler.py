@@ -8,6 +8,14 @@ again, asynchronously, for the slow part: is the tools host running, post the
 status message the pipeline keeps up to date, and start the Jenkins job as
 release-bot through Cloudflare Access.
 
+A release may run on another CI instead: ci/<service> in SSM, read afresh
+for every /release, names it. jenkins is the default and the value whenever
+another CI's demo is down; with gitlab-ci (demo 17) the handler starts the
+GitLab pipeline with the project's trigger token, and with azure-pipelines
+(demo 22) it queues the Azure Pipelines run as Release Bot, which signs in
+with no stored secret: AWS signs a short-lived token for this function's
+role, and Entra trusts it for Release Bot. /rollback always goes to Jenkins.
+
 /flag <service> <flag> on|off (demo 21) switches one feature flag in
 production: a new version of the service's AppConfig flags profile with that
 flag changed, deployed with the strategy services.yaml names. It answers at
@@ -46,6 +54,22 @@ STOPPED = "The release server is stopped. Start it with scripts/tools.sh up."
 STARTING = "The release server is starting. Try again when scripts/tools.sh up says Ready."
 JENKINS_PARAMETERS = ["slack/bot-token", "cloudflare/slack-handler-client-id",
                       "cloudflare/slack-handler-client-secret", "jenkins/release-bot-api-token"]
+# Demo 17: GitLab CI starts the release on the runner on the tools host.
+GITLAB_API = "https://gitlab.com/api/v4"
+GITLAB_PARAMETERS = ["slack/bot-token", "gitlab/project-id", "gitlab/trigger-token"]
+# The Jenkins job's parameters, as .gitlab-ci.yml's inputs.
+GITLAB_INPUTS = {"SERVICE": "service", "JIRA_KEY": "jira_key", "OPTION": "option", "REQUESTED_BY": "requested_by",
+                 "SLACK_CHANNEL": "slack_channel", "SLACK_TS": "slack_ts", "REQUESTED_AT": "requested_at"}
+# Demo 22: Azure Pipelines, queued as Release Bot.
+AZURE_PROJECT = "release-demo"
+AZURE_PARAMETERS = ["slack/bot-token", "azure-devops/organization", "azure-devops/pipeline-id",
+                    "azure-devops/tenant-id", "azure-devops/release-bot-client-id"]
+# The Jenkins job's parameters, as azure-pipelines.yml's.
+AZURE_INPUTS = {"SERVICE": "service", "JIRA_KEY": "jiraKey", "OPTION": "option", "REQUESTED_BY": "requestedBy",
+                "SLACK_CHANNEL": "slackChannel", "SLACK_TS": "slackTs", "REQUESTED_AT": "requestedAt"}
+AZURE_DEVOPS_SCOPE = "499b84ac-1321-427f-aa17-267ca6975798/.default"  # Azure DevOps, as Entra names it
+TOKEN_EXCHANGE = "api://AzureADTokenExchange"
+CIS = ("jenkins", "gitlab-ci", "azure-pipelines")
 
 
 class Refusal(Exception):
@@ -213,6 +237,13 @@ def run(work):
             log(f"tools host is {state}")
             say(work["response_url"], STARTING if state == "pending" else STOPPED)
             return
+        ci = ci_for(work["params"]["SERVICE"]) if work["job"] == "release" else "jenkins"
+        if ci == "gitlab-ci":
+            run_on_gitlab(work)
+            return
+        if ci == "azure-pipelines":
+            run_on_azure(work)
+            return
         secrets = parameters(*JENKINS_PARAMETERS)
         missing = [name for name in JENKINS_PARAMETERS if not secrets[name]]
         if missing:
@@ -285,6 +316,166 @@ def switch_flag(work):
 def tools_host_state():
     reply = aws("ec2").describe_instances(InstanceIds=[os.environ["TOOLS_HOST_ID"]])
     return reply["Reservations"][0]["Instances"][0]["State"]["Name"]
+
+
+# Demo 17: the same release on GitLab CI.
+
+def ci_for(service):
+    """Which CI /release starts for a service: ci/<service> in SSM, read afresh
+    every time, so a switch takes effect at once. jenkins when it is unset."""
+    reply = aws("ssm").get_parameters(Names=[f"{SSM_PREFIX}ci/{service}"], WithDecryption=True)
+    value = next((p["Value"] for p in reply["Parameters"]), "")
+    return value if value in CIS else "jenkins"
+
+
+def run_on_gitlab(work):
+    """The status message, then the pipeline, with the trigger token: the
+    Jenkins job's parameters as its inputs, from main."""
+    secrets = parameters(*GITLAB_PARAMETERS)
+    missing = [name for name in GITLAB_PARAMETERS if not secrets[name]]
+    if missing:
+        log(f"not set in SSM: {', '.join(missing)}")
+        say(work["response_url"], f"GitLab CI isn't set up yet: {', '.join(missing)} isn't in SSM.")
+        return
+    token = secrets["slack/bot-token"]
+    starting = ":hourglass_flowing_sand:  Starting on GitLab CI"
+    posted = slack(token, "chat.postMessage", channel=work["channel"], text=status_message(work, starting),
+                   unfurl_links=False)
+    if not posted.get("ok"):
+        log(f"chat.postMessage: {posted.get('error')}")
+        say(work["response_url"], f"I can't post in this channel ({posted.get('error')}). "
+                                  "Invite me with /invite @Release Bot, or use #releases.")
+        return
+    params = {**work["params"], "SLACK_CHANNEL": posted["channel"], "SLACK_TS": posted["ts"]}
+    status, where = trigger_gitlab(secrets, params)
+    if status == 201:
+        log(f"GitLab pipeline started: {where}")
+        return
+    log(f"GitLab answered {status or where}")
+    slack(token, "chat.update", channel=posted["channel"], ts=posted["ts"],
+          text=status_message(work, f":x:  Not started: GitLab answered {status or 'nothing'}."))
+
+
+def trigger_gitlab(secrets, params):
+    """POST /projects/:id/trigger/pipeline. Returns (HTTP status, the pipeline's
+    page or error); status 0 when nothing answered."""
+    form = {"token": secrets["gitlab/trigger-token"], "ref": "main",
+            **{f"inputs[{GITLAB_INPUTS[k]}]": v for k, v in params.items() if k in GITLAB_INPUTS}}
+    request = urllib.request.Request(
+        f"{GITLAB_API}/projects/{secrets['gitlab/project-id']}/trigger/pipeline", method="POST",
+        data=urllib.parse.urlencode(form).encode(),
+        headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT})
+    try:
+        with GITLAB_OPENER.open(request, timeout=10) as response:
+            return response.status, json.loads(response.read() or b"{}").get("web_url", "")
+    except urllib.error.HTTPError as error:
+        return error.code, ""
+    except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+        return 0, str(getattr(error, "reason", error))
+
+
+GITLAB_OPENER = urllib.request.build_opener()
+
+
+# Demo 22: the same release on Azure Pipelines.
+
+def run_on_azure(work):
+    """The status message, then the run, queued with the Runs API as Release Bot:
+    the Jenkins job's parameters as the pipeline's, from main."""
+    secrets = parameters(*AZURE_PARAMETERS)
+    missing = [name for name in AZURE_PARAMETERS if not secrets[name]]
+    if missing:
+        log(f"not set in SSM: {', '.join(missing)}")
+        say(work["response_url"], f"Azure Pipelines isn't set up yet: {', '.join(missing)} isn't in SSM.")
+        return
+    token = secrets["slack/bot-token"]
+    starting = ":hourglass_flowing_sand:  Starting on Azure Pipelines"
+    posted = slack(token, "chat.postMessage", channel=work["channel"], text=status_message(work, starting),
+                   unfurl_links=False)
+    if not posted.get("ok"):
+        log(f"chat.postMessage: {posted.get('error')}")
+        say(work["response_url"], f"I can't post in this channel ({posted.get('error')}). "
+                                  "Invite me with /invite @Release Bot, or use #releases.")
+        return
+    params = {**work["params"], "SLACK_CHANNEL": posted["channel"], "SLACK_TS": posted["ts"]}
+    status, bot = release_bot_token(secrets)
+    if bot is None:
+        problem = f"Release Bot couldn't sign in to Azure DevOps (Entra answered {status or 'nothing'})."
+    else:
+        status, where = queue_azure_run(secrets, bot, params)
+        if status == 200:
+            log(f"Azure Pipelines run queued: {where}")
+            return
+        problem = f"Azure DevOps answered {status or 'nothing'}."
+    log(problem)
+    slack(token, "chat.update", channel=posted["channel"], ts=posted["ts"],
+          text=status_message(work, f":x:  Not started: {problem}"))
+
+
+def web_identity_token():
+    """A five-minute token AWS signs for this function's role, for Entra:
+    sts:GetWebIdentityToken, AWS's outbound identity federation."""
+    sts = aws("sts")
+    if hasattr(sts, "get_web_identity_token"):
+        return sts.get_web_identity_token(Audience=[TOKEN_EXCHANGE], SigningAlgorithm="RS256",
+                                          DurationSeconds=300)["WebIdentityToken"]
+    # A Lambda runtime whose botocore predates the call: the same request, signed here.
+    from botocore.auth import SigV4Auth
+    from botocore.awsrequest import AWSRequest
+
+    region = os.environ.get("AWS_REGION", "eu-west-1")
+    body = urllib.parse.urlencode({"Action": "GetWebIdentityToken", "Version": "2011-06-15",
+                                   "Audience.member.1": TOKEN_EXCHANGE, "SigningAlgorithm": "RS256",
+                                   "DurationSeconds": "300"})
+    request = AWSRequest(method="POST", url=f"https://sts.{region}.amazonaws.com/", data=body,
+                         headers={"Content-Type": "application/x-www-form-urlencoded"})
+    SigV4Auth(boto3.Session().get_credentials().get_frozen_credentials(), "sts", region).add_auth(request)
+    sent = urllib.request.Request(request.url, data=body.encode(), method="POST", headers=dict(request.headers))
+    with urllib.request.urlopen(sent, timeout=10) as response:
+        found = re.search(r"<WebIdentityToken>([^<]+)</WebIdentityToken>", response.read().decode())
+    return found.group(1)
+
+
+def release_bot_token(secrets):
+    """(status, Azure DevOps access token as Release Bot), or (status, None):
+    Entra exchanges AWS's token through Release Bot's federated credential."""
+    form = {"client_id": secrets["azure-devops/release-bot-client-id"], "scope": AZURE_DEVOPS_SCOPE,
+            "grant_type": "client_credentials",
+            "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+            "client_assertion": web_identity_token()}
+    request = urllib.request.Request(
+        f"https://login.microsoftonline.com/{secrets['azure-devops/tenant-id']}/oauth2/v2.0/token", method="POST",
+        data=urllib.parse.urlencode(form).encode(),
+        headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT})
+    try:
+        with AZURE_OPENER.open(request, timeout=10) as response:
+            return response.status, json.loads(response.read())["access_token"]
+    except urllib.error.HTTPError as error:
+        return error.code, None
+    except (urllib.error.URLError, TimeoutError, ConnectionError):
+        return 0, None
+
+
+def queue_azure_run(secrets, token, params):
+    """The Runs API: (HTTP status, the run's page or error); status 0 when nothing answered."""
+    organization, pipeline = secrets["azure-devops/organization"], secrets["azure-devops/pipeline-id"]
+    body = {"resources": {"repositories": {"self": {"refName": "refs/heads/main"}}},
+            "templateParameters": {AZURE_INPUTS[k]: v for k, v in params.items() if k in AZURE_INPUTS}}
+    request = urllib.request.Request(
+        f"https://dev.azure.com/{organization}/{AZURE_PROJECT}/_apis/pipelines/{pipeline}/runs?api-version=7.1",
+        method="POST", data=json.dumps(body).encode(),
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json", "User-Agent": USER_AGENT})
+    try:
+        with AZURE_OPENER.open(request, timeout=10) as response:
+            reply = json.loads(response.read() or b"{}")
+            return response.status, reply.get("_links", {}).get("web", {}).get("href", "")
+    except urllib.error.HTTPError as error:
+        return error.code, ""
+    except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+        return 0, str(getattr(error, "reason", error))
+
+
+AZURE_OPENER = urllib.request.build_opener()
 
 
 def status_message(work, line=":hourglass_flowing_sand:  Starting on Jenkins"):

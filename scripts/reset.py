@@ -448,8 +448,8 @@ def reset_main(dry_run, slack_url=None):
 
 
 def other_demo(demo, args):
-    # reset.py ai-notes runs scripts/demos/ai_notes/reset.py, and agent-ship scripts/demos/agent_ship/reset.py:
-    # without a folder of its own name, a dash is an underscore.
+    # reset.py ai-notes runs scripts/demos/ai_notes/reset.py, and github-actions scripts/demos/github_actions/reset.py:
+    # without a folder of its own name, a dash is an underscore. agent-access and rollback-trap keep their dashes.
     folder = ROOT / "scripts" / "demos" / demo
     if not folder.is_dir():
         folder = folder.with_name(demo.replace("-", "_"))

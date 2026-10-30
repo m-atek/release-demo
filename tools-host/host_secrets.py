@@ -24,7 +24,12 @@ CLOUDFLARED_UID = 65532  # the nonroot user inside the cloudflared image
 NOT_ON_HOST = {"cloudflare/api-token", "cloudflare/account-id", "cloudflare/zone-id",
                "grafana/external-id", "terraform/state-bucket", "servicenow/admin-password",
                "servicenow/sam-password", "servicenow/alex-password", "grafana/setup-token",
-               "servicenow/ines-password", "servicenow/fiona-password"}
+               "servicenow/ines-password", "servicenow/fiona-password",
+               # Demo 17: the GitLab account's token is the Mac's only (an IAM deny), and the
+               # runner reads its own token from SSM once, so neither goes on the tmpfs.
+               "gitlab/api-token", "gitlab/runner-token", "gitlab/trigger-token",
+               # Demo 22: the agent reads its one-day registration token from SSM itself.
+               "azure-devops/agent-registration-token"}
 # Jenkins users whose password you type: until it is set, a random one, so
 # the user never exists with an empty password.
 RANDOM_UNTIL_SET = {"jenkins/ines-password"}

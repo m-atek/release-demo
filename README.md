@@ -522,6 +522,77 @@ Once, after the merge: Mateusz applies `infra/demos/21-release-train-flags` (`sc
 
 Before the train: `scripts/demo.sh up release-train` (the tools host starts 30 minutes before the departure), then `scripts/reset.py release-train`. A rehearsal: the job `release-train` by hand with REHEARSAL. Before the switch: `scripts/demo.sh traffic release-train`, about 2 requests a second to /api/estimate over the six stores. Afterwards: `scripts/demo.sh down release-train`.
 
+## Demo on a call: GitHub Actions (demo 14)
+
+The main release, orders-service 1.4.0 for ORD-12, run from `.github/workflows/release.yml` instead of Jenkins: the same stage scripts in the same order (`scripts/tests/test_github_actions.py` holds the workflow to `releasePipeline.groovy`), the same JFrog repositories and the same ServiceNow change. A squash merge to main that changes the service, with the Jira key at the start of its subject, starts it; the pull request's label `standard` asks for a standard change. The production environment has no reviewers and no admin bypass: its only protection rule is the GitHub App, which the approval bridge (`bridge/handler.py`) answers once Alex approves the change in ServiceNow. GitHub stores no secrets. Each job signs in to AWS with GitHub's OIDC token as a role that trusts only its own job (`infra/demos/14-github-actions`), and masks every value it reads from SSM; the run state passes from job to job encrypted, since a public repository's artifacts are public. Publish attests the package with signed provenance, and `.github/workflows/actions.lock` locks every action to a commit. GitHub's runners reach JFrog on the tools host through Cloudflare Access, so the tools host must be up.
+
+Once, after the merge:
+
+1. `scripts/tf.sh apply` (the bridge, the Cloudflare Access service token "release-demo GitHub Actions" on JFrog only, the new parameter names), then `scripts/demos/github_actions/tf.sh apply` (GitHub's OIDC provider, the roles `release-demo-github-ci`, `-staging` and `-production`, and the run state's key). Both change IAM, so you apply them.
+2. `.venv/bin/python scripts/demos/github_actions/app_hook.py`: the GitHub App's webhook to the bridge, signed with a secret it generates into SSM. Then, in the app's settings on GitHub: Webhook Active; Repository permissions, Deployments read and write, Actions read-only; the event Deployment protection rule; and accept the new permissions on the installation. `app_hook.py --check` lists what is still missing.
+3. `.venv/bin/python scripts/servicenow_setup.py`: the business rule "release-demo: approval bridge" and its two system properties, the bridge's URL and its token.
+4. `.venv/bin/python scripts/demos/github_actions/environments.py --apply` with your gh login, the repository's admin: staging and production from main only, production with the app as its only rule, and the repository variable `AWS_ACCOUNT_ID`. `--check` prints what the acceptance checks need.
+5. `gh extension install github/gh-actions-lock --pin v0.4.0`, then `gh actions-lock` once, which writes `.github/workflows/actions.lock`; commit it.
+6. The bridge's first check, on a throwaway environment: `environments.py --apply --bridge-test`, then `.venv/bin/python scripts/demos/github_actions/bridge_test.py run`, approving one test change as Alex and rejecting another. `bridge_test.py clean --yes` removes the throwaway workflow and environment afterwards.
+
+Before each call or take: `scripts/tools.sh up`, then `.venv/bin/python scripts/reset.py github-actions` from the Mac. It rejects a release run still waiting, runs the main reset, closes the demo's open pull request and opens a fresh one as you. The Jenkins job reset with DEMO=github-actions does the same except the pull request, which needs your gh login. `--dry-run` shows what it would do.
+
+On the call: merge "ORD-12 Show the delivery estimate on the order page" with Squash and merge. The run goes from Build to Change, then Production waits, with the bridge's report "ServiceNow change CHG... is waiting for approval." under the app's name. Approve the change as Alex: within seconds the bridge's comment "Approved by Alex in ServiceNow. Change CHG..." appears and the job starts. Slack's message, posted by the workflow, shows every stage with its time and "Live in ...", counted from the merge commit. `gh attestation verify orders-service-1.4.0.zip -R <owner>/release-demo` checks the zip from JFrog against its provenance.
+
+What to say if asked: GitHub calls custom deployment protection rules and workflow lockfiles public previews. A repository admin can still change the environment's settings; that is a settings change, not an approval. The production job gets AWS credentials only because GitHub issues the environment's token to a job that passed its rules. Splunk listens on the tools host only, so a GitHub run sends its events to Grafana alone, and its change has no Splunk link.
+
+After the call there is nothing to stop: GitHub's runners are free for public repositories, and the bridge costs cents a month.
+
+## Demo on a call: GitLab CI (demo 17)
+
+The main release, orders-service 1.4.0 for ORD-12, ported from Jenkins to GitLab CI on GitLab.com Free, with a project runner on the tools host. The port is the commits between the tags `before-gitlab` and `gitlab-port`: `.gitlab-ci.yml`, the runner (`tools-host/gitlab-runner.sh` and `release-demo-parameter`), the idle stop, and the few lines the Slack handler needs to start it. It changes no file in `scripts/`: `git diff --quiet before-gitlab gitlab-port -- scripts/ && echo "no changes in scripts/"`. Sam's Slack command, the gates, the ServiceNow change and Alex's approval stay as they are: the Approval job runs `change.py wait`, since GitLab's deployment approvals are Premium and Ultimate. `scripts/tests/test_gitlab_port.py` holds the pipeline to `releasePipeline.groovy`. GitLab holds no secrets and no CI/CD variables: the jobs read SSM through the tools host's role.
+
+Once, after the merge (the tags pushed too):
+
+1. GitLab.com Free on an address used only for this demo; a personal access token with the scopes `api` and `create_runner`, expiring within a year, into `.venv/bin/python scripts/secrets.py set gitlab`. It stays on the Mac: the tools host may not read it.
+2. `scripts/tf.sh apply`: the parameter names, the Slack handler's new reads and the tools host's deny. It changes IAM, so you apply it.
+3. `.venv/bin/python scripts/demos/gitlab_port/setup.py`: the private project, instance runners off, the project runner tools-host and the trigger token, their tokens straight into SSM. `--check` prints what the checks need.
+4. `scripts/tools.sh up`, then the first check: `.venv/bin/python scripts/demos/gitlab_port/day_one.py run`, a throwaway branch's one job started by the trigger token on tools-host. `day_one.py clean --yes` deletes the branch afterwards.
+
+Before each call or take:
+
+```bash
+scripts/tools.sh up
+scripts/demo.sh up gitlab-port                       # the runner on, GitLab's main synced, then /release on GitLab
+.venv/bin/python scripts/reset.py gitlab-port        # production on 1.3.0, 1.4.0 on main and on GitLab
+scripts/demo.sh status gitlab-port                   # the switch, the runner, both mains
+```
+
+The reset runs from the Mac only, since it cancels GitLab pipelines and pushes GitLab's main with the account's token; the Jenkins job reset says so in one line. On the call: `/release orders-service ORD-12` as Sam. Slack says "Starting on GitLab CI", then every stage with its time and a "Build #gl-..." link. The Build job's log names the runner tools-host. The Approval job prints "Waiting for ServiceNow change CHG..." and polls it every 15 seconds; Alex approves in ServiceNow, the job prints "Approved by Alex in ServiceNow." and Production starts.
+
+After the call: `scripts/demo.sh down gitlab-port` puts /release back on Jenkins, then stops the runner. GitLab costs nothing: the project runner has no minute limit, and artifacts expire after a day.
+
+## Demo on a call: Azure DevOps (demo 22)
+
+The main release, orders-service 1.4.0 for ORD-12, run from `azure-pipelines.yml` on a self-hosted agent on the tools host, with the code still on GitHub. The environment production has no approvers: its one check, Invoke REST API "ServiceNow change approved" in callback mode, asks the approval bridge (`bridge/handler.py`, its `/azure-devops/check` route), which reads the run with the token Azure DevOps hands the check and answers once Alex approves in ServiceNow. An administrator of the environment can still bypass the check; then Production's first step, "Wait for the ServiceNow approval" (`change.py wait`), waits for Alex as Jenkins' Approval stage does, and nothing deploys before. The Slack handler queues runs as Release Bot, an Entra app with no secret: AWS signs a short-lived token for the handler's role and Entra exchanges it (`infra/demos/22-azure-devops-approval`). `scripts/tests/test_azure_pipelines.py` holds the pipeline to `releasePipeline.groovy`. Azure DevOps holds no secrets: no variable groups, secure files or secret variables.
+
+Once, after the merge:
+
+1. A new Azure DevOps organization at dev.azure.com, signed in with your es.nl account, region West Europe, and in it the private project release-demo. Pipelines, New pipeline, GitHub: install the Azure Pipelines GitHub App on the repository only, and stop at the review step.
+2. `scripts/tf.sh apply` (the bridge's pending-checks table and the new parameter names), then `scripts/demos/azure_devops/tf.sh apply` (Release Bot in Entra, AWS's outbound identity federation, and the two roles' leave to ask for its token). Show both plans first: es.nl is the company's tenant, and IAM changes are yours to apply.
+3. `.venv/bin/python scripts/demos/azure_devops/setup.py --apply --organization <name>` with your az login: the pool, both environments, the check, the pipeline and Release Bot's rights. `--check` prints what the acceptance checks need.
+4. `.venv/bin/python scripts/servicenow_setup.py`: the business rule now covers Azure Pipelines runs too.
+5. A personal access token with the scope Agent Pools (Read & manage), expiring in a day, into `.venv/bin/python scripts/secrets.py set azure-devops`. The agent registers with it once at `scripts/demo.sh up azure-devops`.
+6. The first checks: `setup.py --apply --bridge-test`, then `.venv/bin/python scripts/demos/azure_devops/day_one.py token` (Release Bot signs in) and `day_one.py run` (approve one test change as Alex, reject another, bypass a third as the owner). `day_one.py clean --yes` removes the throwaway pipeline and environment.
+
+Before each call or take:
+
+```bash
+scripts/tools.sh up
+scripts/demo.sh up azure-devops                      # the agent on, then /release on Azure Pipelines
+.venv/bin/python scripts/reset.py azure-devops       # production on 1.3.0, 1.4.0 on main
+scripts/demo.sh status azure-devops                  # the switch and the agent
+```
+
+The reset runs on the tools host, where Release Bot can sign in: from the Mac it hands itself over, as `reset.py` does, and the Jenkins job reset with DEMO=azure-devops runs it there too. On the call: `/release orders-service ORD-12` as Sam. Slack says "Starting on Azure Pipelines", then every stage with its time. Production waits; its checks panel shows "ServiceNow change CHG... is waiting for approval." Alex approves in ServiceNow, the check passes with "Approved by Alex in ServiceNow. Change CHG...", and the stage starts by itself.
+
+After the call: `scripts/demo.sh down azure-devops` puts /release back on Jenkins, then stops the agent. One self-hosted parallel job is free, Basic access is free for the first five users, and the pending-checks table costs cents a month.
+
 ## Layout
 
 ```

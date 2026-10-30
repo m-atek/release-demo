@@ -1,0 +1,19 @@
+# Day one only, then deleted: one job in the environment bridge-test, whose
+# protection rule is the GitHub App. It waits until the approval bridge has
+# ServiceNow's answer for its test change. bridge_test.py puts this file in
+# .github/workflows/ on main, starts it, and removes it once you say so.
+
+name: Bridge test
+
+on: workflow_dispatch
+
+permissions: {}
+
+jobs:
+  wait:
+    name: Waits for ServiceNow
+    runs-on: ubuntu-24.04
+    environment: bridge-test
+    timeout-minutes: 5
+    steps:
+      - run: echo "The approval bridge let this job start."

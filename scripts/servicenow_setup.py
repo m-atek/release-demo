@@ -32,7 +32,9 @@ on the REST API for users without snc_basic_auth_api_access. Then it creates:
   "Cost and change approvers" asks both, and both must approve. Without
   Fiona's password this part waits for it;
 - video 16's two fields on the change, Code written by and Code reviewed by,
-  on its form next to Requested by.
+  on its form next to Requested by;
+- the business rule that tells the approval bridge when a change's approval
+  is decided, once the bridge is applied (scripts/approval_bridge.py).
 
 Every call detects the hibernation page: wake the instance at
 developer.servicenow.com.
@@ -48,6 +50,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import approval_bridge
 from common import fail, get_parameter, put_parameter, services, ssm_client
 
 SETUP_USER = "release-demo.setup"
@@ -616,6 +619,9 @@ def main():
     setup_change_fields(sn)
     print("Pipeline access")
     prove_access(sn, ssm)
+    # Demos 14 and 22: runs on GitHub Actions and Azure Pipelines wait on the approval bridge.
+    print("Approval bridge")
+    approval_bridge.setup(sn, ssm)
     if args.test:
         print("Approval check")
         prove_approvals(sn, users, groups, items)

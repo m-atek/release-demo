@@ -1,0 +1,33 @@
+# .release/ and dist/ from stage to stage, as one pipeline artifact per stage:
+# restore takes the one the stage before published, save publishes this
+# stage's, also when it failed, so Stopped can read it. The project is
+# private, and so are its artifacts.
+
+parameters:
+  - name: restore
+    type: string
+    default: ""
+  - name: save
+    type: string
+    default: ""
+
+steps:
+  - ${{ if ne(parameters.restore, '') }}:
+      - download: current
+        artifact: state-${{ parameters.restore }}
+        displayName: Run state from ${{ parameters.restore }}
+      - bash: |
+          tar -xzf "$(Pipeline.Workspace)/state-${{ parameters.restore }}/state.tgz"
+          echo "##vso[task.setvariable variable=CHANGE_TYPE]$(python3 scripts/run_state.py get change.type)"
+        displayName: Run state
+  - ${{ if ne(parameters.save, '') }}:
+      - bash: |
+          [ -f .release/state.json ] || { echo "No run state to pass on."; exit 0; }
+          mkdir -p dist && tar -czf "$(Build.ArtifactStagingDirectory)/state.tgz" .release dist &&
+            echo "##vso[task.setvariable variable=STATE_SAVED]true"
+        displayName: Run state for the next stage
+        condition: always()
+      - publish: $(Build.ArtifactStagingDirectory)/state.tgz
+        artifact: state-${{ parameters.save }}
+        displayName: Run state published
+        condition: and(always(), eq(variables['STATE_SAVED'], 'true'))

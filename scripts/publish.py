@@ -34,15 +34,36 @@ import run_state
 from common import ROOT, fail, get_parameter, service, ssm_client
 
 JCR = os.environ.get("JCR_URL", "http://localhost:8082")
+# From outside the tools host (GitHub's runners), JCR is https://artifactory-demo.es.nl
+# behind Cloudflare Access. JCR_ACCESS names the Access service token in SSM, for
+# example cloudflare/github-actions: its -client-id and -client-secret go with every
+# request. Unset on the tools host, which reaches JCR on localhost.
+ACCESS = os.environ.get("JCR_ACCESS", "")
+# What Cloudflare answers when nothing is behind the tunnel: the tools host is stopped.
+UNREACHABLE = {502, 503, 504, 521, 522, 523, 524, 530}
+USER_AGENT = "release-demo/1.0 (+https://github.com/m-atek/release-demo)"
+_access = {}
+
+
+def access_headers():
+    if ACCESS and not _access:
+        ssm = ssm_client()
+        _access.update({"CF-Access-Client-Id": get_parameter(ssm, f"{ACCESS}-client-id"),
+                        "CF-Access-Client-Secret": get_parameter(ssm, f"{ACCESS}-client-secret"),
+                        "User-Agent": USER_AGENT})
+    return _access
 
 
 def request(method, path, token, data=None, headers=None):
     req = urllib.request.Request(f"{JCR}/artifactory/{path}", data=data, method=method,
-                                 headers={"Authorization": f"Bearer {token}", **(headers or {})})
+                                 headers={"Authorization": f"Bearer {token}", **access_headers(), **(headers or {})})
     try:
         with urllib.request.urlopen(req, timeout=120) as response:
             return response.status, response.read()
     except urllib.error.HTTPError as error:
+        if ACCESS and error.code in UNREACHABLE:
+            fail(f"JFrog doesn't answer through Cloudflare ({error.code}): the tools host is stopped. "
+                 "Start it with scripts/tools.sh up, then release again.")
         return error.code, error.read()
 
 

@@ -19,6 +19,7 @@ import sys
 import time
 from pathlib import Path
 
+import ci_env
 from common import ROOT, service, version_of
 
 STAGES = ["Build", "Test", "Quality gate", "SBOM and scan", "Publish", "Staging", "Check staging",
@@ -97,24 +98,31 @@ def requested_at(value):
 
 def init(args):
     config = service(args.service)
-    commit = os.environ.get("GIT_COMMIT") or subprocess.run(
+    run = ci_env.current()
+    commit = run.commit or subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     commit_time = subprocess.run(["git", "log", "-1", "--format=%ct", commit], cwd=ROOT,
                                  capture_output=True, text=True).stdout.strip()
+    commit_time = int(commit_time) if commit_time.isdigit() else None
+    # A CI that knows who asked and when (GitHub Actions: who merged, and the
+    # merge commit's time) fills in what the Slack handler passes elsewhere.
+    asked_at = args.requested_at or (commit_time if run.request_time_is_commit else None)
     state = {
         "service": args.service,
         "version": version_of(config["dir"]),
         "commit": commit,
-        "commit_time": int(commit_time) if commit_time.isdigit() else None,
+        "commit_time": commit_time,
         "jira_key": args.jira_key,
         "jira_keys": jira_keys(args.jira_key),
         "option": args.option or "",
-        "requested_by": args.requested_by or "",
+        "requested_by": args.requested_by or ci_env.requester(run) or "",
         "slack": {"channel": args.slack_channel or "", "ts": args.slack_ts or ""},
-        "build": {"number": os.environ.get("BUILD_NUMBER", "local"), "url": os.environ.get("BUILD_URL", "")},
+        "build": {"number": run.build_id, "url": run.run_url},
+        # What the change and the events need to know of the CI that runs this.
+        "ci": {"name": run.name, "correlation_id": run.correlation_id, "splunk": run.splunk, "origin": run.origin},
         # From the moment Sam pressed Enter in Slack when the handler passes it,
         # so "Live in" matches the clock that starts at the command.
-        "started_at": requested_at(args.requested_at),
+        "started_at": requested_at(asked_at),
         "stages": {name: {"status": "waiting"} for name in stages_for(config)},
     }
     # Lines under the stages from whoever started the run (demo 21's release

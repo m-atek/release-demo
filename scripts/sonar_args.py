@@ -7,9 +7,9 @@ One SonarQube Cloud project per service (a monorepo), analysed from CI, and
 the scanner waits for the quality gate: a failed gate fails the stage.
 """
 
-import os
 import sys
 
+import ci_env
 from common import get_parameter, service, ssm_client
 
 
@@ -38,8 +38,8 @@ def main():
         args["sonar.python.coverage.reportPaths"] = ".release/reports/coverage.xml"
     # A demo's own scanner settings, for example its language's coverage report.
     args.update({key: str(value) for key, value in config["sonarqube"].get("properties", {}).items()})
-    if os.environ.get("GIT_COMMIT"):
-        args["sonar.scm.revision"] = os.environ["GIT_COMMIT"]
+    if ci_env.current().commit:
+        args["sonar.scm.revision"] = ci_env.current().commit
     print(" ".join(f"-D{key}={value}" for key, value in args.items()))
 
 

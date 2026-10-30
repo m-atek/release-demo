@@ -1,0 +1,318 @@
+# Releases a service on GitLab CI: the same stage scripts, in the same order
+# and with the same arguments, as Jenkins' release pipeline
+# (jenkins/shared-library/vars/releasePipeline.groovy). The stage logic lives
+# in scripts/; this file sets the order and what happens when a stage fails.
+#
+# Only the Slack handler starts it, with the project's trigger token and the
+# Jenkins job's parameters as inputs. Every job runs on the project runner
+# tools-host, on the tools host (tools-host/gitlab-runner.sh), which reaches
+# JFrog, Splunk and AWS as the Jenkins agent does: the scripts read SSM
+# through the host's instance role, so GitLab holds no secrets and no CI/CD
+# variables. Approval stays in ServiceNow: the Approval job waits for the
+# change's approval, as Jenkins' Approval stage does.
+
+spec:
+  inputs:
+    service:
+      description: A service from services.yaml. The port covers orders-service.
+    jira_key:
+      description: The Jira issue the release is for, such as ORD-12.
+      regex: ^[A-Z][A-Z0-9]*-[1-9][0-9]*$
+    option:
+      description: standard for a pre-approved standard change.
+      default: ""
+      regex: ^[a-z]*$
+    requested_by:
+      description: Slack user id of who asked.
+      default: ""
+      regex: ^([UW][A-Z0-9]{8,})?$
+    slack_channel:
+      description: Channel of the Slack status message.
+      default: ""
+      regex: ^([CG][A-Z0-9]{8,})?$
+    slack_ts:
+      description: Timestamp of the Slack status message.
+      default: ""
+      regex: ^([0-9]+\.[0-9]+)?$
+    requested_at:
+      description: Epoch seconds of the Slack command, where the total time starts.
+      default: ""
+      regex: ^[0-9]*$
+---
+
+workflow:
+  rules:
+    # Only a trigger: the pushes that keep GitLab's copy of main current never release.
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+
+variables:
+  SERVICE: $[[ inputs.service ]]
+  JIRA_KEY: $[[ inputs.jira_key ]]
+  OPTION: $[[ inputs.option ]]
+  REQUESTED_BY: $[[ inputs.requested_by ]]
+  SLACK_CHANNEL: $[[ inputs.slack_channel ]]
+  SLACK_TS: $[[ inputs.slack_ts ]]
+  REQUESTED_AT: $[[ inputs.requested_at ]]
+  # GitLab's run, under the CI adapter's neutral names (scripts/ci_env.py).
+  RELEASE_CI_NAME: GitLab pipeline
+  RELEASE_RUN_ID: $CI_PIPELINE_ID
+  RELEASE_RUN_URL: $CI_PIPELINE_URL
+  RELEASE_BUILD_ID: gl-$CI_PIPELINE_IID
+  RELEASE_COMMIT: $CI_COMMIT_SHA
+  RELEASE_CORRELATION_ID: gitlab-ci:$CI_PROJECT_PATH:$CI_PIPELINE_ID
+  # The pinned images from jenkins/shared-library/vars/toolchain.groovy, by the same digests.
+  SONAR: sonarsource/sonar-scanner-cli:12.2@sha256:a3f4215076706c95a17a68c19322ee916e40a3acd081a8c1a1e839e0194afa57
+  SYFT: anchore/syft:v1.54.1@sha256:3eb5379ba7b409c3f4069b686110527af0c47df993fa5c10d13e7cf34f49b1aa
+  GRYPE: anchore/grype:v0.120.1@sha256:e4a44ef45d285b829ce6efe2642980329661bd2d18eab5fc539138d4adaebbbe
+  # The runner's own cache for Syft and Grype, as the Jenkins agent has its own.
+  CACHE: /data/gitlab-runner/cache
+
+stages: [Build, Test, Quality gate, SBOM and scan, Publish, Staging, Check staging, Change, Approval, Production,
+         Check production, Record, Stopped]
+
+default:
+  tags: [tools-host]
+  artifacts:
+    paths: [.release/, dist/]
+    when: always
+    expire_in: 1 day
+
+# releaseStage.groovy: Slack's row running, then ok or failed with its
+# seconds, the event, and the work note once the change exists. Each job
+# sets STAGE, and for a deploy STAGE_ENVIRONMENT and STAGE_DEPLOY.
+.stage:
+  before_script:
+    - |
+      state() { python3 scripts/run_state.py get "$1"; }
+      # The service's toolchain image, tagged with a hash of its inputs as toolchain.groovy's image()
+      # does, with the job's directory mounted, as docker.inside does under Jenkins.
+      toolchain() {
+        local dockerfile=jenkins/toolchain/python.Dockerfile image
+        image=release-demo/python-tools:$(cat "$dockerfile" requirements-dev.txt | sha256sum | cut -c1-12)
+        docker image inspect "$image" >/dev/null 2>&1 || docker build -q -t "$image" -f "$dockerfile" . >/dev/null
+        docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:$PWD" -w "$PWD" \
+          -e RELEASE_CI_NAME -e RELEASE_RUN_ID -e RELEASE_RUN_URL -e RELEASE_BUILD_ID -e RELEASE_COMMIT \
+          -e RELEASE_CORRELATION_ID "$image" "$@"
+      }
+    - VERSION=$(state version)
+    - date +%s.%N > .release/stage-started
+    - python3 scripts/notify.py stage "$STAGE" running
+  after_script:
+    - |
+      [ -f .release/state.json ] || exit 0
+      seconds=$(python3 -c 'import sys, time; print(f"{time.time() - float(open(sys.argv[1]).read()):.1f}")' .release/stage-started)
+      result=$([ "$CI_JOB_STATUS" = success ] && echo ok || echo failed)
+      extra=()
+      [ -n "${STAGE_ENVIRONMENT:-}" ] && extra+=(--environment "$STAGE_ENVIRONMENT")
+      [ -n "${STAGE_DEPLOY:-}" ] && [ "$result" = ok ] && extra+=(--deploy)
+      python3 scripts/notify.py stage "$STAGE" "$result" --seconds "$seconds"
+      python3 scripts/events.py --stage "$STAGE" --result "$result" --seconds "$seconds" "${extra[@]}"
+      python3 scripts/change.py note "$STAGE: $result in ${seconds}s"
+      # A cancelled run says so and cancels its change, unless production has the new version.
+      if [ "$CI_JOB_STATUS" = canceled ] && [ -z "$(python3 scripts/run_state.py get total)" ]; then
+        python3 scripts/notify.py finish cancelled
+        [ -n "$(python3 scripts/run_state.py get deploys.production.number)" ] ||
+          python3 scripts/change.py cancel --notes "The release was cancelled in GitLab. Nothing changed in production."
+      fi
+      # Each job's state stays next to the others', for Stopped to find the newest.
+      mkdir -p .release/history && cp .release/state.json ".release/history/$CI_JOB_ID.json"
+
+Build:
+  stage: Build
+  extends: .stage
+  variables: {STAGE: Build}
+  before_script:
+    - '[ "$SERVICE" = orders-service ] || { echo "This pipeline releases orders-service, not $SERVICE."; exit 1; }'
+    - rm -rf .release dist
+    - python3 scripts/run_state.py init --service "$SERVICE" --jira-key "$JIRA_KEY"
+        --option "$OPTION" --requested-by "$REQUESTED_BY"
+        --slack-channel "$SLACK_CHANNEL" --slack-ts "$SLACK_TS" --requested-at "$REQUESTED_AT"
+    - python3 scripts/jira.py fix-version
+    - !reference [.stage, before_script]
+  script:
+    - toolchain python3 scripts/build.py "$SERVICE" --jira-key "$JIRA_KEY"
+
+Test:
+  stage: Test
+  extends: .stage
+  variables: {STAGE: Test}
+  script:
+    - mkdir -p .release/reports
+    - toolchain sh -c "cd services/$SERVICE && python -m pytest -q -p no:cacheprovider
+        --junitxml=$CI_PROJECT_DIR/.release/reports/junit.xml
+        --cov=. --cov-report=xml:$CI_PROJECT_DIR/.release/reports/coverage.xml"
+  artifacts:
+    paths: [.release/, dist/]
+    when: always
+    expire_in: 1 day
+    reports:
+      junit: .release/reports/junit.xml
+
+Quality gate:
+  stage: Quality gate
+  extends: .stage
+  variables:
+    STAGE: Quality gate
+    GIT_DEPTH: "0"  # the scanner reads blame, as from Jenkins' full clone
+  script:
+    - ARGS=$(python3 scripts/sonar_args.py "$SERVICE" "$VERSION")
+    # The one value a container gets: the scanner's token, as Jenkins' credential binding hands it over.
+    - SONAR_TOKEN=$(release-demo-parameter sonar/token)
+    - export SONAR_TOKEN
+    - docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:$PWD" -w "$PWD" --entrypoint sonar-scanner
+        -e SONAR_TOKEN -e SONAR_HOST_URL=https://sonarcloud.io -e SONAR_USER_HOME=/tmp/sonar "$SONAR" $ARGS
+
+SBOM and scan:
+  stage: SBOM and scan
+  extends: .stage
+  variables: {STAGE: SBOM and scan}
+  script:
+    - rm -rf .release/package && mkdir -p .release/package .release/reports "$CACHE/syft" "$CACHE/grype"
+    - python3 -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" dist/"$SERVICE"/*.zip .release/package
+    # A package that holds a container image as an OCI layout is scanned as that image.
+    - source=dir:/work/.release/package
+    - '[ -f .release/package/image/index.json ] && source=oci-dir:/work/.release/package/image || true'
+    - docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" -v "$CACHE/syft:/cache"
+        -e SYFT_CACHE_DIR=/cache -e TMPDIR=/cache "$SYFT"
+        "$source" --source-name "$SERVICE" -o cyclonedx-json=/work/.release/reports/sbom.cdx.json
+    - docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" -v "$CACHE/grype:/cache"
+        -e GRYPE_DB_CACHE_DIR=/cache -e TMPDIR=/cache "$GRYPE" sbom:/work/.release/reports/sbom.cdx.json
+        --fail-on critical -o table -o json=/work/.release/reports/grype.json
+
+Publish:
+  stage: Publish
+  extends: .stage
+  variables: {STAGE: Publish}
+  script:
+    - python3 scripts/publish.py "$SERVICE"
+
+# One release at a time, from staging to the record.
+.one-release:
+  resource_group: orders-service-release
+
+Staging:
+  stage: Staging
+  extends: [.stage, .one-release]
+  variables: {STAGE: Staging, STAGE_ENVIRONMENT: staging}
+  script:
+    - python3 scripts/deploy.py "$SERVICE" staging
+
+Check staging:
+  stage: Check staging
+  extends: [.stage, .one-release]
+  variables: {STAGE: Check staging, STAGE_ENVIRONMENT: staging}
+  script:
+    - |
+      if ! python3 scripts/check.py "$SERVICE" staging --version "$VERSION" --url "$(state deploys.staging.url)"; then
+        python3 scripts/deploy.py "$SERVICE" staging --back
+        python3 scripts/run_state.py set "stop_reason=Staging check failed: staging is back on $(state deploys.staging.previous_version)."
+        exit 1
+      fi
+
+Change:
+  stage: Change
+  extends: [.stage, .one-release]
+  variables: {STAGE: Change}
+  script:
+    - python3 scripts/change.py open
+    # releaseStage.skip: a standard change is pre-approved, and the Approval job isn't there.
+    - |
+      if [ "$(state change.type)" = standard ]; then
+        python3 scripts/notify.py stage Approval skipped
+        python3 scripts/events.py --stage Approval --result skipped
+        python3 scripts/change.py note "Approval: skipped. A standard change is pre-approved."
+      fi
+
+Approval:
+  stage: Approval
+  extends: [.stage, .one-release]
+  variables: {STAGE: Approval}
+  rules:
+    - if: $OPTION != "standard"
+  timeout: 40m
+  script:
+    - echo "Waiting for ServiceNow change $(python3 scripts/run_state.py get change.number)."
+    - python3 scripts/change.py wait
+    - APPROVER=$(state change.approved_by)
+    - python3 scripts/notify.py line "Approved by $APPROVER in ServiceNow."
+
+Production:
+  stage: Production
+  extends: [.stage, .one-release]
+  variables: {STAGE: Production, STAGE_ENVIRONMENT: production, STAGE_DEPLOY: "1"}
+  script:
+    - python3 scripts/change.py implement
+    - python3 scripts/deploy.py "$SERVICE" production
+
+Check production:
+  stage: Check production
+  extends: [.stage, .one-release]
+  variables: {STAGE: Check production, STAGE_ENVIRONMENT: production}
+  script:
+    - |
+      check_production() {
+        python3 scripts/check.py "$SERVICE" production --version "$VERSION" --url "$(state deploys.production.url)" && return 0
+        roll_back
+        return 1
+      }
+      # rollBack() in releasePipeline.groovy: the previous version back, checked, and recorded everywhere.
+      roll_back() {
+        local started previous recovery check_notes
+        started=$(date +%s.%N)
+        previous=$(state deploys.production.previous_version)
+        python3 scripts/deploy.py "$SERVICE" production --back || return 1
+        if ! python3 scripts/check.py "$SERVICE" production --version "$previous" --url "$(state deploys.production.url)"; then
+          python3 scripts/notify.py line "The previous version, $previous, fails its check too. Look now."
+          python3 scripts/run_state.py set "stop_reason=Rolled back to $previous, but it fails its check too."
+          return 1
+        fi
+        recovery=$(python3 -c 'import sys, time; print(f"{time.time() - float(sys.argv[1]):.0f}")' "$started")
+        check_notes=$(state check.notes)
+        python3 scripts/events.py --stage Rollback --result rolled-back --environment production --recovery-seconds "$recovery"
+        python3 scripts/events.py annotate "$SERVICE rolled back to $previous" --tags "rollback,$SERVICE"
+        python3 scripts/notify.py finish rolled-back --previous "$previous"
+        python3 scripts/change.py close unsuccessful --notes "${check_notes:+$check_notes }Production check failed. The pipeline rolled back to $previous automatically in ${recovery}s and checked it. Total time: $(state total). Build: $CI_PIPELINE_URL"
+        python3 scripts/jira.py comment "Release of $SERVICE $(state version) failed its production check and was rolled back to $previous in ${recovery}s. Change: $(state change.number). Build: $CI_PIPELINE_URL"
+        python3 scripts/run_state.py set "stop_reason=Production check failed: rolled back to $previous."
+      }
+      check_production
+
+Record:
+  stage: Record
+  extends: [.stage, .one-release]
+  variables: {STAGE: Record}
+  script:
+    - python3 scripts/publish.py "$SERVICE" --release
+    - python3 scripts/notify.py finish live
+    - 'python3 scripts/jira.py comment "Released $SERVICE $VERSION in $(state change.number). Live in $(state total). Build: $CI_PIPELINE_URL"'
+    - python3 scripts/jira.py release
+    - python3 scripts/tag.py
+    - python3 scripts/events.py annotate "$SERVICE $VERSION released ($JIRA_KEY)" --tags "release,$SERVICE"
+    - 'python3 scripts/change.py close successful --notes "Released $SERVICE $VERSION. Total time: $(state total). Build: $CI_PIPELINE_URL"'
+
+# stopped() in releasePipeline.groovy: Slack says where it stopped. Before
+# production the open change is cancelled; after the production deploy it
+# closes unsuccessful. After a rollback, which told everyone, it does nothing.
+Stopped:
+  stage: Stopped
+  when: on_failure
+  script:
+    - |
+      state() { python3 scripts/run_state.py get "$1"; }
+      newest=$(ls .release/history/*.json 2>/dev/null | sort -t/ -k3 -n | tail -1)
+      [ -n "$newest" ] || { echo "The release never started: nothing to stop."; exit 0; }
+      cp "$newest" .release/state.json
+      [ -z "$(state total)" ] || { echo "The rollback already told everyone."; exit 0; }
+      failed=$(jq -r '[.stages | to_entries[] | select(.value.status == "failed") | .key] | first // ""' .release/state.json)
+      reason=$(state stop_reason)
+      reason=${reason:-${failed:+$failed failed}}
+      # The notes add their own full stop, so one the reason ends with goes.
+      reason=$(printf '%s' "${reason:-the run stopped}" | sed -E 's/\.+$//')
+      python3 scripts/notify.py finish failed || true
+      if [ -n "$(state change.closed)" ]; then
+        echo "The change is closed already: $(state change.closed)."
+      elif [ -n "$(state deploys.production.number)" ]; then
+        python3 scripts/change.py close unsuccessful --notes "The release stopped after the production deploy: $reason. Look at production now." || true
+      else
+        python3 scripts/change.py cancel --notes "The release stopped: $reason. Nothing changed in production." || true
+      fi

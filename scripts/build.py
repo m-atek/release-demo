@@ -9,7 +9,6 @@ the same source gives the same checksum. Tests stay out of the package.
 
 import argparse
 import hashlib
-import os
 import shutil
 import subprocess
 import sys
@@ -17,6 +16,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+import ci_env
 from common import ROOT, fail, git, service, version_of, write_json
 
 EXCLUDE_DIRS = {"tests", "__pycache__", ".pytest_cache"}
@@ -25,9 +25,10 @@ ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
 
 def current_commit():
-    """Jenkins sets GIT_COMMIT. Locally, HEAD, marked when the tree has changes."""
-    if os.environ.get("GIT_COMMIT"):
-        return os.environ["GIT_COMMIT"]
+    """The CI's commit (Jenkins' GIT_COMMIT, scripts/ci_env.py). Locally, HEAD,
+    marked when the tree has changes."""
+    if ci_env.current().commit:
+        return ci_env.current().commit
     head = git("rev-parse", "HEAD", check=False)
     if head.returncode != 0:
         return "uncommitted"
@@ -102,7 +103,7 @@ def main():
         "version": version,
         "commit": commit,
         "jira_key": args.jira_key,
-        "build_url": os.environ.get("BUILD_URL"),
+        "build_url": ci_env.current().run_url or None,
         "package": package.name,
         "sha256": sha256(package),
         "size_bytes": package.stat().st_size,

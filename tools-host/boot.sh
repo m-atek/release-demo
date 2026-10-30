@@ -195,6 +195,16 @@ release_bot_token() {
   "$VENV/bin/python" "$HERE/release_bot_token.py" "$SECRETS" || echo "release-bot token: will retry at next boot"
 }
 
+# Demo 17: the GitLab runner, installed and registered, but started only by scripts/demo.sh up gitlab-port.
+gitlab_runner() {
+  "$HERE/gitlab-runner.sh" || echo "GitLab runner: will retry at next boot"
+}
+
+# Demo 22: the Azure Pipelines agent, the same way: started only by scripts/demo.sh up azure-devops.
+azure_agent() {
+  "$HERE/azure-agent.sh" || echo "Azure Pipelines agent: will retry at next boot"
+}
+
 arm_idle_stop() {
   cat > /etc/systemd/system/release-demo-idle.service <<EOF
 [Unit]
@@ -235,5 +245,7 @@ agent_secrets
 kube_token_helper
 rotate_sudo_rule
 release_bot_token
+gitlab_runner
+azure_agent
 arm_idle_stop
 echo "== boot done"
