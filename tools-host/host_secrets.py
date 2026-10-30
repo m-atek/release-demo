@@ -24,7 +24,7 @@ CLOUDFLARED_UID = 65532  # the nonroot user inside the cloudflared image
 NOT_ON_HOST = {"cloudflare/api-token", "cloudflare/account-id", "cloudflare/zone-id",
                "grafana/external-id", "terraform/state-bucket", "servicenow/admin-password",
                "servicenow/sam-password", "servicenow/alex-password", "grafana/setup-token",
-               "servicenow/ines-password"}
+               "servicenow/ines-password", "servicenow/fiona-password"}
 # Jenkins users whose password you type: until it is set, a random one, so
 # the user never exists with an empty password.
 RANDOM_UNTIL_SET = {"jenkins/ines-password"}
