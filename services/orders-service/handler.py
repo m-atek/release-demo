@@ -96,10 +96,13 @@ def connect(url):
     import pg8000.native
 
     parts = urllib.parse.urlsplit(url)
+    # The certificate and the host name are checked. SonarQube reads a context
+    # made inside the call's arguments as unverified (python:S4830): name it first.
+    context = ssl.create_default_context()
     return pg8000.native.Connection(
         user=urllib.parse.unquote(parts.username or ""), password=urllib.parse.unquote(parts.password or ""),
         host=parts.hostname, port=parts.port or 5432, database=parts.path.lstrip("/"),
-        ssl_context=ssl.create_default_context(), timeout=5)
+        ssl_context=context, timeout=5)
 
 
 def database_message(error):
