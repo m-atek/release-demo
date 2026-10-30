@@ -445,3 +445,23 @@ cloudflare/dc-agent-client-secret:
   source: terraform
   secure: true
   help: "Cloudflare Access service token for dc-agent, demo 3's data-center Jenkins agent: client secret."
+
+# Video 11, the auditor's sample (scripts/demos/auditor). Read-only identities:
+# ines in Jenkins and ServiceNow, evidence.reader in ServiceNow, evidence-reader
+# in JFrog. The AWS role is infra/demos/evidence-reader's.
+jenkins/ines-password:
+  source: you
+  secure: true
+  help: "A password you choose for the Jenkins user ines (Ines, auditor), who may start evidence-sample and see nothing else. Until it is set, the host gives her a random one."
+servicenow/ines-password:
+  source: you
+  secure: true
+  help: "A password you choose for ines.auditor in ServiceNow (read only). You sign in as her to open the approval record from the report. Never on the tools host."
+servicenow/evidence-reader-password:
+  source: script
+  secure: true
+  help: "Password of the ServiceNow user evidence.reader (web service access only, read only), which evidence_sample.py reads as. Written by scripts/servicenow_setup.py."
+jcr/evidence-reader-token:
+  source: script
+  secure: true
+  help: "Access token of the JFrog user evidence-reader, which may read candidates and releases and deploy nothing. Written by scripts/jcr_setup.py --host."

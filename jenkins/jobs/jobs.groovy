@@ -113,6 +113,34 @@ pipelineJob('rotate') {
     definition fromRepository('jenkins/rotate.Jenkinsfile')
 }
 
+// Video 11: the auditor's sample. ines, the auditor, may see and start this
+// job and no other (casc.yaml: Overall/Read only). It only reads. The period
+// defaults to the last 7 days as of the last configuration reload.
+String today = java.time.LocalDate.now(java.time.ZoneId.of('Europe/Amsterdam')).toString()
+String weekAgo = java.time.LocalDate.now(java.time.ZoneId.of('Europe/Amsterdam')).minusDays(7).toString()
+pipelineJob('evidence-sample') {
+    description('Draws a sample of orders-service\'s production changes and answers five questions for each from the original records: ServiceNow, JFrog and AWS. No AI. The same seed and period give the same findings hash.')
+    parameters {
+        stringParam('FROM', weekAgo, 'First day of the period, yyyy-mm-dd, Amsterdam time.')
+        stringParam('TO', today, 'Last day of the period, yyyy-mm-dd.')
+        stringParam('SAMPLE_SIZE', '10', 'How many changes to draw.')
+        stringParam('SEED', '', 'Any whole number. Anyone can draw the same sample again with it.')
+    }
+    properties {
+        authorizationMatrix {
+            inheritanceStrategy { inheriting() }
+            entries {
+                user {
+                    name('ines')
+                    permissions(['Job/Build', 'Job/Read'])
+                }
+            }
+        }
+    }
+    logRotator { numToKeep(100) }
+    definition fromRepository('jenkins/evidence-sample.Jenkinsfile')
+}
+
 // Demo 3: the data-center servers' part of an inventory rollout, on dc-agent.
 // The release on the tools host starts it as release-bot and waits for it.
 pipelineJob('inventory-dc-wave') {

@@ -22,3 +22,11 @@ alex:
   slack: false
   servicenow_user: alex.change.manager
   approver: true
+
+ines:
+  # Video 11: the auditor. Reads only: the Jenkins job evidence-sample and
+  # ServiceNow as ines.auditor (snc_read_only). Never asks for or approves.
+  display_name: Ines, auditor
+  slack: false
+  servicenow_user: ines.auditor
+  jenkins_user: ines

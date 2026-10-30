@@ -56,7 +56,7 @@ data "aws_iam_policy_document" "tools_host" {
     sid     = "NotForTheHost"
     effect  = "Deny"
     actions = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-    resources = [for name in ["cloudflare/api-token", "servicenow/admin-password", "servicenow/sam-password", "servicenow/alex-password", "grafana/setup-token"] :
+    resources = [for name in ["cloudflare/api-token", "servicenow/admin-password", "servicenow/sam-password", "servicenow/alex-password", "grafana/setup-token", "servicenow/ines-password"] :
     "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/${name}"]
   }
   statement {
@@ -79,6 +79,12 @@ data "aws_iam_policy_document" "tools_host" {
     sid       = "FindTheSlackHandler"
     actions   = ["lambda:GetFunctionUrlConfig"]
     resources = [local.slack_handler_arn]
+  }
+  # Video 11: jcr_setup.py --host stores the evidence reader's read-only JFrog token.
+  statement {
+    sid       = "WriteEvidenceReaderToken"
+    actions   = ["ssm:PutParameter"]
+    resources = ["arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/jcr/evidence-reader-token"]
   }
 }
 

@@ -21,9 +21,15 @@ jenkins:
         - id: release-bot
           name: release-bot
           password: ${jenkins-release-bot-password}
+        # Video 11: the auditor. She may start evidence-sample and read its
+        # artifacts, and sees no other job (jobs.groovy gives her that one).
+        - id: ines
+          name: Ines, auditor
+          password: ${jenkins-ines-password}
 
+  # Project-based, so one job can give ines more than the global entries do.
   authorizationStrategy:
-    globalMatrix:
+    projectMatrix:
       entries:
         - user:
             name: admin
@@ -36,6 +42,10 @@ jenkins:
               - Job/Read
               - Job/Build
               - Job/Cancel
+        - user:
+            name: ines
+            permissions:
+              - Overall/Read
 
   nodes:
     - permanent:

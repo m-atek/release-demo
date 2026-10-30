@@ -434,6 +434,21 @@ Before each take: `scripts/reset.py leaked-token` (it hands itself to the tools 
 
 After the take: `.venv/bin/python scripts/demos/leaked-token/check.py` (the old token 401 on the host and through Access, the new one 200, SSM, the tmpfs and Jenkins holding the same token by hash, and no token in the log, the incident, the thread or Grafana), and `.venv/bin/python scripts/secrets.py inventory --html` for `dist/secrets-inventory.html`: each stored secret, where it lives, which files read it, and whether it rotates by script or by hand (`infra/secret-rotation.yaml`). `scripts/demo.sh status leaked-token` shows the token's id and age and any open leak incident. Nothing to stop.
 
+## Demo on a call: the auditor picks ten changes (demo 11)
+
+The Jenkins job `evidence-sample` (parameters FROM, TO, SAMPLE_SIZE and SEED) draws a sample of orders-service's production changes and answers five questions for each from the original records: who approved it against who asked (ServiceNow's approval records), whether the approval came before CloudTrail's record of the production deploy (UpdateAlias on the live alias), whether the package in the change, JFrog's stored SHA-256 and Lambda's CodeSha256 for the deployed version are the same, and whether the test report, the SBOM and the scan are attached and clean. A change from an active standard change template is "pre-approved"; a /rollback change, recorded after production is back on purpose, answers "by design". No AI anywhere in this path. The draw ranks each change by the SHA-256 of "<seed>:<change number>", so the same seed and period give the same sample and the same findings hash, which the build's description carries. The report, a page per change, findings.json and a ZIP of every record as read are the build's artifacts. Code: `scripts/demos/auditor/`; the readers are `scripts/evidence.py`'s.
+
+Everyone in it only reads: ines in Jenkins (Overall/Read, plus Build and Read on this one job), ines.auditor and evidence.reader in ServiceNow (snc_read_only), evidence-reader in JFrog (read on candidates and releases), and the role release-demo-evidence-reader in AWS (`infra/demos/evidence-reader/`, which the tools host may assume).
+
+Once:
+
+1. `.venv/bin/python scripts/secrets.py set jenkins/ines-password` and `set servicenow/ines-password` (after `scripts/tf.sh apply` has made their names).
+2. `.venv/bin/python scripts/servicenow_setup.py`: ines.auditor and evidence.reader, whose password it generates into SSM.
+3. In JFrog's UI, the user evidence-reader and its read-only permission, then `scripts/jcr_setup.py --host` stores its token (it prints the UI steps while the user is missing).
+4. Reload Jenkins' configuration: ines and the job evidence-sample appear.
+
+Before a call: history.py has run and at least one main take is closed. `.venv/bin/python scripts/demos/auditor/evidence_sample.py --dry-run --from <day> --to <day>` lists, from the Mac, every closed orders-service change that moved production in the period, and what it leaves out. Sign in to Jenkins as ines and to ServiceNow as ines.auditor in one browser profile. Nothing to stop afterwards.
+
 ## Layout
 
 ```

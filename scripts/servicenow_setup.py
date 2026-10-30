@@ -12,6 +12,9 @@ on the REST API for users without snc_basic_auth_api_access. Then it creates:
   and release.pipeline: web service access only, roles itil and
   snc_basic_auth_api_access, and a generated password it stores in SSM. All
   three in Europe/Amsterdam time, as Slack and the terminal show it;
+- the read-only users of video 11: ines.auditor, who signs in to the UI, and
+  evidence.reader, web service access only, with a generated password in
+  SSM; both snc_read_only, in no group and no approver;
 - the groups Platform team (Sam, release.pipeline) and Change approvers (Alex);
 - a CMDB item per service in services.yaml, and jfrog-container-registry;
 - normal change approval by Change approvers only, once, at Assess. Out of the
@@ -45,7 +48,15 @@ PEOPLE = {
     "alex.change.manager": {"first_name": "Alex", "last_name": "Change Manager", "password": "servicenow/alex-password",
                             "roles": ["itil", "approver_user"], "time_zone": "Europe/Amsterdam"},
     "release.pipeline": {"first_name": "Release", "last_name": "Pipeline", "password": "servicenow/release-pipeline-password",
-                         "roles": ["itil", "snc_basic_auth_api_access"], "machine": True, "time_zone": "Europe/Amsterdam"},
+                         "roles": ["itil", "snc_basic_auth_api_access"], "machine": True, "time_zone": "Europe/Amsterdam",
+                         "generated": True},
+    # Video 11: the auditor reads. snc_read_only refuses every write, whatever her other roles allow.
+    # Neither is in a group or an approver.
+    "ines.auditor": {"first_name": "Ines", "last_name": "Auditor", "password": "servicenow/ines-password",
+                     "roles": ["itil", "snc_read_only"], "time_zone": "Europe/Amsterdam"},
+    "evidence.reader": {"first_name": "Evidence", "last_name": "Reader", "password": "servicenow/evidence-reader-password",
+                        "roles": ["itil", "snc_read_only", "snc_basic_auth_api_access"], "machine": True,
+                        "generated": True},
 }
 GROUPS = {
     "Platform team": {"members": ["sam.developer", "release.pipeline"],
@@ -123,10 +134,10 @@ def setup_people(sn, ssm):
     users = {}
     for user_name, person in PEOPLE.items():
         password = get_parameter_or_none(ssm, person["password"])
-        if password is None and user_name == "release.pipeline":
+        if password is None and person.get("generated"):
             password = generated_password()
             put_parameter(ssm, person["password"], password)
-            print("  release.pipeline: generated a password and stored it in SSM")
+            print(f"  {user_name}: generated a password and stored it in SSM")
         elif password is None:
             fail(f"/release-demo/{person['password']} isn't set yet. See: python scripts/secrets.py set servicenow")
         # Web service access only: no UI. Not an internal integration user: those can't hold a password.
@@ -147,7 +158,11 @@ def setup_people(sn, ssm):
                  f"policy (upper and lower case, a digit, a special character). Set another in SSM.")
         users[user_name] = user["sys_id"]
         for role in person["roles"]:
-            role_id = sn.find("sys_user_role", f"name={role}", "sys_id")["sys_id"]
+            found = sn.find("sys_user_role", f"name={role}", "sys_id")
+            if found is None:
+                fail(f"This instance has no role {role}. As admin: System Definition, Plugins, find the plugin "
+                     f"that provides {role} (for snc_read_only: Read Only Role) and activate it, then run this again.")
+            role_id = found["sys_id"]
             sn.ensure("sys_user_has_role", f"user={user['sys_id']}^role={role_id}",
                       {"user": user["sys_id"], "role": role_id}, f"  role {role}")
     return users
