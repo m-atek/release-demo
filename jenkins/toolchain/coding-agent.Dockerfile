@@ -1,8 +1,9 @@
 # The coding agent's container: Claude Code and AWS CLI v2 at pinned versions,
-# Python 3.13 and unzip, run as the non-root user agent. Video 9's agent.sh
-# runs it on the Mac. It holds no credentials: whoever starts it passes an
-# AWS session and the Claude credential as environment variables, and those
-# leave with the container.
+# Python 3.13 and unzip, and for video 16 git, gh, pytest and zip, run as the
+# non-root user agent. Video 9's agent.sh runs it on the Mac; video 16's job
+# agent-task on the tools host. It holds no credentials: whoever starts it
+# passes an AWS session, the Claude credential and, for agent-task, the
+# GitHub token as environment variables, and those leave with the container.
 #
 # Claude Code's settings (coding-agent/managed-settings.json) allow its
 # commands and file reads without asking, so its own permission prompt never
@@ -18,11 +19,13 @@ FROM python:3.13.17-slim-bookworm@sha256:e32be0e55814a08977501ca863271d9bd024437
 ARG TARGETARCH
 ARG CLAUDE_CODE_VERSION=2.1.308
 ARG AWS_CLI_VERSION=2.38.0
+ARG GH_VERSION=2.102.0
+ARG PYTEST_VERSION=9.1.1
 # The AWS CLI Team signer's public fingerprint, as AWS's install guide prints it.
 ARG AWS_CLI_SIGNER=FB5DB77FD5C118B80511ADA8A6310ACC4672475C
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates unzip=6.0-28 \
+ && apt-get install -y --no-install-recommends ca-certificates unzip=6.0-28 zip=3.0-13 git=1:2.39.5-0+deb12u3 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY fetch.py aws-cli-team.asc /opt/coding-agent/
@@ -57,6 +60,26 @@ RUN set -eu; \
     ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli; \
     rm -rf aws awscliv2.zip awscliv2.sig aws.gpg; \
     aws --version
+
+# gh, checked against the SHA-256 GitHub publishes for each release asset.
+RUN set -eu; \
+    arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+    case "$arch" in \
+      amd64) sha256=bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386 ;; \
+      arm64) sha256=7862c86c72f43df3a2d93ddde6f473285b4e2af61b494849846827e513ef6484 ;; \
+      *) echo "No pinned gh for $arch"; exit 1 ;; \
+    esac; \
+    cd /tmp; \
+    python3 /opt/coding-agent/fetch.py "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${arch}.tar.gz" gh.tgz; \
+    python3 /opt/coding-agent/fetch.py --check gh.tgz "$sha256"; \
+    tar -xzf gh.tgz --strip-components=2 -C /usr/local/bin "gh_${GH_VERSION}_linux_${arch}/bin/gh"; \
+    rm gh.tgz; \
+    gh --version
+
+RUN pip install --no-cache-dir --disable-pip-version-check "pytest==${PYTEST_VERSION}"
+
+# agent-task mounts a clone the Jenkins agent made, so git meets another owner's repository there.
+RUN git config --system safe.directory /work/release-demo
 
 RUN useradd --create-home --uid 1000 --shell /bin/bash agent \
  && mkdir -p /etc/claude-code /work \

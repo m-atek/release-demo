@@ -240,7 +240,8 @@ def test_the_image_pins_every_download_and_holds_no_credential():
     assert re.search(r"^FROM [^\s]+@sha256:[0-9a-f]{64}$", dockerfile, re.M)
     assert re.search(r"CLAUDE_CODE_VERSION=\d+\.\d+\.\d+$", dockerfile, re.M)
     assert re.search(r"AWS_CLI_VERSION=\d+\.\d+\.\d+$", dockerfile, re.M)
-    assert len(re.findall(r"sha256=[0-9a-f]{64}", dockerfile)) == 2, "Claude Code for amd64 and arm64"
+    claude = dockerfile.split("# Claude Code's native binary")[1].split("\nRUN ")[1]
+    assert len(re.findall(r"sha256=[0-9a-f]{64}", claude)) == 2, "Claude Code for amd64 and arm64"
     assert "gpgv --keyring" in dockerfile and "USER agent" in dockerfile
     settings = json.loads((agent.CONTEXT / "managed-settings.json").read_text())
     for command in ("aws", "ls", "cat", "unzip", "python3"):

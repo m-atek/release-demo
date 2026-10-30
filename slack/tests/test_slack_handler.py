@@ -237,7 +237,7 @@ def test_commands_parse_into_a_job_and_its_parameters(command, text, job, params
     ("/rollback", "", "Usage: /rollback <service>"),
     ("/rollback", "orders-service now", "Usage: /rollback <service>"),
     ("/rollback", "billing", "There's no service billing."),
-    ("/deploy", "orders-service", "This app knows /release and /rollback, not /deploy."),
+    ("/deploy", "orders-service", "This app knows /release, /rollback and /agent, not /deploy."),
 ])
 def test_wrong_commands_get_a_private_hint(aws, command, text, says):
     with pytest.raises(app.Refusal, match=re.escape(says)):

@@ -20,7 +20,9 @@ on the REST API for users without snc_basic_auth_api_access. Then it creates:
 - normal change approval by Change approvers only, once, at Assess. Out of the
   box the Normal Change Policy asks the assignment group at Assess, which
   would let Sam approve his own change, and a manager or the CAB at Authorize;
-- the standard change templates from services.yaml, pre-approved.
+- the standard change templates from services.yaml, pre-approved;
+- video 16's two fields on the change, Code written by and Code reviewed by,
+  on its form next to Requested by.
 
 Every call detects the hibernation page: wake the instance at
 developer.servicenow.com.
@@ -297,6 +299,51 @@ def setup_templates(sn, groups, items):
             print(f"  template '{name}': created, pre-approved")
 
 
+# Video 16: who wrote the release's code and who reviewed it, filled by change.py
+# from the merged pull requests, next to Requested by on the change's form.
+CHANGE_FIELDS = {"u_code_written_by": "Code written by", "u_code_reviewed_by": "Code reviewed by"}
+FORM_STEPS = ("As admin, open any change, then the form's menu, Configure, Form Layout: move Code written by and "
+              "Code reviewed by to just below Requested by, and Save.")
+
+
+def setup_change_fields(sn):
+    for element, label in CHANGE_FIELDS.items():
+        if sn.find("sys_dictionary", f"name=change_request^element={element}", "sys_id"):
+            print(f"  field {label}: already there")
+            continue
+        sn.call("POST", "/api/now/table/sys_dictionary", {
+            "name": "change_request", "element": element, "column_label": label, "internal_type": "string",
+            "max_length": "200", "active": "true", "read_only": "false"})
+        print(f"  field {label}: created")
+    place_on_form(sn)
+
+
+def place_on_form(sn):
+    """On the default view, right after Requested by: the elements after it move down two places."""
+    section = sn.find("sys_ui_section", "name=change_request^view=Default view^captionISEMPTY", "sys_id")
+    if section is None:
+        print(f"  form: no default section found. {FORM_STEPS}")
+        return
+    rows = sn.call("GET", "/api/now/table/sys_ui_element", sysparm_query=f"sys_ui_section={section['sys_id']}",
+                   sysparm_fields="sys_id,element,position", sysparm_limit=500) or []
+    placed = {row["element"] for row in rows}
+    if set(CHANGE_FIELDS) <= placed:
+        print("  form: Code written by and Code reviewed by are on it")
+        return
+    anchor = next((row for row in rows if row["element"] == "requested_by"), None)
+    if anchor is None:
+        print(f"  form: Requested by isn't on the default form. {FORM_STEPS}")
+        return
+    after = int(anchor["position"])
+    for row in rows:
+        if int(row["position"]) > after:
+            sn.call("PATCH", f"/api/now/table/sys_ui_element/{row['sys_id']}", {"position": str(int(row["position"]) + 2)})
+    for offset, element in enumerate(CHANGE_FIELDS, 1):
+        sn.call("POST", "/api/now/table/sys_ui_element", {"sys_ui_section": section["sys_id"], "element": element,
+                                                          "position": str(after + offset)})
+    print("  form: Code written by and Code reviewed by placed below Requested by")
+
+
 def prove_access(sn, ssm):
     """release.pipeline signs in to the Change Management API the way the pipeline will."""
     pipeline = ServiceNow(sn.url, "release.pipeline", get_parameter(ssm, "servicenow/release-pipeline-password"))
@@ -375,6 +422,8 @@ def main():
     setup_approvals(sn, groups)
     print("Standard change templates")
     setup_templates(sn, groups, items)
+    print("Change fields")
+    setup_change_fields(sn)
     print("Pipeline access")
     prove_access(sn, ssm)
     if args.test:

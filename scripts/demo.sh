@@ -23,6 +23,8 @@ usage() {
 
 [[ $# -ge 1 ]] || usage
 action=$1 demo=${2:-}
+# A demo's name may have a dash where its folder has an underscore: agent-ship is scripts/demos/agent_ship.
+[[ -n $demo && ! -d $DEMOS/$demo && -d $DEMOS/${demo//-/_} ]] && demo=${demo//-/_}
 export AWS_PROFILE=${AWS_PROFILE:-release-demo} AWS_REGION=${AWS_REGION:-eu-west-1}
 
 case $action in

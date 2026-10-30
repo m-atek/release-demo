@@ -1,4 +1,4 @@
-"""The Slack handler: /release and /rollback, from Slack to Jenkins.
+"""The Slack handler: /release, /rollback and /agent, from Slack to Jenkins.
 
 Slack posts each slash command to this function's URL and wants an answer
 within 3 seconds. So the first call only checks the request (Slack's
@@ -135,7 +135,30 @@ def parse(command, text, services):
         name = words[0].lower()
         known(name, services)
         return "rollback", {"SERVICE": name}
-    raise Refusal(f"This app knows /release and /rollback, not {command or 'that'}.")
+    if command == "/agent":
+        return parse_agent(words, text, services)
+    raise Refusal(f"This app knows /release, /rollback and /agent, not {command or 'that'}.")
+
+
+# Video 16: /agent <service> <Jira key> <note> hands a Jira issue to the coding agent.
+NOTE_LIMIT = 300
+
+
+def parse_agent(words, text, services):
+    if len(words) < 3:
+        raise Refusal("Usage: /agent <service> <Jira key> <note>, for example "
+                      "/agent orders-service ORD-91 Please ship this today")
+    name, key = words[0].lower(), words[1].upper()
+    settings = known(name, services)
+    if not settings.get("coding_agent"):
+        raise Refusal(f"The coding agent doesn't work on {name}.")
+    project = settings["jira_project"]
+    if not re.fullmatch(rf"{re.escape(project)}-[1-9][0-9]*", key):
+        raise Refusal(f"{words[1]} isn't a Jira key for {name}: it takes {project}-<number>, such as {project}-12.")
+    note = text.strip().split(None, 2)[2].strip()
+    if len(note) > NOTE_LIMIT:
+        raise Refusal(f"Keep the note to {NOTE_LIMIT} characters; this one has {len(note)}.")
+    return "agent-task", {"SERVICE": name, "JIRA_KEY": key, "NOTE": note}
 
 
 def known(name, services):
@@ -198,6 +221,9 @@ def status_message(work, line=":hourglass_flowing_sand:  Starting on Jenkins"):
     if work["job"] == "release":
         option = f" · {p['OPTION']}" if p.get("OPTION") else ""
         head = f"*Release {p['SERVICE']}* · {p['JIRA_KEY']}{option} · requested by <@{p['REQUESTED_BY']}>"
+    elif work["job"] == "agent-task":
+        # agent-task adds the issue's summary once it has read it from Jira.
+        head = f"*Coding agent on {p['JIRA_KEY']}* · asked by <@{p['REQUESTED_BY']}>\n> {p['NOTE']}"
     else:
         head = f"*Rollback {p['SERVICE']}* · production · requested by <@{p['REQUESTED_BY']}>"
     return f"{head}\n\n{line}"

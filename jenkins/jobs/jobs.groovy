@@ -141,6 +141,35 @@ pipelineJob('evidence-sample') {
     definition fromRepository('jenkins/evidence-sample.Jenkinsfile')
 }
 
+// Video 16: the coding agent on a Jira issue, started by /agent in Slack as
+// release-bot; and the four checks every pull request to main gets, from the
+// pipeline's own GitHub App, while demo 16's rulesets are on.
+pipelineJob('agent-task') {
+    description('The coding agent, Claude Code, on one Jira issue, with its own GitHub App and AWS role. Started by /agent in Slack. Video 16.')
+    parameters {
+        stringParam('SERVICE', 'orders-service', 'A service with coding_agent in services.yaml.')
+        stringParam('JIRA_KEY', '', 'The Jira issue to work on.')
+        stringParam('NOTE', '', 'What the requester asked, at most 300 characters.')
+        stringParam('REQUESTED_BY', '', 'Slack user id of who asked.')
+        stringParam('SLACK_CHANNEL', '', 'Channel of the Slack status message.')
+        stringParam('SLACK_TS', '', 'Timestamp of the Slack status message.')
+        stringParam('REQUESTED_AT', '', 'Epoch seconds of the Slack command, where the total time starts.')
+    }
+    properties { disableConcurrentBuilds() }
+    logRotator { numToKeep(200) }
+    definition fromRepository('jenkins/agent-task.Jenkinsfile')
+}
+
+pipelineJob('pull-requests') {
+    description('Every minute: the newest open pull request whose head has no checks from the pipeline\'s app gets Build, Test, Quality gate and SBOM and scan, from main\'s definitions. Never forks. Only while demo 16\'s rulesets are on. Video 16.')
+    properties {
+        disableConcurrentBuilds()
+        pipelineTriggers { triggers { cron { spec('* * * * *') } } }
+    }
+    logRotator { numToKeep(300) }
+    definition fromRepository('jenkins/pull-requests.Jenkinsfile')
+}
+
 // Demo 3: the data-center servers' part of an inventory rollout, on dc-agent.
 // The release on the tools host starts it as release-bot and waits for it.
 pipelineJob('inventory-dc-wave') {

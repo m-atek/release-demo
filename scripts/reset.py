@@ -429,6 +429,8 @@ def reset_main(dry_run, slack_url=None):
 
 def other_demo(demo, args):
     folder = ROOT / "scripts" / "demos" / demo
+    if not folder.is_dir() and (ROOT / "scripts" / "demos" / demo.replace("-", "_")).is_dir():
+        folder = ROOT / "scripts" / "demos" / demo.replace("-", "_")  # agent-ship is scripts/demos/agent_ship
     if not folder.is_dir():
         demos = sorted(p.name for p in folder.parent.iterdir() if p.is_dir()) if folder.parent.is_dir() else []
         fail(f"No demo {demo}. Demos: {', '.join(['main', *demos])}")

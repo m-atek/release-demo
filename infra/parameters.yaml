@@ -465,3 +465,19 @@ jcr/evidence-reader-token:
   source: script
   secure: true
   help: "Access token of the JFrog user evidence-reader, which may read candidates and releases and deploy nothing. Written by scripts/jcr_setup.py --host."
+
+# Video 16, the coding agent that can't ship (scripts/demos/agent_ship): its own
+# GitHub App, which may push its own branches and open pull requests, and
+# nothing else. The agent's Claude credential is anthropic/api-key above.
+github/agent-app-id:
+  source: script
+  secure: false
+  help: "The coding agent's GitHub App's id. Written by scripts/demos/agent_ship/agent_app.py."
+github/agent-app-slug:
+  source: script
+  secure: false
+  help: "The coding agent's GitHub App's slug, release-demo-coding-agent-<owner>. Written by scripts/demos/agent_ship/agent_app.py."
+github/agent-app-private-key:
+  source: script
+  secure: true
+  help: "The coding agent's GitHub App's private key (PEM). Written by scripts/demos/agent_ship/agent_app.py."

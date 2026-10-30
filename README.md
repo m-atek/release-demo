@@ -449,6 +449,19 @@ Once:
 
 Before a call: history.py has run and at least one main take is closed. `.venv/bin/python scripts/demos/auditor/evidence_sample.py --dry-run --from <day> --to <day>` lists, from the Mac, every closed orders-service change that moved production in the period, and what it leaves out. Sign in to Jenkins as ines and to ServiceNow as ines.auditor in one browser profile. Nothing to stop afterwards.
 
+## Demo on a call: the agent wrote the code, but can't ship it (demo 16)
+
+`/agent orders-service <Jira key> <note>` in Slack hands an issue to the coding agent: the Jenkins job `agent-task` runs Claude Code in the coding-agent image (video 9's, with git, gh and pytest) on the tools host, on the network release-demo-agent, which reaches the internet only. The agent has its own GitHub App (contents and pull requests write, nothing else, in no ruleset's bypass list) and video 9's AWS role. Its prompt says what Sam asked and which tools it has, nothing about limits. GitHub refuses its push to main, AWS its production calls, GitHub its approval of its own pull request; each refusal is a Slack line within seconds, and its pull request gets the checks Build, Test, Quality gate and SBOM and scan from the pipeline's own app (the job `pull-requests`, from main's definitions). After your review as Sam and a squash merge, `/release orders-service <key>` opens a normal change with "Code written by" and "Code reviewed by" filled from the pull request; a pull request the agent wrote without a person's approving review stops the release at Change. Code: `scripts/demos/agent_ship/`, `scripts/authorship.py`.
+
+Once:
+
+1. `.venv/bin/python scripts/demos/agent_ship/agent_app.py --owner <your GitHub username>`, click once on http://localhost:8765, and install the app on release-demo only from the printed link.
+2. The Slack app: paste the manifest from `scripts/slack_manifest.py` (it adds /agent), then reinstall. `scripts/tf.sh apply` puts /agent in the Slack handler.
+3. `.venv/bin/python scripts/demos/agent_ship/ruleset.py --apply` with your own gh login: the three rulesets.
+4. `.venv/bin/python scripts/servicenow_setup.py` adds the two fields to the change's form; `.venv/bin/python scripts/demos/agent_ship/setup.py --sonar` makes the Jira issue and the SonarQube Cloud project the pull request checks analyse into (the Free plan analyses only main).
+
+Before a take: `scripts/demo.sh up agent-ship` (its Terraform root, the image on the tools host, the rulesets on, demo 14's workflow off), `scripts/demos/agent_ship/check.sh` (the app's rights, the refusals from inside the container with a test pull request, video 9's checks, the network, no secret in the last log; no model call), then `scripts/reset.py agent-ship`: production and main on 1.4.0 from a real release, the agent's open pull requests closed, the issue reopened. About 7 minutes. Afterwards `scripts/demo.sh down agent-ship` turns the rulesets off, so video 14's merge box shows no bypass and demo 2's pull requests need no review. A run costs about USD 1 to 2 in Claude API usage.
+
 ## Layout
 
 ```
