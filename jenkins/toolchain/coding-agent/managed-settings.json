@@ -1,0 +1,24 @@
+{
+  "model": "claude-opus-5-5",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Bash(aws:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(unzip:*)",
+      "Bash(python3:*)",
+      "Bash(cd:*)",
+      "Bash(pwd)",
+      "Bash(echo:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(sha256sum:*)"
+    ],
+    "defaultMode": "default"
+  },
+  "env": {
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  }
+}

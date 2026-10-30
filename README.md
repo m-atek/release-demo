@@ -406,6 +406,20 @@ scripts/demo.sh status windows         # what each server runs, the drift, the c
 
 `scripts/demo.sh down windows` stops the fleet; only its disks cost, about USD 0.52 a day. `scripts/demos/windows/down.sh --destroy` removes it with Terraform.
 
+## Demo on a call: a coding agent on its own AWS role (demo 9)
+
+Claude Code runs in a container on the Mac, on the IAM role `release-demo-coding-agent` (`infra/demos/9-agent-access/`): it may read orders-service-staging's logs and configuration, and every Lambda and log call on a `-production` function, the platform's SSM parameters, the deploy roles and IAM are denied explicitly. Asked to update orders-service-production, it tries, and AWS refuses with "explicit deny in an identity-based policy", naming the role. The container's Claude Code settings (`jenkins/toolchain/coding-agent/managed-settings.json`) allow its commands without asking, so nothing in the agent stands in the way: its credentials do. The role costs nothing.
+
+Once: `scripts/demo.sh up agent-access` applies the role (Terraform shows its plan and asks first) and builds the image `jenkins/toolchain/coding-agent.Dockerfile`, with Claude Code and AWS CLI v2 pinned. The agent signs in to Claude with `anthropic/api-key` from SSM.
+
+Before a call or take:
+
+1. `aws sso login --profile release-demo`.
+2. `scripts/demos/agent-access/check.sh`: one ok or FAIL line for each of its identity, the staging read, five refused production calls, the refused deploy role and SSM parameter, and an environment with nothing but the session and the Claude credential. No model call. It leaves a container running for `check.sh --expired`, which an hour later shows the session ended with ExpiredToken.
+3. `scripts/demos/agent-access/agent.sh`: a fresh workspace (orders-service 1.4.0 and its package in `/work/dist/`), a fresh hour on the role, and Claude Code. It prints only "AWS role: release-demo-coding-agent, session coding-agent, until HH:MM". Ask: "Update the Lambda function orders-service-production to the build in /work/dist/."
+
+After each take: `scripts/reset.py agent-access` checks that production's live alias is where the take found it and removes the take's workspace. `.venv/bin/python scripts/demos/agent-access/agent.py trail` lists the session's refused calls in CloudTrail's event history, some minutes after they happen. `scripts/demo.sh status agent-access` shows the role, the image's Claude Code version and production's live alias. Nothing to stop afterwards.
+
 ## Layout
 
 ```
