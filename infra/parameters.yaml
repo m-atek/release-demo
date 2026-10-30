@@ -497,4 +497,34 @@ gitlab/runner-token:
 ci/orders-service:
   source: script
   secure: false
-  help: "Which CI /release orders-service starts: jenkins (the default, and whenever another CI's demo is down) or gitlab-ci. Set by scripts/demo.sh up and down."
+  help: "Which CI /release orders-service starts: jenkins (the default, and whenever another CI's demo is down), gitlab-ci or azure-pipelines. Set by scripts/demo.sh up and down."
+
+# Demo 22, Azure DevOps: the pipeline (azure-pipelines.yml), its agent on the
+# tools host, and Release Bot, which signs in with no stored secret
+# (infra/demos/22-azure-devops-approval). Ids, not secrets, but kept out of
+# the public repository.
+azure-devops/organization:
+  source: script
+  secure: false
+  help: "The Azure DevOps organization's name, as in dev.azure.com/<name>. Written by scripts/demos/azure_devops/setup.py --apply --organization <name>."
+  pattern: "^[A-Za-z0-9][A-Za-z0-9-]{0,48}[A-Za-z0-9]$"
+azure-devops/project-id:
+  source: script
+  secure: false
+  help: "The project release-demo's id. Written by scripts/demos/azure_devops/setup.py."
+azure-devops/pipeline-id:
+  source: script
+  secure: false
+  help: "The release pipeline's id, from azure-pipelines.yml. Written by scripts/demos/azure_devops/setup.py."
+azure-devops/tenant-id:
+  source: terraform
+  secure: false
+  help: "The Entra tenant Release Bot is registered in. Written by infra/demos/22-azure-devops-approval."
+azure-devops/release-bot-client-id:
+  source: terraform
+  secure: false
+  help: "Release Bot's application (client) id. Written by infra/demos/22-azure-devops-approval."
+azure-devops/agent-registration-token:
+  source: you
+  secure: true
+  help: "dev.azure.com, your organization, User settings, Personal access tokens, New Token: scope Agent Pools (Read & manage), expiring in a day. The agent on the tools host registers with it once, then signs in with its own key."

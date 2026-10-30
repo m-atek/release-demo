@@ -1,8 +1,9 @@
-"""The approval bridge: production waits in GitHub Actions until ServiceNow
-says the change is approved, and nobody in GitHub can approve it instead.
+"""The approval bridge: production waits in GitHub Actions or Azure Pipelines
+until ServiceNow says the change is approved, and nobody in GitHub or Azure
+DevOps can approve it instead.
 
 One Lambda function behind a public function URL (infra/approval_bridge.tf),
-with two routes:
+with three routes:
 
 - POST /github: GitHub's deployment_protection_rule webhook, sent to the
   release-demo GitHub App when a job of a run waits on an environment whose
@@ -16,15 +17,26 @@ with two routes:
   a change's approval turns approved or rejected. The bridge trusts nothing in
   the call's body but the change's sys_id: it reads the change itself, as
   release.pipeline, and approves or rejects the run its correlation id names.
+- POST /azure-devops/check (demo 22): the delivery of production's Invoke REST
+  API check, in callback mode. Nothing in it is trusted: its PlanUrl must be
+  the organization's, and its AuthToken, the job access token Azure DevOps
+  issued for the check, must read the run, which must be the release
+  pipeline's, from main. The bridge finds the change whose correlation id,
+  azure-pipelines:<organization>/<project>:<run id>, names the run. Decided
+  already, it completes the check at once; waiting, it keeps the callback in
+  the pending-checks table (DynamoDB, 48 hours, the token's life) and writes
+  the waiting line to the check's log; ServiceNow's call then completes it
+  with the stored token.
 
 The rule is change.py wait's: an approval counts only from someone other than
 the person who asked, whatever ServiceNow says. Every route answers at once and
 does the rest in an asynchronous call to itself, as the Slack handler does:
-GitHub waits 10 seconds for a webhook's answer, and ServiceNow's business rule
-runs inside Alex's click.
+GitHub waits 10 seconds for a webhook's answer, Azure DevOps 3, and
+ServiceNow's business rule runs inside Alex's click.
 
 GitHub sees the app's answers as comments on the run, at most 10 status reports
-per deployment and 1,024 characters each. The texts below are the ones the
+per deployment and 1,024 characters each; Azure DevOps shows the latest line
+of the check's log on the run page. The texts below are the ones the
 video scripts quote. The app's JWT is signed with PyJWT and cryptography, which
 bridge/build.sh installs for Lambda's platform; the rest is the standard
 library and boto3. Secrets come from SSM and are never logged.
@@ -52,7 +64,14 @@ GITHUB_API = "https://api.github.com"
 # for the first check of the setup (scripts/demos/github_actions/bridge_test.py).
 ENVIRONMENTS = ("production", "bridge-test")
 GITHUB = "github-actions:"
+AZURE = "azure-pipelines:"
 CLOSED, CANCELED = "3", "4"
+# The Invoke REST API check's headers, as setup.py configures them.
+CHECK_HEADERS = ("planurl", "projectid", "hubname", "planid", "jobid", "timelineid", "taskinstanceid", "authtoken",
+                 "buildid")
+GUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+CHECKS_TABLE = os.environ.get("CHECKS_TABLE", "release-demo-approval-bridge-checks")
+TOKEN_SECONDS = 48 * 3600  # how long Azure DevOps' job access token for a check lives
 
 WAITING = "ServiceNow change {number} is waiting for approval."
 APPROVED = "Approved by {name} in ServiceNow. Change {number}."
@@ -89,6 +108,8 @@ def handler(event, context):
         return from_github(headers, body, context)
     if path == "/servicenow":
         return from_servicenow(headers, body, context)
+    if path == "/azure-devops/check":
+        return from_azure(headers, context)
     return http(404)
 
 
@@ -159,6 +180,26 @@ def from_servicenow(headers, body, context):
     return http(202)
 
 
+def from_azure(headers, context):
+    """The check's delivery. Answered within Azure DevOps' 3 seconds; the rest
+    is asynchronous. A call for another organization, or without the run's ids,
+    gets no decision: only a token Azure DevOps issued can give one."""
+    check = {name: headers.get(name, "") for name in CHECK_HEADERS}
+    organization = parameters("azure-devops/organization")["azure-devops/organization"]
+    if not organization or check["planurl"].rstrip("/") != f"https://dev.azure.com/{organization}":
+        log("refused: a check call for another organization")
+        return http(403)
+    ids = ("projectid", "planid", "jobid", "timelineid", "taskinstanceid")
+    if (not all(GUID.fullmatch(check[name]) for name in ids) or not check["buildid"].isdigit()
+            or not re.fullmatch(r"\w+", check["hubname"]) or not check["authtoken"]):
+        log("refused: a check call without the run's ids and token")
+        return http(400)
+    aws("lambda").invoke(FunctionName=context.invoked_function_arn, InvocationType="Event",
+                         Payload=json.dumps({"work": {"route": "azure", "check": check}}).encode())
+    log(f"run {check['buildid']}: production's check delivered, handed over")
+    return http(200)
+
+
 # The asynchronous call: ServiceNow's answer, given to the run.
 
 def run(work):
@@ -168,6 +209,8 @@ def run(work):
             github_requested(work)
         elif work.get("route") == "servicenow":
             servicenow_decided(work)
+        elif work.get("route") == "azure":
+            azure_delivered(work["check"])
         else:
             log(f"ignored: work for {work.get('route')}")
     except Exception as error:  # the log has the detail
@@ -198,6 +241,9 @@ def servicenow_decided(work):
         log(f"change {work['sys_id']}: not found")
         return
     correlation = change.get("correlation_id") or ""
+    if correlation.startswith(AZURE):
+        azure_decided(sn, change)
+        return
     if not correlation.startswith(GITHUB):
         log(f"{change['number']}: correlation id {correlation or 'empty'}, nothing to tell")
         return
@@ -211,6 +257,130 @@ def servicenow_decided(work):
         return
     for environment in waiting_environments(repository, run_id):
         review(repository, run_id, environment, verdict, text)
+
+
+def azure_delivered(check):
+    """Production's check, delivered: prove the token, find the change, answer
+    or wait. A token that can't read the run is forged or expired: no decision."""
+    devops = AzureDevOps(check)
+    build = devops.build()
+    if build is None:
+        log(f"run {check['buildid']}: the check's token doesn't read the run, so no decision")
+        return
+    if str(build.get("definition", {}).get("id")) != parameters("azure-devops/pipeline-id")["azure-devops/pipeline-id"]:
+        devops.complete("failed", NO_CHANGE)
+        return
+    if build.get("sourceBranch") != "refs/heads/main":
+        devops.complete("failed", BRANCH.format(branch=build.get("sourceBranch", "").removeprefix("refs/heads/")))
+        return
+    organization = parameters("azure-devops/organization")["azure-devops/organization"]
+    correlation = f"{AZURE}{organization}/{build['project']['name']}:{check['buildid']}"
+    try:
+        sn = ServiceNow.connect()
+        change = sn.change_by_correlation(correlation)
+        verdict, text = decide(change, sn.approvals(change) if change else [], sn.first_name)
+    except Asleep:
+        verdict, text = "waiting", ASLEEP
+    if verdict != "waiting":
+        devops.complete("succeeded" if verdict == "approved" else "failed", text)
+        return
+    PendingChecks().keep(correlation, check, devops.say(text))
+
+
+def azure_decided(sn, change):
+    """ServiceNow decided: complete the run's waiting check with its stored token."""
+    pending = PendingChecks()
+    item = pending.get(change["correlation_id"])
+    if item is None:
+        log(f"{change['number']}: no check waits for it")
+        return
+    verdict, text = decide(change, sn.approvals(change), sn.first_name)
+    if verdict == "waiting":
+        log(f"{change['number']}: still waiting")
+        return
+    AzureDevOps(item["check"], log_id=item.get("log_id")).complete("succeeded" if verdict == "approved" else "failed", text)
+    pending.forget(change["correlation_id"])
+
+
+class AzureDevOps:
+    """A run's check, with the job access token Azure DevOps issued for it."""
+
+    def __init__(self, check, log_id=None):
+        self.check, self.log_id = check, log_id
+        self.plan = (f"{check['planurl'].rstrip('/')}/{check['projectid']}/_apis/distributedtask/hubs/"
+                     f"{check['hubname']}/plans/{check['planid']}")
+
+    def call(self, method, url, body=None, content_type="application/json"):
+        data = body if isinstance(body, bytes) else (json.dumps(body).encode() if body is not None else None)
+        request = urllib.request.Request(url, method=method, data=data, headers={
+            "Authorization": f"Bearer {self.check['authtoken']}", "Content-Type": content_type,
+            "Accept": "application/json", "User-Agent": USER_AGENT})
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                raw = response.read()
+                return response.status, json.loads(raw) if raw.strip() else None
+        except urllib.error.HTTPError as error:
+            log(f"Azure DevOps {method} {url.split('/_apis/')[-1].split('?')[0]}: {error.code}")
+            return error.code, None
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+            log(f"Azure DevOps {method}: {error.__class__.__name__}")
+            return 0, None
+
+    def build(self):
+        url = (f"{self.check['planurl'].rstrip('/')}/{self.check['projectid']}/_apis/build/builds/"
+               f"{self.check['buildid']}?api-version=7.1")
+        status, reply = self.call("GET", url)
+        return reply if status == 200 else None
+
+    def say(self, line):
+        """One line in the check's log, which the run page shows as its latest:
+        a log is made and attached to the check's timeline record the first time."""
+        if self.log_id is None:
+            status, reply = self.call("POST", f"{self.plan}/logs?api-version=7.1",
+                                      {"path": f"logs\\{self.check['taskinstanceid']}"})
+            if status != 200 or not reply:
+                return None
+            self.log_id = reply["id"]
+            self.call("PATCH", f"{self.plan}/timelines/{self.check['timelineid']}/records?api-version=7.1",
+                      {"value": [{"id": self.check["taskinstanceid"], "log": {"id": self.log_id}}], "count": 1})
+        self.call("POST", f"{self.plan}/logs/{self.log_id}?api-version=7.1", (line + "\n").encode(),
+                  content_type="application/octet-stream")
+        log(f"run {self.check['buildid']}: {line}")
+        return self.log_id
+
+    def complete(self, result, line):
+        """The line, then the decision: the Post Event API's TaskCompleted."""
+        self.say(line)
+        status, _ = self.call("POST", f"{self.plan}/events?api-version=7.1", {
+            "name": "TaskCompleted", "taskId": self.check["taskinstanceid"], "jobId": self.check["jobid"],
+            "result": result})
+        log(f"run {self.check['buildid']}: check {result} ({status})")
+        return status
+
+
+class PendingChecks:
+    """The checks that wait for ServiceNow, by the change's correlation id, each
+    kept 48 hours, the life of its token. The token never leaves the table and
+    this function, and is never logged."""
+
+    def keep(self, correlation, check, log_id):
+        item = {"correlation_id": {"S": correlation}, "check": {"S": json.dumps(check)},
+                "expires_at": {"N": str(int(time.time()) + TOKEN_SECONDS)}}
+        if log_id is not None:
+            item["log_id"] = {"N": str(log_id)}
+        aws("dynamodb").put_item(TableName=CHECKS_TABLE, Item=item)
+        log(f"{correlation}: waits for ServiceNow")
+
+    def get(self, correlation):
+        item = aws("dynamodb").get_item(TableName=CHECKS_TABLE, Key={"correlation_id": {"S": correlation}},
+                                        ConsistentRead=True).get("Item")
+        if not item or int(item["expires_at"]["N"]) < time.time():
+            return None
+        return {"check": json.loads(item["check"]["S"]),
+                "log_id": int(item["log_id"]["N"]) if "log_id" in item else None}
+
+    def forget(self, correlation):
+        aws("dynamodb").delete_item(TableName=CHECKS_TABLE, Key={"correlation_id": {"S": correlation}})
 
 
 def decide(change, approvals, first_name):

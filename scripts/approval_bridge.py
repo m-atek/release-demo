@@ -1,15 +1,17 @@
 """ServiceNow's side of the approval bridge (bridge/handler.py), for servicenow_setup.py.
 
 A business rule, "release-demo: approval bridge", calls the bridge when the
-approval of a change opened from GitHub Actions turns approved or rejected,
-so the waiting run gets its answer within seconds of Alex's click. It reads
+approval of a change opened from GitHub Actions (demo 14) or Azure Pipelines
+(demo 22) turns approved or rejected, so the waiting run gets its answer
+within seconds of Alex's click. It reads
 two system properties: the bridge's URL, and the token the bridge checks,
 which is kept in SSM too (bridge/servicenow-token) and generated here the
 first time. The call carries only the change's sys_id: the bridge reads the
 change itself. Idempotent, like the rest of the setup.
 """
 
-import secrets
+import base64
+import os
 
 from common import SSM_PREFIX, put_parameter
 
@@ -17,7 +19,7 @@ RULE = "release-demo: approval bridge"
 URL_PROPERTY = "release_demo.approval_bridge.url"
 TOKEN_PROPERTY = "release_demo.approval_bridge.token"
 # The correlation ids change.py writes for runs that wait on the bridge.
-PREFIXES = ["github-actions:"]
+PREFIXES = ["github-actions:", "azure-pipelines:"]
 
 SCRIPT = """(function executeRule(current, previous) {
     // Tells the approval bridge that this change's approval is decided. The
@@ -70,7 +72,8 @@ def bridge_token(ssm):
     except ssm.exceptions.ParameterNotFound:
         value = None
     if value in (None, "unset"):
-        value = secrets.token_urlsafe(32)
+        # Not the secrets module: scripts/secrets.py shadows it here.
+        value = base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("=")
         put_parameter(ssm, "bridge/servicenow-token", value)
         print("  bridge/servicenow-token: generated and stored in SSM")
     return value
@@ -100,5 +103,5 @@ def setup(sn, ssm):
         "advanced": "true", "action_insert": "false", "action_update": "true", "action_delete": "false",
         "action_query": "false", "condition": condition(), "script": SCRIPT,
         "description": "Tells the release-demo approval bridge when the approval of a change opened by a "
-                       "GitHub Actions run is decided, so the waiting run gets its answer at once."},
+                       "GitHub Actions or Azure Pipelines run is decided, so the waiting run gets its answer at once."},
         f"business rule '{RULE}'")

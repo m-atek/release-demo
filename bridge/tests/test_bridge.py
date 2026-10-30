@@ -359,3 +359,179 @@ def test_the_installation_token_asks_for_deployments_and_actions_only(aws, monke
     assert [(m, p, a) for m, p, a, _ in calls] == [("GET", f"/repos/{REPOSITORY}/installation", "Bearer test-jwt"),
                                                    ("POST", "/app/installations/42/access_tokens", "Bearer test-jwt")]
     assert calls[1][3] == {"repositories": ["release-demo"], "permissions": {"deployments": "write", "actions": "read"}}
+
+
+# The Azure DevOps route (demo 22): production's Invoke REST API check, in callback mode
+
+ORG = "demo-org"
+AUTH = "test-job-access-token, not a real one"
+IDS = {"projectid": "11111111-1111-1111-1111-111111111111", "planid": "22222222-2222-2222-2222-222222222222",
+       "jobid": "33333333-3333-3333-3333-333333333333", "timelineid": "44444444-4444-4444-4444-444444444444",
+       "taskinstanceid": "55555555-5555-5555-5555-555555555555"}
+CHECK = {"planurl": f"https://dev.azure.com/{ORG}/", "hubname": "build", "buildid": "321", "authtoken": AUTH, **IDS}
+AZURE_CORRELATION = f"azure-pipelines:{ORG}/release-demo:321"
+
+
+def delivery(**overrides):
+    headers = {name: value for name, value in {**CHECK, **overrides}.items()}
+    return {"rawPath": "/azure-devops/check", "requestContext": {"http": {"method": "POST"}}, "body": "{}",
+            "headers": {name.capitalize(): value for name, value in headers.items()}}
+
+
+@pytest.fixture
+def azure(aws):
+    aws.ssm.values.update({"azure-devops/organization": ORG, "azure-devops/pipeline-id": "7"})
+    return aws
+
+
+def test_a_check_delivery_for_the_organization_is_answered_at_once_and_handed_over(azure):
+    response = bridge.handler(delivery(), CONTEXT)
+    assert response["statusCode"] == 200
+    assert handed_over(azure) == {"route": "azure", "check": CHECK}
+
+
+@pytest.mark.parametrize("overrides, status", [
+    ({"planurl": "https://dev.azure.com/someone-else/"}, 403),
+    ({"planurl": f"https://evil.example/{ORG}/"}, 403),
+    ({"planid": "not-a-guid"}, 400),
+    ({"buildid": "12a"}, 400),
+    ({"authtoken": ""}, 400),
+    ({"hubname": "build; rm"}, 400),
+])
+def test_a_delivery_from_elsewhere_or_without_the_runs_ids_gets_no_decision(azure, overrides, status):
+    assert bridge.handler(delivery(**overrides), CONTEXT)["statusCode"] == status
+    assert azure.lambda_.invocations == []
+
+
+class FakeDevOps:
+    """Azure DevOps' answers to a check's token, recorded."""
+
+    def __init__(self, build=None, build_status=200):
+        self.calls, self.build_status = [], build_status
+        self.build_reply = build or {"definition": {"id": 7}, "sourceBranch": "refs/heads/main",
+                                     "project": {"name": "release-demo"}}
+
+    def __call__(self, devops, method, url, body=None, content_type="application/json"):
+        self.calls.append((method, url.split("/_apis/")[1], body))
+        assert devops.check["authtoken"] == AUTH
+        if "/build/builds/" in url:
+            return self.build_status, (self.build_reply if self.build_status == 200 else None)
+        if url.endswith("/logs?api-version=7.1"):
+            return 200, {"id": 9}
+        return 200, None
+
+    def lines(self):
+        return [body.decode().strip() for method, url, body in self.calls if isinstance(body, bytes)]
+
+    def events(self):
+        return [body for method, url, body in self.calls if "/events?" in url]
+
+
+class FakeDynamo:
+    def __init__(self):
+        self.items = {}
+
+    def put_item(self, TableName, Item):
+        assert TableName == bridge.CHECKS_TABLE
+        self.items[Item["correlation_id"]["S"]] = Item
+
+    def get_item(self, TableName, Key, ConsistentRead):
+        item = self.items.get(Key["correlation_id"]["S"])
+        return {"Item": item} if item else {}
+
+    def delete_item(self, TableName, Key):
+        self.items.pop(Key["correlation_id"]["S"], None)
+
+
+@pytest.fixture
+def devops(azure, world, monkeypatch):
+    fake, table = FakeDevOps(), FakeDynamo()
+    monkeypatch.setattr(bridge.AzureDevOps, "call", lambda self, *args, **kwargs: fake(self, *args, **kwargs))
+    original = bridge.aws
+    monkeypatch.setattr(bridge, "aws", lambda name: table if name == "dynamodb" else original(name))
+    world.devops, world.table = fake, table
+    return world
+
+
+def azure_change(approval="requested", state="-4"):
+    return {**change(approval, state), "correlation_id": AZURE_CORRELATION}
+
+
+def test_a_waiting_change_is_kept_with_its_callback_and_named_in_the_checks_log(devops, capsys):
+    devops.sn.record = azure_change()
+    bridge.handler({"work": {"route": "azure", "check": CHECK}}, CONTEXT)
+    assert devops.devops.lines() == ["ServiceNow change CHG0030050 is waiting for approval."]
+    assert devops.devops.events() == []
+    stored = devops.table.items[AZURE_CORRELATION]
+    assert json.loads(stored["check"]["S"]) == CHECK and stored["log_id"] == {"N": "9"}
+    assert int(stored["expires_at"]["N"]) - time.time() > 47 * 3600
+    timeline = [body for method, url, body in devops.devops.calls if method == "PATCH"]
+    assert timeline == [{"value": [{"id": IDS["taskinstanceid"], "log": {"id": 9}}], "count": 1}]
+    assert AUTH not in capsys.readouterr().out
+
+
+def test_an_approval_that_came_first_passes_the_check_at_once(devops):
+    devops.sn.record, devops.sn.list = azure_change("approved", "-2"), [{"state": "approved", "approver": ALEX}]
+    bridge.handler({"work": {"route": "azure", "check": CHECK}}, CONTEXT)
+    assert devops.devops.lines() == ["Approved by Alex in ServiceNow. Change CHG0030050."]
+    assert devops.devops.events() == [{"name": "TaskCompleted", "taskId": IDS["taskinstanceid"], "jobId": IDS["jobid"],
+                                       "result": "succeeded"}]
+    assert devops.table.items == {}
+
+
+def test_a_forged_or_expired_token_gets_no_decision(devops):
+    devops.devops.build_status = 401
+    bridge.handler({"work": {"route": "azure", "check": CHECK}}, CONTEXT)
+    assert devops.devops.events() == [] and devops.devops.lines() == [] and devops.table.items == {}
+
+
+def test_a_run_from_another_branch_fails_the_check_with_the_branch_line(devops):
+    devops.devops.build_reply = {"definition": {"id": 7}, "sourceBranch": "refs/heads/try", "project": {"name": "release-demo"}}
+    bridge.handler({"work": {"route": "azure", "check": CHECK}}, CONTEXT)
+    assert devops.devops.lines() == ["Only main deploys to production. This run is from try."]
+    assert devops.devops.events()[0]["result"] == "failed"
+
+
+def test_another_pipelines_run_fails_the_check(devops):
+    devops.devops.build_reply = {"definition": {"id": 8}, "sourceBranch": "refs/heads/main", "project": {"name": "release-demo"}}
+    bridge.handler({"work": {"route": "azure", "check": CHECK}}, CONTEXT)
+    assert devops.devops.lines() == ["No ServiceNow change for this run."]
+    assert devops.devops.events()[0]["result"] == "failed"
+
+
+def test_alexs_approval_completes_the_waiting_check_with_its_stored_token(devops):
+    devops.sn.record = azure_change()
+    bridge.handler({"work": {"route": "azure", "check": CHECK}}, CONTEXT)
+    devops.sn.record, devops.sn.list = azure_change("approved", "-2"), [{"state": "approved", "approver": ALEX}]
+    bridge.handler({"work": {"route": "servicenow", "sys_id": CHANGE_ID}}, CONTEXT)
+    assert devops.devops.lines() == ["ServiceNow change CHG0030050 is waiting for approval.",
+                                     "Approved by Alex in ServiceNow. Change CHG0030050."]
+    assert [e["result"] for e in devops.devops.events()] == ["succeeded"]
+    assert devops.table.items == {}
+    assert len([c for c in devops.devops.calls if c[1].endswith("/logs?api-version=7.1")]) == 1  # the same log
+
+
+@pytest.mark.parametrize("approvals, approval, line", [
+    ([{"state": "approved", "approver": SAM}], "approved",
+     "Approved by the person who asked for the release. Refused: the person who asks can't approve. Change CHG0030050."),
+    ([{"state": "rejected", "approver": ALEX}], "rejected", "Rejected by Alex in ServiceNow. Change CHG0030050."),
+])
+def test_a_rejection_or_the_requesters_approval_fails_the_waiting_check(devops, approvals, approval, line):
+    devops.sn.record = azure_change()
+    bridge.handler({"work": {"route": "azure", "check": CHECK}}, CONTEXT)
+    devops.sn.record, devops.sn.list = azure_change(approval, "-2"), approvals
+    bridge.handler({"work": {"route": "servicenow", "sys_id": CHANGE_ID}}, CONTEXT)
+    assert devops.devops.lines()[-1] == line
+    assert [e["result"] for e in devops.devops.events()] == ["failed"]
+
+
+def test_a_decision_with_no_check_waiting_tells_azure_devops_nothing(devops):
+    devops.sn.record, devops.sn.list = azure_change("approved", "-2"), [{"state": "approved", "approver": ALEX}]
+    bridge.handler({"work": {"route": "servicenow", "sys_id": CHANGE_ID}}, CONTEXT)
+    assert devops.devops.calls == [] and devops.github.calls == []
+
+
+def test_an_expired_pending_check_is_gone(devops):
+    devops.table.items[AZURE_CORRELATION] = {"correlation_id": {"S": AZURE_CORRELATION}, "check": {"S": json.dumps(CHECK)},
+                                             "expires_at": {"N": str(int(time.time()) - 1)}}
+    assert bridge.PendingChecks().get(AZURE_CORRELATION) is None
