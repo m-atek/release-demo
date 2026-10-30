@@ -17,7 +17,7 @@ DEMOS=$ROOT/scripts/demos
 
 usage() {
   sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
-  echo "Demos: $(cd "$DEMOS" 2>/dev/null && ls -d */ 2>/dev/null | tr -d / | tr '\n' ' ')"
+  echo "Demos: $(cd "$DEMOS" 2>/dev/null && for d in */; do [[ -d $d ]] && printf '%s ' "${d%/}"; done)"
   exit 2
 }
 

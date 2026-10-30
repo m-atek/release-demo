@@ -1,8 +1,9 @@
+# shellcheck shell=bash
 # What releaseStage.groovy does under Jenkins, for the jobs of
 # .github/workflows/release.yml, whose steps source this file (BASH_ENV).
 #
 #   stage Build -- python3 scripts/build.py orders-service --jira-key "$JIRA_KEY"
-#   stage Staging --environment staging -- python3 scripts/deploy.py orders-service staging
+#   stage Staging --environment staging -- python3 scripts/demos/rollback-trap/deploy.py orders-service staging
 #   skip Approval "A standard change is pre-approved."
 #
 # stage marks Slack's row running, runs the command, then gives the row its
