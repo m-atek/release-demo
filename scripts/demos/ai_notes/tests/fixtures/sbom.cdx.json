@@ -1,0 +1,1 @@
+{"bomFormat": "CycloneDX", "specVersion": "1.6", "version": 1, "metadata": {"component": {"type": "file", "name": "orders-service"}}, "components": [{"type": "file", "name": "/handler.py"}, {"type": "file", "name": "/VERSION"}, {"type": "file", "name": "/build_info.json"}]}

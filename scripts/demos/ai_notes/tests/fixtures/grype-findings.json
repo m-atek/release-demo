@@ -1,0 +1,1 @@
+{"matches": [{"vulnerability": {"id": "GHSA-test-0001", "severity": "High"}}, {"vulnerability": {"id": "GHSA-test-0002", "severity": "Medium"}}, {"vulnerability": {"id": "GHSA-test-0003", "severity": "Medium"}}, {"vulnerability": {"id": "GHSA-test-0004", "severity": "Weird"}}]}

@@ -22,7 +22,9 @@ usage() {
 }
 
 [[ $# -ge 1 ]] || usage
+# A dash in a demo's name is an underscore in its folder: cost-gate is scripts/demos/cost_gate.
 action=$1 demo=${2:-}
+demo=${demo//-/_}
 export AWS_PROFILE=${AWS_PROFILE:-release-demo} AWS_REGION=${AWS_REGION:-eu-west-1}
 
 case $action in

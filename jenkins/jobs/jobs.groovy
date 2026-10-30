@@ -129,6 +129,29 @@ pipelineJob('store-floor-build') {
     definition fromRepository('scripts/demos/mobile/build.Jenkinsfile')
 }
 
+// Videos 12 and 13: the change summary and the likely cause, written by
+// Claude and checked by script. The release starts it with wait: false and
+// propagate: false, while the AI notes switch is on; runs may overlap.
+pipelineJob('ai-notes') {
+    description('Videos 12 and 13: a summary on a normal change, or the likely cause after a rollback, checked by script. Started by the release; it never changes the release.')
+    parameters {
+        stringParam('KIND', 'summary', 'summary (a normal change) or cause (after a rollback).')
+        stringParam('SERVICE', 'orders-service', 'A service with ai_notes in services.yaml.')
+        stringParam('RELEASE_BUILD', '', 'The release build whose archive holds evidence.json.')
+        stringParam('CHANGE_SYS_ID', '', "The change's sys_id.")
+        stringParam('CHANGE_NUMBER', '', 'The change, such as CHG0030050.')
+        stringParam('JIRA_KEY', '', 'The Jira issue of the release.')
+        stringParam('SLACK_CHANNEL', '', 'Channel of the Slack status message.')
+        stringParam('SLACK_TS', '', 'Timestamp of the Slack status message, for the thread reply.')
+        stringParam('FAILED_LAMBDA_VERSION', '', 'cause: the Lambda version that failed the production check.')
+        stringParam('ROLLED_BACK_TO', '', 'cause: the version production is back on.')
+        stringParam('DEPLOYED_AT', '', 'cause: epoch seconds of the failed deploy.')
+        stringParam('ROLLED_BACK_AT', '', 'cause: epoch seconds of the rollback.')
+    }
+    logRotator { numToKeep(200) }
+    definition fromRepository('jenkins/ai-notes.Jenkinsfile')
+}
+
 // Views next to All: a release dashboard with the latest builds and test
 // trends, and a monitor with one big tile per job for a second screen.
 List<String> demoJobs = ['release', 'rollback', 'ci', 'tools-smoke']

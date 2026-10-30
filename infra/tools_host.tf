@@ -56,7 +56,7 @@ data "aws_iam_policy_document" "tools_host" {
     sid     = "NotForTheHost"
     effect  = "Deny"
     actions = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-    resources = [for name in ["cloudflare/api-token", "servicenow/admin-password", "servicenow/sam-password", "servicenow/alex-password", "grafana/setup-token"] :
+    resources = [for name in ["cloudflare/api-token", "servicenow/admin-password", "servicenow/sam-password", "servicenow/alex-password", "servicenow/fiona-password", "grafana/setup-token"] :
     "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/${name}"]
   }
   statement {
@@ -69,10 +69,24 @@ data "aws_iam_policy_document" "tools_host" {
       "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/jenkins/agent-secret/*",
     ]
   }
+  # Videos 12, 13 and 18: the resets, which run here, turn the demos' switches on and off.
+  statement {
+    sid     = "WriteDemoSwitches"
+    actions = ["ssm:PutParameter"]
+    resources = [for name in ["ai-notes/enabled", "cost-check/enabled"] :
+    "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/${name}"]
+  }
   statement {
     sid       = "AssumeDeployRoles"
     actions   = ["sts:AssumeRole"]
     resources = ["arn:aws:iam::${local.account_id}:role/release-demo-deploy-*"]
+  }
+  # Videos 11, 12, 13 and 18: read-only Lambda, CloudTrail and CloudWatch Logs
+  # reads, through the role in infra/demos/evidence-reader.
+  statement {
+    sid       = "AssumeEvidenceReader"
+    actions   = ["sts:AssumeRole"]
+    resources = ["arn:aws:iam::${local.account_id}:role/release-demo-evidence-reader"]
   }
   # reset.py warms the Slack handler before a take; it needs only its address.
   statement {
