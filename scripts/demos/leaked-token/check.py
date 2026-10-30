@@ -23,7 +23,6 @@ import subprocess
 import sys
 import tempfile
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -77,17 +76,20 @@ def leaked_token(ssm, live_ids):
     return None, None
 
 
-def jenkins_hash(ssm):
-    import base64
+def jenkins_hash(ssm, client=None):
+    """Jenkins refuses a POST to its script console without a crumb (403), so ask
+    for one first, in the same session, as rotate.py does for its reload."""
+    from jcr_setup import JENKINS, Client, Form
 
-    from jcr_setup import JENKINS
-
-    auth = base64.b64encode(f"admin:{get_parameter(ssm, 'jenkins/admin-password')}".encode()).decode()
-    request = urllib.request.Request(f"{JENKINS}/scriptText", data=f"script={urllib.parse.quote(JENKINS_HASH)}".encode(),
-                                     headers={"Authorization": f"Basic {auth}",
-                                              "Content-Type": "application/x-www-form-urlencoded"})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return response.read().decode().strip()
+    jenkins = client or Client(JENKINS, "admin", get_parameter(ssm, "jenkins/admin-password"))
+    status, crumb = jenkins.call("GET", "/crumbIssuer/api/json")
+    if status != 200 or not isinstance(crumb, dict):
+        raise RuntimeError(f"Jenkins gave no crumb ({status})")
+    status, reply = jenkins.call("POST", "/scriptText", Form(script=JENKINS_HASH),
+                                 headers={crumb["crumbRequestField"]: crumb["crumb"]})
+    if status != 200:
+        raise RuntimeError(f"Jenkins' script console answered {status}")
+    return str(reply).strip()
 
 
 def on_host():

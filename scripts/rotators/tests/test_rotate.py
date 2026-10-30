@@ -553,3 +553,30 @@ def test_the_reset_loads_the_shared_check_module_not_its_folder_s():
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=inventory.ROOT)
     assert result.returncode == 0, result.stderr[-500:]
     assert result.stdout.split() == ["check", str(inventory.ROOT / "scripts" / "check.py")]
+
+
+def test_the_check_asks_jenkins_for_a_crumb_before_its_script_console():
+    """Without a crumb Jenkins answers the POST with 403, and check 3 read that as 'Jenkins differs'."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("leaked_token_check",
+                                                  inventory.ROOT / "scripts" / "demos" / "leaked-token" / "check.py")
+    check = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(check)
+
+    class Jenkins:
+        calls = []
+
+        def call(self, method, path, body=None, headers=None):
+            self.calls.append((method, path, dict(body or {}), dict(headers or {})))
+            if path == "/crumbIssuer/api/json":
+                return 200, {"crumbRequestField": "Jenkins-Crumb", "crumb": "c0ffee"}
+            if not (headers or {}).get("Jenkins-Crumb"):
+                return 403, "No valid crumb was included in the request"
+            return 200, "956bcd79d3ef\n"
+
+    jenkins = Jenkins()
+    assert check.jenkins_hash(None, client=jenkins) == "956bcd79d3ef"
+    method, path, body, headers = jenkins.calls[-1]
+    assert (method, path, headers) == ("POST", "/scriptText", {"Jenkins-Crumb": "c0ffee"})
+    assert "MessageDigest" in body["script"]
