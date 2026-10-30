@@ -265,7 +265,7 @@ infracost/cli-token:
 anthropic/api-key:
   source: you
   secure: true
-  help: "Claude Console (platform.claude.com), workspace release-demo, API keys: a key for the demo's AI steps (videos 12 and 13). The workspace's spend limit caps its cost."
+  help: "Claude Console (platform.claude.com), workspace release-demo, API keys: a key for the demo's AI steps (videos 12, 13 and 23). The workspace's spend limit caps its cost."
   pattern: "^sk-ant-"
   hint: "an Anthropic API key starts with sk-ant-"
 
@@ -468,3 +468,31 @@ bridge/url:
   source: terraform
   secure: false
   help: "The event bridge's function URL. Written by infra/approval_bridge.tf."
+
+# Demo 23, the runbook assistant on Databricks (infra/demos/23-databricks-rag).
+databricks/host:
+  source: you
+  secure: false
+  help: "Your Databricks workspace's URL, https://<workspace>.cloud.databricks.com: the address the CLI profile release-demo signs in to."
+  pattern: "^https://"
+  hint: "a workspace URL starts with https://"
+databricks/catalog:
+  source: script
+  secure: false
+  help: "The workspace's catalog, which express setup named. Written by scripts/demos/rag/bootstrap.sh."
+databricks/client-id:
+  source: terraform
+  secure: false
+  help: "The service principal release-pipeline's application id. Written by infra/demos/23-databricks-rag."
+databricks/client-secret:
+  source: you
+  secure: true
+  help: "The service principal release-pipeline's OAuth secret, shown once when you generate it: workspace Settings, Identity and access, Service principals, release-pipeline, Secrets, Generate secret."
+runbook-assistant/staging:
+  source: terraform
+  secure: false
+  help: "What staging's runbook assistant runs, as JSON: version, package SHA-256, index. Terraform makes the name (infra/demos/23-databricks-rag); scripts/demos/rag/deploy.py writes it."
+runbook-assistant/production:
+  source: terraform
+  secure: false
+  help: "What production's runbook assistant runs, as JSON: version, package SHA-256, index. Terraform makes the name (infra/demos/23-databricks-rag); scripts/demos/rag/deploy.py writes it."

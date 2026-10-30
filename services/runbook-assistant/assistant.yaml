@@ -1,0 +1,6 @@
+# The model and how the assistant asks it: part of the package, so a model
+# change is a release of the assistant and passes the same evaluation.
+model: claude-haiku-5-5
+effort: low
+num_results: 5
+max_sentences: 3

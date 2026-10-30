@@ -25,7 +25,8 @@ STAGES = ["Build", "Test", "Quality gate", "SBOM and scan", "Publish", "Staging"
 PATH = Path(os.environ.get("WORKSPACE", ROOT)) / ".release" / "state.json"
 REPORTS = PATH.parent / "reports"
 # Stages only some services have, from services.yaml: (script key, stage, after which stage).
-OPTIONAL_STAGES = [("contract", "Contract check", "SBOM and scan"), ("plan", "Plan", "Check staging")]
+OPTIONAL_STAGES = [("contract", "Contract check", "SBOM and scan"), ("plan", "Plan", "Check staging"),
+                   ("evaluation", "Evaluation", "Check staging")]  # demo 23: last, so it runs right after Check staging
 
 
 def stages_for(config):

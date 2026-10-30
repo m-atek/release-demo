@@ -1,5 +1,5 @@
 # The Slack app for the release demo. Create it at api.slack.com/apps, From a
-# manifest. Both commands post to the Slack handler's function URL, which
+# manifest. Every command posts to the Slack handler's function URL, which
 # exists once Terraform has created the handler. The repository is public, so
 # the URL stays out of it: `.venv/bin/python scripts/slack_manifest.py` prints
 # this manifest with the URL filled in, to paste into the app's App Manifest
@@ -24,6 +24,11 @@ features:
       url: https://REPLACE-WITH-SLACK-HANDLER-URL.invalid/
       description: Roll production back to the previous version
       usage_hint: "<service>"
+      should_escape: false
+    - command: /ask
+      url: https://REPLACE-WITH-SLACK-HANDLER-URL.invalid/
+      description: Ask the runbook assistant
+      usage_hint: "<question>"
       should_escape: false
 
 oauth_config:

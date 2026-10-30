@@ -1,0 +1,3 @@
+# The package needs only Python's standard library. chunker.py runs on
+# Databricks' serverless runtime, which brings Spark; the platform's answer
+# path (scripts/demos/rag/answer.py) asks the index and Claude.

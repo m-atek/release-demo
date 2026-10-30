@@ -271,3 +271,18 @@ multibranchPipelineJob('catalog-production') {
         discardOldItems { numToKeep(20) }
     }
 }
+
+// Demo 23: /ask in Slack. The Slack handler starts it as release-bot with the
+// question as a parameter; production's runbook assistant answers in the
+// message the handler posted. Several may run at once, each at most 3 minutes.
+pipelineJob('runbook-assistant-ask') {
+    description('Demo 23: answers /ask in Slack from production\'s runbook assistant, in the message the Slack handler posted. Started by the Slack handler as release-bot.')
+    parameters {
+        stringParam('QUESTION', '', 'The question, 3 to 300 characters.')
+        stringParam('SLACK_CHANNEL', '', 'Channel of the message to answer in.')
+        stringParam('SLACK_TS', '', 'Timestamp of the message to answer in.')
+        stringParam('ASKED_BY', '', 'Slack user id of who asked.')
+    }
+    logRotator { numToKeep(200) }
+    definition fromRepository('jenkins/runbook-assistant-ask.Jenkinsfile')
+}

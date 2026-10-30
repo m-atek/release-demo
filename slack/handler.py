@@ -1,4 +1,4 @@
-"""The Slack handler: /release and /rollback, from Slack to Jenkins.
+"""The Slack handler: /release, /rollback and /ask, from Slack to Jenkins.
 
 Slack posts each slash command to this function's URL and wants an answer
 within 3 seconds. So the first call only checks the request (Slack's
@@ -36,6 +36,9 @@ CACHE_SECONDS = 5 * 60
 USER_AGENT = "release-demo-slack-handler/1.0 (+https://github.com/m-atek/release-demo)"
 
 NOT_A_RELEASER = "You can't start releases here."
+NOT_IN_THE_TEAM = "You can't ask here."
+ASK_USAGE = "Usage: /ask <question>, 3 to 300 characters, for example /ask How do I roll back orders-service?"
+ASK_JOB = "runbook-assistant-ask"
 STOPPED = "The release server is stopped. Start it with scripts/tools.sh up."
 STARTING = "The release server is starting. Try again when scripts/tools.sh up says Ready."
 JENKINS_PARAMETERS = ["slack/bot-token", "cloudflare/slack-handler-client-id",
@@ -65,7 +68,8 @@ def from_slack(event, context):
         return http(200)
 
     member_ids = [f"slack/member-id/{name}" for name in releasers()]
-    values = parameters("slack/signing-secret", *member_ids)
+    asker_ids = [f"slack/member-id/{name}" for name in askers()]
+    values = parameters("slack/signing-secret", *dict.fromkeys(member_ids + asker_ids))
     secret = values["slack/signing-secret"]
     if not secret:
         log("refused: slack/signing-secret isn't set in SSM")
@@ -76,6 +80,8 @@ def from_slack(event, context):
         return http(401)
 
     user, command = form.get("user_id", ""), form.get("command", "")
+    if command == "/ask":
+        return ask(form, user, {values[name] for name in asker_ids if values[name]}, context)
     if user not in {values[name] for name in member_ids if values[name]}:
         log(f"{user} {command}: not a releaser")
         return reply(NOT_A_RELEASER)
@@ -93,6 +99,23 @@ def from_slack(event, context):
     aws("lambda").invoke(FunctionName=context.invoked_function_arn, InvocationType="Event",
                          Payload=json.dumps({"work": work}).encode())
     log(f"{user} {command} {form.get('text', '')}: handed over")
+    return http(200)
+
+
+def ask(form, user, team, context):
+    """Demo 23's /ask: anyone in people.yaml with Slack may ask the runbook assistant,
+    not only releasers. The question goes to Jenkins as a parameter, never into a script."""
+    text = form.get("text", "").strip()
+    if user not in team:
+        log(f"{user} /ask: not in people.yaml")
+        return reply(NOT_IN_THE_TEAM)
+    if not 3 <= len(text) <= 300:
+        return reply(ASK_USAGE)
+    work = {"job": ASK_JOB, "params": {"QUESTION": text, "ASKED_BY": user},
+            "channel": form.get("channel_id", ""), "response_url": form.get("response_url", "")}
+    aws("lambda").invoke(FunctionName=context.invoked_function_arn, InvocationType="Event",
+                         Payload=json.dumps({"work": work}).encode())
+    log(f"{user} /ask: handed over")
     return http(200)
 
 
@@ -195,6 +218,8 @@ def tools_host_state():
 def status_message(work, line=":hourglass_flowing_sand:  Starting on Jenkins"):
     """The first version of the message the pipeline then rewrites at every stage."""
     p = work["params"]
+    if work["job"] == ASK_JOB:
+        return f"Question from <@{p['ASKED_BY']}>: {p['QUESTION']}\n\n{line}"
     if work["job"] == "release":
         option = f" · {p['OPTION']}" if p.get("OPTION") else ""
         head = f"*Release {p['SERVICE']}* · {p['JIRA_KEY']}{option} · requested by <@{p['REQUESTED_BY']}>"
@@ -299,6 +324,11 @@ def config():
 
 def releasers():
     return [name.strip() for name in os.environ.get("RELEASERS", "").split(",") if name.strip()]
+
+
+def askers():
+    """Everyone in people.yaml with Slack (ASKERS, from infra/slack_handler.tf): who may /ask."""
+    return [name.strip() for name in os.environ.get("ASKERS", "").split(",") if name.strip()]
 
 
 def parameters(*names):

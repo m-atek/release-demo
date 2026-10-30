@@ -47,6 +47,13 @@ def call() {
                         error "Staging check failed: staging is back on ${state('deploys.staging.previous_version')}."
                     }
                 }
+                if (cfg.scripts.evaluation) {
+                    // Demo 23: fixed questions against what staging now runs, before any change exists.
+                    // A failure leaves staging on this version, so the team can ask it what went wrong.
+                    releaseStage('Evaluation', environment: 'staging') {
+                        sh "${serviceConfig.command(cfg, 'evaluation')} ${service}"
+                    }
+                }
             } else {
                 // Production only (demos 1 and 3): the deploy script is never called for staging.
                 releaseStage.skip('Staging', "${service} has no staging environment.")

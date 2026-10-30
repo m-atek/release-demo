@@ -9,6 +9,8 @@ locals {
   # Only these people may start releases and rollbacks. Their Slack member ids
   # are in SSM, slack/member-id/<name>, like common.people() reads them.
   releasers = sort([for name, person in local.people : name if try(person.releaser, false)])
+  # Demo 23: everyone with Slack may /ask the runbook assistant.
+  askers = sort([for name, person in local.people : name if try(person.slack, false)])
 
   slack_handler_name = "release-demo-slack-handler"
   slack_handler_arn  = "arn:aws:lambda:${local.region}:${local.account_id}:function:${local.slack_handler_name}"
@@ -20,7 +22,7 @@ locals {
       "cloudflare/slack-handler-client-secret",
       "jenkins/release-bot-api-token",
     ],
-    [for name in local.releasers : "slack/member-id/${name}"],
+    [for name in distinct(concat(local.releasers, local.askers)) : "slack/member-id/${name}"],
   )
   slack_handler_config = {
     services = {
@@ -108,6 +110,7 @@ resource "aws_lambda_function" "slack_handler" {
   environment {
     variables = {
       RELEASERS     = join(",", local.releasers)
+      ASKERS        = join(",", local.askers)
       TOOLS_HOST_ID = aws_instance.tools_host.id
       JENKINS_URL   = "https://${local.tool_hostnames.jenkins.hostname}"
     }

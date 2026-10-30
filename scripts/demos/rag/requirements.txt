@@ -1,0 +1,8 @@
+# The evaluation's own environment (rag_env.py), pinned to releases at least two
+# weeks old on 30 October 2026. MLflow's Databricks extra brings the
+# Databricks SDK, through which MLflow logs to the workspace's experiment.
+mlflow[databricks]==3.17.1
+databricks-sdk==0.153.0
+anthropic==1.15.0
+boto3==1.43.113
+PyYAML==6.0.3
