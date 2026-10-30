@@ -1,0 +1,5 @@
+# What the approval bridge needs beyond Lambda's Python runtime: PyJWT signs
+# the GitHub App's JWT, with cryptography for RS256. bridge/build.sh installs
+# them for Lambda's platform, Python 3.13 on x86_64.
+PyJWT==2.15.1
+cryptography==50.0.2

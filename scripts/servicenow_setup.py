@@ -16,7 +16,9 @@ on the REST API for users without snc_basic_auth_api_access. Then it creates:
 - normal change approval by Change approvers only, once, at Assess. Out of the
   box the Normal Change Policy asks the assignment group at Assess, which
   would let Sam approve his own change, and a manager or the CAB at Authorize;
-- the standard change templates from services.yaml, pre-approved.
+- the standard change templates from services.yaml, pre-approved;
+- the business rule that tells the approval bridge when a change's approval
+  is decided, once the bridge is applied (scripts/approval_bridge.py).
 
 Every call detects the hibernation page: wake the instance at
 developer.servicenow.com.
@@ -32,6 +34,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import approval_bridge
 from common import fail, get_parameter, put_parameter, services, ssm_client
 
 SETUP_USER = "release-demo.setup"
@@ -349,6 +352,9 @@ def main():
     setup_templates(sn, groups, items)
     print("Pipeline access")
     prove_access(sn, ssm)
+    # Demos 14 and 22: runs on GitHub Actions and Azure Pipelines wait on the approval bridge.
+    print("Approval bridge")
+    approval_bridge.setup(sn, ssm)
     if args.test:
         print("Approval check")
         prove_approvals(sn, users, groups, items)
