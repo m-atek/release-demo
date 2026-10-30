@@ -159,3 +159,34 @@ def test_break_glass_kubeconfig_points_at_the_tunnel(tmp_path):
     assert config["contexts"][0]["context"]["namespace"] == "production"
     assert config["users"][0]["user"]["client-key-data"] == base64.b64encode(b"KEY").decode()
     assert break_glass.person("pieter")["kubernetes_user"] == "pieter-oncall"
+
+
+def test_up_prints_only_this_starts_boot_not_the_earlier_ones_in_the_log():
+    demo = load("argocd_demo", HERE / "demo.py")
+    started = 1793391480  # 2026-10-30T20:18:00Z, the Mac's clock when it started the host
+    old = ["== boot 2026-10-30T19:41:44Z", "No argocd-initial-admin-secret: the admin password is unknown",
+           "== boot done"]
+    new = ["== boot 2026-10-30T20:18:33Z", "k3s v1.37.1+k3s1, Argo CD v3.5.5", "Ready", "== boot done"]
+    assert demo.boot_section(old, started) == []  # the host is up, but this boot hasn't written yet
+    assert demo.boot_section(new, started) == new
+    assert demo.boot_section(new, 0) == new  # a host that ran already: its newest boot
+    assert demo.boot_section(["== boot 2026-10-30T20:17:30Z", "Ready"], started) != []  # a minute of skew
+    assert demo.boot_section([], started) == [] and demo.boot_section(["  apt output"], 0) == []
+
+
+def test_status_names_the_cause_argo_cd_wraps_not_its_wrapping():
+    import cluster
+
+    message = ("Failed to load target state: failed to generate manifest for source 1 of 1: rpc error: code = "
+               "Unknown desc = Manifest generation error (cached): failed to execute helm template command: failed "
+               "running helm: `helm template . --name-template catalog --namespace production --kube-version 1.37.1 "
+               "<api versions removed> --include-crds` failed exit status 1: Error: execution error at "
+               "(catalog/templates/deployment.yaml:39:52): image.digest is required: the image is pinned by digest"
+               "\n\nUse --debug flag to render out invalid YAML")
+    app = {"status": {"sync": {"status": "Unknown", "revision": "main"}, "health": {"status": "Healthy"},
+                      "conditions": [{"type": "ComparisonError", "message": message}]}}
+    line = cluster.app_line(app)
+    assert line.startswith("catalog-production: Unknown at main, Healthy (execution error at ")
+    assert "image.digest is required" in line and "--debug" not in line
+    assert cluster.cause("app path does not exist") == "app path does not exist"
+    assert cluster.cause("") == ""

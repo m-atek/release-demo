@@ -13,6 +13,7 @@ minutes; its disk costs about USD 1.76 a month while it exists.
 
 import argparse
 import base64
+import calendar
 import datetime
 import json
 import os
@@ -67,8 +68,22 @@ def apply_root():
         subprocess.run([str(TF), "apply", "-input=false", str(plan)], check=True)
 
 
+def boot_section(lines, started):
+    """This start's lines of the boot log: its newest boot, from the "== boot <UTC time>"
+    line on, when that boot began after started (less a minute of clock skew). The log
+    keeps every earlier boot, whose old errors would read as this one's; until this
+    boot writes its first line, the newest boot in it is an older one, so nothing."""
+    if not lines or not lines[0].startswith("== boot "):
+        return []
+    try:
+        at = calendar.timegm(time.strptime(lines[0].split()[2], "%Y-%m-%dT%H:%M:%SZ"))
+    except (IndexError, ValueError):
+        return []
+    return lines if at >= started - 60 else []
+
+
 def wait_ready(session, started):
-    """Until the host's boot writes cluster-ready, newer than this start. Prints the boot's progress."""
+    """Until the host's boot writes cluster-ready, newer than this start. Prints this boot's progress."""
     instance = host.instance(session)
     ssm = session.client("ssm")
     deadline, shown = time.monotonic() + BOOT_TIMEOUT, 0
@@ -79,8 +94,9 @@ def wait_ready(session, started):
                                     Parameters={"commands": [
                                         "cat /var/lib/release-demo/cluster-ready 2>/dev/null || echo 0; "
                                         "systemctl is-active release-demo-cluster-boot || true; "
-                                        "wc -l < /var/log/release-demo-cluster-boot.log 2>/dev/null || echo 0; "
-                                        "tail -n 200 /var/log/release-demo-cluster-boot.log 2>/dev/null"]})
+                                        # the newest boot's lines, back to its "== boot <time>" line
+                                        "tac /var/log/release-demo-cluster-boot.log 2>/dev/null | "
+                                        "sed '/^== boot [0-9]/q' | tac"]})
         except ssm.exceptions.InvalidInstanceId:
             continue  # the agent isn't online yet
         time.sleep(3)
@@ -89,13 +105,13 @@ def wait_ready(session, started):
         except ssm.exceptions.InvocationDoesNotExist:
             continue
         lines = reply["StandardOutputContent"].splitlines()
-        if len(lines) < 3:
+        if len(lines) < 2:
             continue
-        ready, boot, count, log = int(lines[0] or 0), lines[1], int(lines[2] or 0), lines[3:]
-        new = log[-max(0, count - shown):] if count > shown else []
-        for line in new:
+        ready, boot = int(lines[0] or 0), lines[1]
+        section = boot_section(lines[2:], started)
+        for line in section[shown:]:
             print(f"  {line}")
-        shown = max(shown, count)
+        shown = max(shown, len(section))
         if ready >= started - 60 and boot == "active":
             return
         if boot == "failed":

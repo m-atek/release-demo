@@ -309,6 +309,15 @@ def application():
     return json.loads(reply) if reply else None
 
 
+def cause(message, limit=160):
+    """A condition's cause in one line. Argo CD wraps a tool's error in its own words
+    first, which fill any short line: Helm's or Kustomize's own error, after the last
+    "Error: ", says why (for an empty digest, "image.digest is required")."""
+    lines = message.strip().splitlines()
+    first = lines[0] if lines else ""
+    return (first.rsplit("Error: ", 1)[-1] if "Error: " in first else first)[:limit]
+
+
 def app_line(app):
     if not app:
         return "catalog-production: not there yet"
@@ -318,7 +327,7 @@ def app_line(app):
     revision = (sync.get("revision") or "")[:7]
     conditions = [c.get("message", "") for c in status.get("conditions", [])]
     line = f"catalog-production: {sync.get('status', 'Unknown')} at {revision or '?'}, {health}"
-    return line + (f" ({conditions[0][:160]})" if conditions else "")
+    return line + (f" ({cause(conditions[0])})" if conditions else "")
 
 
 def memory():
