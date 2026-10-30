@@ -10,7 +10,7 @@ public struct Order: Decodable, Identifiable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, store, items, status
-        case totalEur = "total_eur"
+        case totalEur = "total"
     }
 }
 
