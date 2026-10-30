@@ -266,6 +266,9 @@ def test_the_image_pins_every_download_and_holds_no_credential():
         assert f"Bash({command}:*)" in settings["permissions"]["allow"]
     assert "Read" in settings["permissions"]["allow"]
     assert settings["permissions"]["defaultMode"] == "default"
+    # Claude Code 2.1.308 starts in its alternate-screen renderer, which hides agent.sh's
+    # role line for as long as it runs; the classic renderer keeps it on screen above.
+    assert settings["tui"] == "default"
     for path in agent.CONTEXT.rglob("*"):
         text = path.read_text(errors="replace")
         assert not re.search(r"sk-ant-|AKIA[0-9A-Z]{16}|BEGIN (RSA |OPENSSH )?PRIVATE KEY", text), path
