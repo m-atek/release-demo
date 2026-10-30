@@ -3,7 +3,8 @@
     idle_stop.py /run/release-demo/secrets
 
 Idle means: no running or queued Jenkins build, no job on the GitLab runner
-(demo 17), and cloudflared's request counter unchanged, so nobody used
+(demo 17), no job on the Azure Pipelines agent and no release run in progress
+(demo 22), and cloudflared's request counter unchanged, so nobody used
 Jenkins, JCR or Splunk through the tunnel. The host powers off; its shutdown
 behaviour is "stop", so the data stays.
 """
@@ -47,6 +48,25 @@ def gitlab_busy():
     return sum(float(line.rsplit(" ", 1)[1]) for line in lines if line.startswith("gitlab_runner_jobs{")) > 0
 
 
+def azure_busy():
+    """A job on the Azure Pipelines agent, or a release run in progress: a
+    stage waiting on its check runs nothing on the agent, so Azure DevOps is
+    asked, as Release Bot. Only while the agent runs, that is, while demo 22
+    is up; a question that fails counts as idle."""
+    if subprocess.run(["pgrep", "-f", "Agent.Worker"], capture_output=True).returncode == 0:
+        return True
+    if subprocess.run(["systemctl", "is-active", "--quiet", "release-demo-azure-agent"]).returncode != 0:
+        return False
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "demos" / "azure_devops"))
+        import release_bot
+
+        return release_bot.run_in_progress()
+    except (Exception, SystemExit) as error:
+        print(f"Azure DevOps not asked: {error.__class__.__name__}")
+        return False
+
+
 def tunnel_requests():
     try:
         with urllib.request.urlopen("http://127.0.0.1:2000/metrics", timeout=5) as response:
@@ -67,7 +87,7 @@ def main():
     state["last_active"] = max(state["last_active"], booted)
 
     requests = tunnel_requests()
-    if jenkins_busy(secrets) or gitlab_busy() or requests != state["requests"]:
+    if jenkins_busy(secrets) or gitlab_busy() or azure_busy() or requests != state["requests"]:
         state["last_active"] = now
     state["requests"] = requests
     STATE.parent.mkdir(parents=True, exist_ok=True)

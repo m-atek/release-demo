@@ -25,7 +25,9 @@ NOT_ON_HOST = {"cloudflare/api-token", "cloudflare/account-id", "cloudflare/zone
                "servicenow/sam-password", "servicenow/alex-password", "grafana/setup-token",
                # Demo 17: the GitLab account's token is the Mac's only (an IAM deny), and the
                # runner reads its own token from SSM once, so neither goes on the tmpfs.
-               "gitlab/api-token", "gitlab/runner-token", "gitlab/trigger-token"}
+               "gitlab/api-token", "gitlab/runner-token", "gitlab/trigger-token",
+               # Demo 22: the agent reads its one-day registration token from SSM itself.
+               "azure-devops/agent-registration-token"}
 
 
 def write(directory, name, value, uid=0, gid=JENKINS_GID, mode=0o640):
