@@ -24,9 +24,9 @@ import json
 import sys
 import time
 
-import host
-import trap
-from common import get_parameter, put_parameter, ssm_client
+import trap  # first: it puts scripts/ on the path, where host and common live
+import host  # noqa: E402
+from common import get_parameter, put_parameter, ssm_client  # noqa: E402
 
 ISSUES = {"s": ("Read today's orders from the database", "The page and /api/orders read the orders from Postgres."),
           "t": ("One name for the delivery estimate", "The orders table calls the delivery estimate "

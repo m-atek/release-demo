@@ -32,9 +32,9 @@ import json
 import sys
 import time
 
-import host
-import trap
-from common import get_parameter, github_api, github_app_token, http_get, service, ssm_client
+import trap  # first: it puts scripts/ on the path, where host and common live
+import host  # noqa: E402
+from common import get_parameter, github_api, github_app_token, http_get, service, ssm_client  # noqa: E402
 
 BASELINE = "1.6.0"
 STAGES = ["1.6.1", "1.6.2", "1.7.0", "1.7.1"]

@@ -168,3 +168,21 @@ def test_parameters_for_the_database_are_named_and_never_valued():
         assert catalog[name]["secure"] is True, name
     assert catalog["neon/api-key"]["source"] == "you"
     assert json.dumps(catalog).count("postgresql://") == 0
+
+
+@pytest.mark.parametrize("script", ["setup.py", "reset.py", "neon.py", "checks.py", "deploy.py", "migration_check.py",
+                                    "rollback_check.py"])
+def test_each_script_starts_as_its_callers_start_it(script):
+    # scripts/reset.py runs this folder's reset.py as a script of its own, and the
+    # tools host runs it with --here: with only this folder on the path, host and
+    # common must come through trap's path. Before, reset.py and setup.py stopped
+    # at "No module named 'host'".
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    folder = Path(__file__).resolve().parents[1]
+    result = subprocess.run([sys.executable, str(folder / script), "--help"], cwd=folder.parents[2],
+                            capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", "HOME": "/tmp"})
+    assert result.returncode == 0, result.stderr[-500:]
+    assert result.stdout.startswith("usage: ")
