@@ -34,7 +34,7 @@ resource "aws_vpc_security_group_ingress_rule" "argocd_from_tools_host" {
 # The one change to the platform: JCR on the tools host accepts this host's pulls.
 resource "aws_vpc_security_group_ingress_rule" "jcr_from_cluster_host" {
   security_group_id            = data.aws_security_group.tools_host.id
-  description                  = "JCR for the cluster host's image pulls (demo 19)"
+  description                  = "JCR for the cluster host image pulls (demo 19)"
   ip_protocol                  = "tcp"
   from_port                    = 8082
   to_port                      = 8082
