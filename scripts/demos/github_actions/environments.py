@@ -30,7 +30,14 @@ def wanted_environment():
             "can_admins_bypass": False}
 
 
+NOT_OFFERED = ("GitHub doesn't offer the GitHub App as a protection rule for {names} yet: the app needs "
+               "Deployments: Read and write and the event Deployment protection rule, both accepted on its "
+               "installation. python scripts/demos/github_actions/app_hook.py --check lists what is missing; "
+               "then run this again.")
+
+
 def apply(repo, app_id, names, account_id):
+    refused = []
     for name in names:
         gh_api("PUT", f"/repos/{repo}/environments/{name}", wanted_environment())
         print(f"{name}: no reviewers, no wait timer, deploys from custom branches, no admin bypass")
@@ -43,8 +50,13 @@ def apply(repo, app_id, names, account_id):
         if name in PROTECTED:
             rules = gh_api("GET", f"/repos/{repo}/environments/{name}/deployment_protection_rules")
             if not any(r["app"]["id"] == int(app_id) for r in rules["custom_deployment_protection_rules"]):
-                gh_api("POST", f"/repos/{repo}/environments/{name}/deployment_protection_rules", {"integration_id": int(app_id)})
-                print(f"{name}: the GitHub App is its protection rule")
+                # GitHub answers 404 until the app's settings include Deployments and the event: the rest goes on.
+                if gh_api("POST", f"/repos/{repo}/environments/{name}/deployment_protection_rules",
+                          {"integration_id": int(app_id)}, check=False) is None:
+                    refused.append(name)
+                    print(f"{name}: GitHub refused the GitHub App as its protection rule")
+                else:
+                    print(f"{name}: the GitHub App is its protection rule")
     current = gh_api("GET", f"/repos/{repo}/actions/variables/AWS_ACCOUNT_ID", check=False)
     if current is None:
         gh_api("POST", f"/repos/{repo}/actions/variables", {"name": "AWS_ACCOUNT_ID", "value": account_id})
@@ -52,6 +64,8 @@ def apply(repo, app_id, names, account_id):
     elif current["value"] != account_id:
         gh_api("PATCH", f"/repos/{repo}/actions/variables/AWS_ACCOUNT_ID", {"name": "AWS_ACCOUNT_ID", "value": account_id})
         print("variable AWS_ACCOUNT_ID: updated")
+    if refused:
+        fail(NOT_OFFERED.format(names=" and ".join(refused)))
 
 
 def problems(name, environment, rules, policies, app_id, secrets):
@@ -85,6 +99,9 @@ def check(repo, app_id, names):
     bad += count != 0
     variables = [v["name"] for v in gh_api("GET", f"/repos/{repo}/actions/variables")["variables"]]
     print(f"repository: variables {', '.join(variables) or 'none'}")
+    if "AWS_ACCOUNT_ID" not in variables:
+        print("  FAIL repository has no variable AWS_ACCOUNT_ID: release.yml's jobs name their AWS roles with it. Run --apply.")
+        bad += 1
     for name in names:
         environment = gh_api("GET", f"/repos/{repo}/environments/{name}", check=False)
         if environment is None:

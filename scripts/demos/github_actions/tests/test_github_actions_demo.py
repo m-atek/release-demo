@@ -208,3 +208,43 @@ def test_the_throwaway_workflow_comes_and_goes_with_your_gh_login_not_the_app(mo
 def test_the_demos_names():
     assert github_demo.TITLE == "ORD-12 Show the delivery estimate on the order page"
     assert github_demo.BRANCH == "demo-14/delivery-estimate"
+
+
+def test_apply_finishes_what_it_can_then_says_what_the_app_lacks(monkeypatch, capsys):
+    calls = []
+
+    def gh_api(method, path, body=None, check=True):
+        calls.append((method, path))
+        if path.endswith("/deployment-branch-policies") and method == "GET":
+            return {"branch_policies": [{"name": "main", "type": "branch"}]}
+        if path.endswith("/deployment_protection_rules"):
+            return {"custom_deployment_protection_rules": []} if method == "GET" else None  # GitHub's 404
+        if path.endswith("/variables/AWS_ACCOUNT_ID"):
+            return None
+        return {}
+
+    monkeypatch.setattr(environments, "gh_api", gh_api)
+    with pytest.raises(SystemExit):
+        environments.apply("owner/release-demo", APP_ID, ["staging", "production", "bridge-test"], "111122223333")
+    assert ("PUT", "/repos/owner/release-demo/environments/bridge-test") in calls
+    assert ("POST", "/repos/owner/release-demo/actions/variables") in calls
+    err = capsys.readouterr().err
+    assert "for production and bridge-test yet" in err and "app_hook.py --check" in err
+
+
+def test_the_check_wants_the_account_id_variable(monkeypatch, capsys):
+    def gh_api(method, path, body=None, check=True):
+        if path.endswith("/actions/secrets") or path.endswith("/secrets"):
+            return {"total_count": 0}
+        if path.endswith("/actions/variables"):
+            return {"variables": []}
+        if path.endswith("/deployment_protection_rules"):
+            return {"custom_deployment_protection_rules": RULE if "staging" not in path else []}
+        if path.endswith("/deployment-branch-policies"):
+            return {"branch_policies": MAIN}
+        return environment()
+
+    monkeypatch.setattr(environments, "gh_api", gh_api)
+    assert environments.check("owner/release-demo", APP_ID, ["staging", "production"]) == 1
+    out = capsys.readouterr().out
+    assert "no variable AWS_ACCOUNT_ID" in out and out.endswith("1 thing(s) to fix.\n")
