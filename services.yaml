@@ -463,7 +463,7 @@ quote-service:
 
   # One image for all three clouds, built by scripts/demos/clouds/build.py.
   image:
-    base: public.ecr.aws/docker/library/python:3.13.17-alpine3.24@sha256:fa0bb0d0cd7c7d6cef30a69094d32ac2b71c7304c87c6107fec100e1ee4eda02
+    base: public.ecr.aws/docker/library/python:3.13.18-alpine3.24@sha256:7984cf56ceaddebe4fefeb75d64000b9f45d8b77b11a09b24524da6cdc3af0c8
     adapter: public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0@sha256:17cfd08eff1dfea3f6a9a1e9c65fdac80aa4919b6085e746615530f43f57d2f1
     port: 8080
 
