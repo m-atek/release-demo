@@ -60,7 +60,7 @@ def other_builds():
                    if not any(part in (build.get("url") or "") for part in OURS)})
 
 
-def wait_until_quiet(busy=0.2, seconds=10, wait_minutes=45, builds=other_builds, read=STAT.read_text,
+def wait_until_quiet(busy=0.2, seconds=10, wait_minutes=120, builds=other_builds, read=STAT.read_text,
                      sleep=time.sleep, clock=time.monotonic, out=print):
     """Returns (seconds waited, quiet at the end). Two quiet samples in a row end the wait."""
     started = clock()
@@ -90,7 +90,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--busy", type=float, default=0.2, help="the busy share of all CPUs that counts as quiet")
     parser.add_argument("--seconds", type=int, default=10, help="the length of one sample")
-    parser.add_argument("--wait-minutes", type=int, default=45)
+    parser.add_argument("--wait-minutes", type=int, default=120)
     parser.add_argument("--report", type=int, metavar="SAMPLES", help="print this many samples and stop")
     args = parser.parse_args()
     if args.report:

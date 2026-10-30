@@ -244,4 +244,4 @@ def test_without_jenkins_the_cpus_decide():
 
 def test_the_night_has_room_for_its_waits():
     night = (ROOT / "jenkins" / "jobs" / "flaky-night.Jenkinsfile").read_text()
-    assert "timeout(time: 12, unit: 'HOURS')" in night
+    assert "timeout(time: 14, unit: 'HOURS')" in night

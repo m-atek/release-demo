@@ -9,7 +9,7 @@
 pipeline {
     agent none
     options {
-        timeout(time: 12, unit: 'HOURS')
+        timeout(time: 14, unit: 'HOURS')
     }
     stages {
         stage('Who asked') {
