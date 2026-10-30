@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+import ci_env
+
 ROOT = Path(__file__).resolve().parents[1]
 SSM_PREFIX = "/release-demo/"
 REGION = "eu-west-1"
@@ -90,11 +92,14 @@ def put_parameter(client, name, value, secure=True):
 
 def get_parameter(client, name):
     try:
-        value = client.get_parameter(Name=SSM_PREFIX + name, WithDecryption=True)["Parameter"]["Value"]
+        parameter = client.get_parameter(Name=SSM_PREFIX + name, WithDecryption=True)["Parameter"]
     except client.exceptions.ParameterNotFound:
         fail(f"{SSM_PREFIX}{name} doesn't exist yet. Apply infra/ first: scripts/tf.sh apply")
+    value = parameter["Value"]
     if value == "unset":
         fail(f"{SSM_PREFIX}{name} isn't set yet. See: python scripts/secrets.py")
+    if parameter.get("Type") == "SecureString":
+        ci_env.mask(value)  # GitHub Actions' logs are public: masked before anything can print it
     return value
 
 

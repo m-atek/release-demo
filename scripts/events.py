@@ -97,8 +97,11 @@ def main():
     args = parser.parse_args()
 
     ssm = ssm_client()
-    body = event(args, run_state.load())
-    print(f"event {args.stage} {args.result}: Splunk {to_splunk(ssm, body)}, Grafana {to_loki(ssm, body)}")
+    state = run_state.load()
+    body = event(args, state)
+    # Splunk's collector listens on the tools host only: a run elsewhere (GitHub Actions) sends to Grafana alone.
+    splunk = to_splunk(ssm, body) if state.get("ci", {}).get("splunk", True) else "skipped"
+    print(f"event {args.stage} {args.result}: Splunk {splunk}, Grafana {to_loki(ssm, body)}")
 
 
 if __name__ == "__main__":

@@ -50,14 +50,19 @@ def links(state, ssm):
     change = state.get("change", {}).get("number", "")
     search = urllib.parse.quote(f'search sourcetype="release:event" change="{change}" '
                                 '| table _time stage result seconds environment | sort _time')
-    return {
+    # The run's link under its CI's name (scripts/ci_env.py), "Jenkins build" for Jenkins.
+    ci = state.get("ci", {})
+    found = {
         "Jira": f"{jira}/browse/{state['jira_key']}",
-        "Jenkins build": state["build"].get("url", ""),
+        ci.get("name") or "Jenkins build": state["build"].get("url", ""),
         "Package": f"https://artifactory-demo.es.nl/artifactory/{state['package']['path']} (SHA-256 {state['package']['sha256']})",
         "SonarQube": f"https://sonarcloud.io/dashboard?id={config['sonarqube']['project_key']}&organization={org}",
         "Splunk": f"https://splunk-demo.es.nl/en-US/app/search/search?q={search}",
         "Grafana": get_parameter(ssm, "grafana/stack-url").rstrip("/") + "/d/release-demo",
     }
+    if ci.get("splunk") is False:
+        del found["Splunk"]  # a CI outside the tools host sends its events to Grafana alone
+    return found
 
 
 def stage_summary(state):
@@ -101,6 +106,11 @@ def open_change(sn, ssm, state):
         "start_date": run_state.iso(started).replace("T", " ").rstrip("Z"),
         "end_date": run_state.iso(started + 1800).replace("T", " ").rstrip("Z"),
     }
+    # The approval bridge (bridge/handler.py) finds the change of a GitHub Actions or Azure Pipelines run by this.
+    if state.get("ci", {}).get("correlation_id"):
+        fields["correlation_id"] = state["ci"]["correlation_id"]
+    if state.get("ci", {}).get("origin"):
+        fields["description"] = fields["description"].replace("started from Slack", f"started {state['ci']['origin']}")
     extras = state.get("change_extras") or {}
     fields.update(extras.get("fields") or {})
     if state.get("change_details"):

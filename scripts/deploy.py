@@ -8,7 +8,9 @@ Downloads the package from JFrog Container Registry, checks its SHA-256
 against the one recorded at build, updates the function, publishes a Lambda
 version whose description is the app version, and moves the alias live.
 Runs on the tools host with the service's deploy role, which can change only
-that service's functions.
+that service's functions. On GitHub Actions it deploys with the job's own
+role instead, which can change only the environment the job deploys to
+(infra/demos/14-github-actions).
 """
 
 import argparse
@@ -20,6 +22,7 @@ import time
 import urllib.request
 import zipfile
 
+import ci_env
 import run_state
 from common import aws_session, fail, get_parameter, service, ssm_client
 from publish import download
@@ -27,6 +30,8 @@ from publish import download
 
 def lambda_client(service_name):
     session = aws_session()
+    if ci_env.current().job_role:
+        return session.client("lambda")
     account = session.client("sts").get_caller_identity()["Account"]
     role = f"arn:aws:iam::{account}:role/release-demo-deploy-{service_name}"
     creds = session.client("sts").assume_role(RoleArn=role, RoleSessionName=f"release-demo-{int(time.time())}")["Credentials"]
