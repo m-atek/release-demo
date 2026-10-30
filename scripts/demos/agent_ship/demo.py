@@ -98,7 +98,8 @@ def status():
     tag = image_tag()
     code, out, _ = host.Host().shell(
         f"docker run --rm --entrypoint claude {tag} --version 2>/dev/null || echo 'not built'\n"
-        "curl -s -u \"admin:$(cat /run/release-demo/secrets/jenkins-admin-password)\" "
+        # -g: without it curl reads tree=lastBuild[...] as a URL pattern and fetches nothing.
+        "curl -s -g -u \"admin:$(cat /run/release-demo/secrets/jenkins-admin-password)\" "
         "'http://localhost:8080/job/pull-requests/api/json?tree=lastBuild[displayName,result,description]'")
     lines = out.strip().splitlines()
     print(f"  image {tag} on the tools host: Claude Code {lines[0] if lines else 'unknown'}")
