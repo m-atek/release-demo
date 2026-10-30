@@ -25,6 +25,10 @@ class MemoryServiceNow(setup.ServiceNow):
         terms = [term for term in (query or "").split("^") if term and not term.startswith("ORDERBY") and term != "EQ"]
         def matches(row):
             for term in terms:
+                if term.endswith("ISEMPTY"):
+                    if row.get(term.removesuffix("ISEMPTY")):
+                        return False
+                    continue
                 if ">" in term:
                     field, value = term.split(">", 1)
                     if not int(row.get(field, 0)) > int(value):
@@ -48,6 +52,9 @@ class MemoryServiceNow(setup.ServiceNow):
             return next(row for row in self.tables[table] if row["sys_id"] == parts[1])
         if method == "POST":
             row = {**body, "sys_id": f"{table}-{next(self.ids)}"}
+            if table == "sys_ui_element":  # as on a PDI: at the end of its section, whatever position it was given
+                section = [r for r in self.tables.get(table, []) if r["sys_ui_section"] == body["sys_ui_section"]]
+                row["position"] = str(max((int(r["position"]) for r in section), default=-1) + 1)
             self.tables.setdefault(table, []).append(row)
             return row
         row = next(row for row in self.tables[table] if row["sys_id"] == parts[1])
@@ -113,6 +120,31 @@ def test_cost_review_is_a_choice_right_under_type():
     assert positions == {"number": 0, "type": 1, "u_cost_review": 2, "state": 3}
     setup.setup_cost_field(sn)
     assert len(sn.tables["sys_ui_element"]) == 4 and len(sn.tables["sys_choice"]) == 2
+
+
+def test_the_code_fields_go_right_below_requested_by_and_a_misplaced_field_moves_back():
+    elements = ["number", "requested_by", "category", ".split", "type", "state", ".end_split", "description",
+                "u_cost_review", "u_code_written_by", "u_code_reviewed_by"]  # the PDI's layout on 30 October
+    sn = MemoryServiceNow({
+        "sys_ui_section": [{"sys_id": "main", "name": "change_request", "view": "Default view", "caption": ""}],
+        "sys_ui_element": [{"sys_id": f"e-{name}", "sys_ui_section": "main", "element": name, "position": str(index)}
+                           for index, name in enumerate(elements)]})
+    setup.place_on_form(sn)
+    setup.arrange(sn, "main", "type", [setup.COST_FIELD])
+    order = [row["element"] for row in sorted(sn.tables["sys_ui_element"], key=lambda row: int(row["position"]))]
+    assert order == ["number", "requested_by", "u_code_written_by", "u_code_reviewed_by", "category", ".split", "type",
+                     "u_cost_review", "state", ".end_split", "description"]
+    assert setup.arrange(sn, "main", "requested_by", list(setup.CHANGE_FIELDS)) == 0
+
+
+def test_the_code_fields_are_made_and_placed_on_a_new_form():
+    sn = MemoryServiceNow({
+        "sys_ui_section": [{"sys_id": "main", "name": "change_request", "view": "Default view", "caption": ""}],
+        "sys_ui_element": [{"sys_id": f"e-{name}", "sys_ui_section": "main", "element": name, "position": str(index)}
+                           for index, name in enumerate(["number", "requested_by", "category"])]})
+    setup.setup_change_fields(sn)
+    order = [row["element"] for row in sorted(sn.tables["sys_ui_element"], key=lambda row: int(row["position"]))]
+    assert order == ["number", "requested_by", "u_code_written_by", "u_code_reviewed_by", "category"]
 
 
 class FakeSsm:

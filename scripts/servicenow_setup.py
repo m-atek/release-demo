@@ -344,16 +344,29 @@ def place_next_to_type(sn):
         print("  form: Type isn't on the default view here; put Cost review under it by hand (Configure, Form Layout)")
         return
     section, position = raw(rows[0]["sys_ui_section"]), int(rows[0]["position"])
-    if sn.find("sys_ui_element", f"sys_ui_section={section}^element={COST_FIELD}", "sys_id"):
-        print("  form: Cost review is on the form already")
-        return
-    below = sn.call("GET", "/api/now/table/sys_ui_element", sysparm_fields="sys_id,position",
-                    sysparm_query=f"sys_ui_section={section}^position>{position}^ORDERBYDESCposition") or []
-    for element in below:
-        sn.call("PATCH", f"/api/now/table/sys_ui_element/{element['sys_id']}", {"position": str(int(element["position"]) + 1)})
-    sn.call("POST", "/api/now/table/sys_ui_element", {"sys_ui_section": section, "element": COST_FIELD,
-                                                      "position": str(position + 1)})
-    print("  form: Cost review placed under Type")
+    if not sn.find("sys_ui_element", f"sys_ui_section={section}^element={COST_FIELD}", "sys_id"):
+        sn.call("POST", "/api/now/table/sys_ui_element", {"sys_ui_section": section, "element": COST_FIELD,
+                                                          "position": str(position + 1)})
+    moved = arrange(sn, section, "type", [COST_FIELD])
+    print(f"  form: Cost review placed under Type ({moved} positions set)" if moved else "  form: Cost review is under Type")
+
+
+def arrange(sn, section, anchor, elements):
+    """Put elements right after anchor in a form section, in this order, and return how many
+    positions it set. A PDI puts an element made through the Table API at the end of its
+    section, whatever position it is given, so every position that differs is set again."""
+    rows = sorted(sn.call("GET", "/api/now/table/sys_ui_element", sysparm_query=f"sys_ui_section={section}",
+                          sysparm_fields="sys_id,element,position", sysparm_limit=500) or [],
+                  key=lambda row: int(row["position"]))
+    order = [row for row in rows if row["element"] not in elements]
+    at = next(index for index, row in enumerate(order) if row["element"] == anchor) + 1
+    order[at:at] = [next(row for row in rows if row["element"] == element) for element in elements]
+    moved = 0
+    for position, row in enumerate(order):
+        if int(row["position"]) != position:
+            sn.call("PATCH", f"/api/now/table/sys_ui_element/{row['sys_id']}", {"position": str(position)})
+            moved += 1
+    return moved
 
 
 def setup_cost_decision(sn, policy_id, assess, definition_id):
@@ -486,7 +499,7 @@ def setup_change_fields(sn):
 
 
 def place_on_form(sn):
-    """On the default view, right after Requested by: the elements after it move down two places."""
+    """On the default view, right after Requested by."""
     section = sn.find("sys_ui_section", "name=change_request^view=Default view^captionISEMPTY", "sys_id")
     if section is None:
         print(f"  form: no default section found. {FORM_STEPS}")
@@ -494,21 +507,16 @@ def place_on_form(sn):
     rows = sn.call("GET", "/api/now/table/sys_ui_element", sysparm_query=f"sys_ui_section={section['sys_id']}",
                    sysparm_fields="sys_id,element,position", sysparm_limit=500) or []
     placed = {row["element"] for row in rows}
-    if set(CHANGE_FIELDS) <= placed:
-        print("  form: Code written by and Code reviewed by are on it")
-        return
-    anchor = next((row for row in rows if row["element"] == "requested_by"), None)
-    if anchor is None:
+    if "requested_by" not in placed:
         print(f"  form: Requested by isn't on the default form. {FORM_STEPS}")
         return
-    after = int(anchor["position"])
-    for row in rows:
-        if int(row["position"]) > after:
-            sn.call("PATCH", f"/api/now/table/sys_ui_element/{row['sys_id']}", {"position": str(int(row["position"]) + 2)})
-    for offset, element in enumerate(CHANGE_FIELDS, 1):
-        sn.call("POST", "/api/now/table/sys_ui_element", {"sys_ui_section": section["sys_id"], "element": element,
-                                                          "position": str(after + offset)})
-    print("  form: Code written by and Code reviewed by placed below Requested by")
+    for element in CHANGE_FIELDS:
+        if element not in placed:
+            sn.call("POST", "/api/now/table/sys_ui_element", {"sys_ui_section": section["sys_id"], "element": element,
+                                                              "position": str(len(rows))})
+    moved = arrange(sn, section["sys_id"], "requested_by", list(CHANGE_FIELDS))
+    print(f"  form: Code written by and Code reviewed by placed below Requested by ({moved} positions set)" if moved
+          else "  form: Code written by and Code reviewed by are below Requested by")
 
 
 def prove_access(sn, ssm):
