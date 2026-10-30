@@ -44,6 +44,14 @@ resource "aws_appconfig_hosted_configuration_version" "first" {
     flags   = { for name, flag in local.declared : name => { name = name, description = flag.description } }
     values  = { for name, flag in local.declared : name => { enabled = false } }
   })
+
+  # AppConfig stores a feature flags version with _createdAt and _updatedAt
+  # added to each flag, so the content read back never equals this one. Without
+  # this, every plan replaces the version and both first deployments, and an
+  # apply would deploy the flags again (a change in ServiceNow, a Slack line).
+  lifecycle {
+    ignore_changes = [content]
+  }
 }
 
 resource "aws_appconfig_deployment_strategy" "flags" {
