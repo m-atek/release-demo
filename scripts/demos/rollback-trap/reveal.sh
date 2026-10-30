@@ -15,9 +15,13 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 export AWS_PROFILE=${AWS_PROFILE:-release-demo} AWS_REGION=${AWS_REGION:-eu-west-1}
-TAG=orders-service-v1.6.0
-LOG=/aws/lambda/orders-service-production
-ERRORS="--since 30m --format short --filter-pattern database"
+# The commands below read these when eval runs them, so the screen shows $TAG.
+# shellcheck disable=SC2034
+{
+  TAG=orders-service-v1.6.0
+  LOG=/aws/lambda/orders-service-production
+  ERRORS="--since 30m --format short --filter-pattern database"
+}
 
 case ${1:-} in
   a) commands=("cat migrations/0003_rename_delivery_days.sql"
