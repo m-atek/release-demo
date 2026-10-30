@@ -144,9 +144,10 @@ resource "aws_instance" "tools_host" {
   tags = { Name = "release-demo-tools-host", Role = "tools-host" }
 
   # New AMIs and boot changes don't replace the host: boot.sh comes from git
-  # on every start.
+  # on every start. Neither does the public address a stopped host gives up:
+  # AWS then reports none, which would force a new instance at the next apply.
   lifecycle {
-    ignore_changes = [ami, user_data]
+    ignore_changes = [ami, user_data, associate_public_ip_address]
   }
 }
 
