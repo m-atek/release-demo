@@ -19,7 +19,7 @@ permissions on the installation (Install App, the gear, Review request).
 """
 
 import argparse
-import secrets
+import os
 import sys
 import urllib.error
 
@@ -46,7 +46,7 @@ def webhook_secret(ssm):
     except ssm.exceptions.ParameterNotFound:
         fail("bridge/github-webhook-secret doesn't exist yet. Apply infra/ (scripts/tf.sh apply) first.")
     if value == "unset":
-        value = secrets.token_hex(32)
+        value = os.urandom(32).hex()  # not the secrets module: scripts/secrets.py shadows it
         put_parameter(ssm, "bridge/github-webhook-secret", value)
         print("bridge/github-webhook-secret: generated and stored in SSM")
     return value
