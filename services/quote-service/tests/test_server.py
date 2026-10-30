@@ -31,11 +31,11 @@ def test_page_shows_service_cloud_version_and_platform():
     assert "Azure Container Apps, westeurope" in body
 
 
-def test_page_quotes_in_eur():
+def test_page_quotes_in_eur_and_gbp():
     body = request("/")[2]
-    assert "Quotes in EUR" in body
+    assert "Quotes in EUR and GBP" in body
+    assert "103.20 GBP" in body
     assert "120.00 EUR" in body
-    assert "GBP" not in body
 
 
 def test_page_escapes_environment_name(monkeypatch):
@@ -43,10 +43,11 @@ def test_page_escapes_environment_name(monkeypatch):
     assert "<staging>" not in request("/")[2]
 
 
-def test_no_quotes_in_gbp_yet():
-    status, _, body = request("/api/quote?amount=100&currency=GBP")
-    assert status == 400
-    assert "Quotes come in EUR" in body["error"]
+def test_quote_in_gbp():
+    status, _, body = request("/api/quote?amount=100&currency=gbp")
+    assert status == 200
+    assert body["currency"] == "GBP"
+    assert body["total"] == 86.0
 
 
 def test_quote_in_eur_is_valid_for_30_days():

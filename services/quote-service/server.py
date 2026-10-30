@@ -8,7 +8,7 @@ Standard library only.
 
     GET /                                      the page
     GET /health                                status, version, cloud, environment
-    GET /api/quote?amount=120.00&currency=EUR  one quote
+    GET /api/quote?amount=120.00&currency=GBP  one quote
 
 Settings come from the environment: SERVICE_CLOUD (aws, azure or gcp),
 SERVICE_ENVIRONMENT, SERVICE_REGION and PORT.
@@ -31,8 +31,9 @@ CLOUDS = {
     "gcp": ("Google Cloud", "Google Cloud Run"),
     "local": ("Local", "this computer"),
 }
-# EUR is the stores' own currency.
-CURRENCIES = ("EUR",)
+# EUR is the stores' own currency. ORD-60: quotes in GBP too, for the UK stores.
+CURRENCIES = ("EUR", "GBP")
+GBP_PER_EUR = 0.86
 QUOTE_DAYS = 30
 EXAMPLE_BASKET_EUR = 120.00
 
@@ -81,6 +82,8 @@ def rate(currency):
     """How many units of the currency one euro buys."""
     if currency == "EUR":
         return 1.0
+    if currency == "GBP":
+        return GBP_PER_EUR
     raise QuoteError(400, f"No quotes in {currency}. Quotes come in {' and '.join(CURRENCIES)}.")
 
 
