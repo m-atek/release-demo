@@ -21,6 +21,8 @@ locals {
       "jenkins/release-bot-api-token",
     ],
     [for name in local.releasers : "slack/member-id/${name}"],
+    # Demo 17: which CI /release starts (ci/<service>), and GitLab's trigger.
+    ["ci/*", "gitlab/project-id", "gitlab/trigger-token"],
   )
   slack_handler_config = {
     services = {

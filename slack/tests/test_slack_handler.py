@@ -435,3 +435,90 @@ def test_an_access_redirect_is_not_followed(monkeypatch):
         server.shutdown()
     assert status == 302
     assert "refused release-bot (302)" in app.jenkins_problem(status)
+
+
+# Demo 17: /release on GitLab CI, switched by ci/<service> in SSM
+
+GITLAB_SSM = {"gitlab/project-id": "60000001", "gitlab/trigger-token": "test-trigger-token"}
+
+
+class GitLab:
+    """GitLab's trigger API, faked: it answers 201 unless told otherwise."""
+
+    def __init__(self, status=201):
+        self.status, self.requests = status, []
+
+    def open(self, request, timeout):
+        self.requests.append(request)
+        if self.status != 201:
+            raise urllib.error.HTTPError(request.full_url, self.status, "error", {}, io.BytesIO(b"{}"))
+        return Response(status=201, read=lambda: b'{"web_url": "https://gitlab.com/demo/release-demo/-/pipelines/7"}')
+
+
+@pytest.fixture
+def gitlab(aws, monkeypatch):
+    aws.ssm.values.update(GITLAB_SSM)
+    aws.ssm.values["ci/orders-service"] = "gitlab-ci"
+    fake = GitLab()
+    monkeypatch.setattr(app, "GITLAB_OPENER", fake)
+    return fake
+
+
+@pytest.mark.parametrize("value, ci", [(None, "jenkins"), ("unset", "jenkins"), ("jenkins", "jenkins"),
+                                       ("gitlab-ci", "gitlab-ci"), ("something-else", "jenkins")])
+def test_the_ci_switch_defaults_to_jenkins(aws, value, ci):
+    if value is not None:
+        aws.ssm.values["ci/orders-service"] = value
+    assert app.ci_for("orders-service") == ci
+
+
+def test_the_switch_is_read_afresh_for_every_release(aws):
+    aws.ssm.values["ci/orders-service"] = "gitlab-ci"
+    assert app.ci_for("orders-service") == "gitlab-ci"
+    aws.ssm.values["ci/orders-service"] = "jenkins"
+    assert app.ci_for("orders-service") == "jenkins"
+
+
+def test_on_gitlab_the_message_says_so_and_the_trigger_gets_the_jenkins_jobs_parameters(aws, calls, gitlab):
+    app.handler({"work": release_work()}, CONTEXT)
+    (message, _), = calls.slack_calls("chat.postMessage")
+    assert message["text"].endswith(":hourglass_flowing_sand:  Starting on GitLab CI")
+    request, = gitlab.requests
+    assert request.full_url == "https://gitlab.com/api/v4/projects/60000001/trigger/pipeline"
+    assert request.get_method() == "POST" and request.get_header("User-agent") == app.USER_AGENT
+    assert dict(urllib.parse.parse_qsl(request.data.decode(), keep_blank_values=True)) == {
+        "token": "test-trigger-token", "ref": "main", "inputs[service]": "orders-service", "inputs[jira_key]": "ORD-12",
+        "inputs[option]": "", "inputs[requested_by]": SAM, "inputs[requested_at]": "1793000000",
+        "inputs[slack_channel]": "C0RELEASES", "inputs[slack_ts]": "1793000000.000100"}
+    assert calls.jenkins == [] and calls.slack_calls("chat.update") == []
+
+
+@pytest.mark.parametrize("status", [400, 404, 403])
+def test_a_refusal_from_gitlab_turns_the_message_into_its_status(aws, calls, gitlab, status):
+    gitlab.status = status
+    app.handler({"work": release_work()}, CONTEXT)
+    (update, _), = calls.slack_calls("chat.update")
+    assert update["text"].endswith(f":x:  Not started: GitLab answered {status}.")
+
+
+def test_rollback_still_goes_to_jenkins_with_the_switch_on_gitlab(aws, calls, gitlab):
+    work = {"job": "rollback", "channel": "C0RELEASES", "response_url": RESPONSE_URL,
+            "params": {"SERVICE": "orders-service", "REQUESTED_BY": SAM, "REQUESTED_AT": "1793000000"}}
+    app.handler({"work": work}, CONTEXT)
+    assert gitlab.requests == []
+    request, = calls.jenkins
+    assert request.full_url.endswith("/job/rollback/buildWithParameters?delay=0sec")
+
+
+def test_with_the_tools_host_stopped_nothing_starts_on_gitlab_either(aws, calls, gitlab):
+    aws.ec2.state = "stopped"
+    app.handler({"work": release_work()}, CONTEXT)
+    assert calls.replies() == ["The release server is stopped. Start it with scripts/tools.sh up."]
+    assert gitlab.requests == [] and calls.slack_calls("chat.postMessage") == []
+
+
+def test_gitlab_not_set_up_is_named_and_nothing_starts(aws, calls, gitlab):
+    aws.ssm.values["gitlab/trigger-token"] = "unset"
+    app.handler({"work": release_work()}, CONTEXT)
+    assert calls.replies() == ["GitLab CI isn't set up yet: gitlab/trigger-token isn't in SSM."]
+    assert gitlab.requests == []

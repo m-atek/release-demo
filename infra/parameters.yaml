@@ -473,3 +473,28 @@ github/run-state-key:
   source: terraform
   secure: true
   help: "The key release.yml's jobs encrypt the run state they pass on with, since a public repository's artifacts are public. Written by infra/demos/14-github-actions."
+
+# Demo 17, GitLab CI: the pipeline (.gitlab-ci.yml) on GitLab.com Free, its
+# runner on the tools host, and which CI /release starts.
+gitlab/api-token:
+  source: you
+  secure: true
+  help: "GitLab.com, signed in as the demo-only account: avatar, Edit profile, Personal access tokens, Add new token, scopes api and create_runner, expiring within a year. Only the Mac's scripts read it; the tools host may not."
+  pattern: "^glpat-"
+  hint: "a GitLab personal access token starts with glpat-"
+gitlab/project-id:
+  source: script
+  secure: false
+  help: "The GitLab project's numeric id. Written by scripts/demos/gitlab_port/setup.py."
+gitlab/trigger-token:
+  source: script
+  secure: true
+  help: "The project's pipeline trigger token, which the Slack handler starts the pipeline with. Written by scripts/demos/gitlab_port/setup.py."
+gitlab/runner-token:
+  source: script
+  secure: true
+  help: "The project runner tools-host's authentication token, which it registers with once. Written by scripts/demos/gitlab_port/setup.py."
+ci/orders-service:
+  source: script
+  secure: false
+  help: "Which CI /release orders-service starts: jenkins (the default, and whenever another CI's demo is down) or gitlab-ci. Set by scripts/demo.sh up and down."

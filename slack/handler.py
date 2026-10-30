@@ -8,6 +8,12 @@ again, asynchronously, for the slow part: is the tools host running, post the
 status message the pipeline keeps up to date, and start the Jenkins job as
 release-bot through Cloudflare Access.
 
+A release may run on another CI instead (demo 17): ci/<service> in SSM,
+read afresh for every /release, names it. jenkins is the default and the
+value whenever another CI's demo is down; with gitlab-ci the handler starts
+the GitLab pipeline with the project's trigger token. /rollback always goes
+to Jenkins.
+
 Standard library and boto3 only, both in Lambda's Python runtime, so the
 package is this file plus config.json, which Terraform writes from
 services.yaml. The environment (infra/slack_handler.tf) sets RELEASERS, the
@@ -40,6 +46,12 @@ STOPPED = "The release server is stopped. Start it with scripts/tools.sh up."
 STARTING = "The release server is starting. Try again when scripts/tools.sh up says Ready."
 JENKINS_PARAMETERS = ["slack/bot-token", "cloudflare/slack-handler-client-id",
                       "cloudflare/slack-handler-client-secret", "jenkins/release-bot-api-token"]
+# Demo 17: GitLab CI starts the release on the runner on the tools host.
+GITLAB_API = "https://gitlab.com/api/v4"
+GITLAB_PARAMETERS = ["slack/bot-token", "gitlab/project-id", "gitlab/trigger-token"]
+# The Jenkins job's parameters, as .gitlab-ci.yml's inputs.
+GITLAB_INPUTS = {"SERVICE": "service", "JIRA_KEY": "jira_key", "OPTION": "option", "REQUESTED_BY": "requested_by",
+                 "SLACK_CHANNEL": "slack_channel", "SLACK_TS": "slack_ts", "REQUESTED_AT": "requested_at"}
 
 
 class Refusal(Exception):
@@ -154,6 +166,9 @@ def run(work):
             log(f"tools host is {state}")
             say(work["response_url"], STARTING if state == "pending" else STOPPED)
             return
+        if work["job"] == "release" and ci_for(work["params"]["SERVICE"]) == "gitlab-ci":
+            run_on_gitlab(work)
+            return
         secrets = parameters(*JENKINS_PARAMETERS)
         missing = [name for name in JENKINS_PARAMETERS if not secrets[name]]
         if missing:
@@ -190,6 +205,65 @@ def run(work):
 def tools_host_state():
     reply = aws("ec2").describe_instances(InstanceIds=[os.environ["TOOLS_HOST_ID"]])
     return reply["Reservations"][0]["Instances"][0]["State"]["Name"]
+
+
+# Demo 17: the same release on GitLab CI.
+
+def ci_for(service):
+    """Which CI /release starts for a service: ci/<service> in SSM, read afresh
+    every time, so a switch takes effect at once. jenkins when it is unset."""
+    reply = aws("ssm").get_parameters(Names=[f"{SSM_PREFIX}ci/{service}"], WithDecryption=True)
+    value = next((p["Value"] for p in reply["Parameters"]), "")
+    return value if value in ("jenkins", "gitlab-ci") else "jenkins"
+
+
+def run_on_gitlab(work):
+    """The status message, then the pipeline, with the trigger token: the
+    Jenkins job's parameters as its inputs, from main."""
+    secrets = parameters(*GITLAB_PARAMETERS)
+    missing = [name for name in GITLAB_PARAMETERS if not secrets[name]]
+    if missing:
+        log(f"not set in SSM: {', '.join(missing)}")
+        say(work["response_url"], f"GitLab CI isn't set up yet: {', '.join(missing)} isn't in SSM.")
+        return
+    token = secrets["slack/bot-token"]
+    starting = ":hourglass_flowing_sand:  Starting on GitLab CI"
+    posted = slack(token, "chat.postMessage", channel=work["channel"], text=status_message(work, starting),
+                   unfurl_links=False)
+    if not posted.get("ok"):
+        log(f"chat.postMessage: {posted.get('error')}")
+        say(work["response_url"], f"I can't post in this channel ({posted.get('error')}). "
+                                  "Invite me with /invite @Release Bot, or use #releases.")
+        return
+    params = {**work["params"], "SLACK_CHANNEL": posted["channel"], "SLACK_TS": posted["ts"]}
+    status, where = trigger_gitlab(secrets, params)
+    if status == 201:
+        log(f"GitLab pipeline started: {where}")
+        return
+    log(f"GitLab answered {status or where}")
+    slack(token, "chat.update", channel=posted["channel"], ts=posted["ts"],
+          text=status_message(work, f":x:  Not started: GitLab answered {status or 'nothing'}."))
+
+
+def trigger_gitlab(secrets, params):
+    """POST /projects/:id/trigger/pipeline. Returns (HTTP status, the pipeline's
+    page or error); status 0 when nothing answered."""
+    form = {"token": secrets["gitlab/trigger-token"], "ref": "main",
+            **{f"inputs[{GITLAB_INPUTS[k]}]": v for k, v in params.items() if k in GITLAB_INPUTS}}
+    request = urllib.request.Request(
+        f"{GITLAB_API}/projects/{secrets['gitlab/project-id']}/trigger/pipeline", method="POST",
+        data=urllib.parse.urlencode(form).encode(),
+        headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": USER_AGENT})
+    try:
+        with GITLAB_OPENER.open(request, timeout=10) as response:
+            return response.status, json.loads(response.read() or b"{}").get("web_url", "")
+    except urllib.error.HTTPError as error:
+        return error.code, ""
+    except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+        return 0, str(getattr(error, "reason", error))
+
+
+GITLAB_OPENER = urllib.request.build_opener()
 
 
 def status_message(work, line=":hourglass_flowing_sand:  Starting on Jenkins"):
