@@ -18,6 +18,9 @@ claude:
     # For prompts up to 100,000 tokens, which every call here is. Above that
     # Haiku 5.5 costs 0.50 in, 2.50 out, 0.05 cache reads and 0.625 cache writes.
     claude-haiku-5-5: {input: 0.10, output: 0.50, cache_read: 0.01, cache_write: 0.125}
+    # Where the server-side fallback ("default") may send a declined request.
+    claude-opus-5: {input: 5.00, output: 25.00, cache_read: 0.50, cache_write: 6.25}
+    claude-opus-4-8: {input: 5.00, output: 25.00, cache_read: 0.50, cache_write: 6.25}
 
 aws:
   region: eu-west-1

@@ -282,10 +282,14 @@ def check(state, settings, reader, fetch=get, logs_wait=LOG_WAIT_SECONDS, jcr_to
         started = clock()
         answers = sample(url, plan["path"], plan["page_views"], plan["concurrency"], fetch)
         record["sample"]["seconds"] = round(clock() - started, 1)
-        failed = [answer for answer in answers if answer["status"] != 200 or not answer["request_id"]]
-        record["sample"]["failed"] = failed
+        failed = [answer for answer in answers if answer["status"] != 200]
+        unnamed = [answer for answer in answers if answer["status"] == 200 and not answer["request_id"]]
+        record["sample"]["failed"] = failed + unnamed
         if len(failed) > FAILED_SHARE * len(answers):
             raise NoMeasurement(f"staging answered {len(failed)} of {len(answers)} page views with an error")
+        if len(unnamed) > FAILED_SHARE * len(answers):
+            raise NoMeasurement(f"{len(unnamed)} of {len(answers)} answers carried no x-amzn-RequestId")
+        failed += unnamed
         ok = [answer["request_id"] for answer in answers if answer not in failed]
         logs = reader.client("logs")
         group = f"/aws/lambda/{staging['function']}"

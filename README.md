@@ -406,6 +406,29 @@ scripts/demo.sh status windows         # what each server runs, the drift, the c
 
 `scripts/demo.sh down windows` stops the fleet; only its disks cost, about USD 0.52 a day. `scripts/demos/windows/down.sh --destroy` removes it with Terraform.
 
+## Demo on a call: Claude's notes, checked by script (videos 12 and 13)
+
+Two notes Claude writes for people, each checked by a script before anyone sees it, and neither in the release's path: the ai-notes job starts with `wait: false` and `propagate: false`, and nothing waits for it.
+
+- On a normal change, a work note by the ServiceNow user AI Notes: what changes, the four results with their sources, and "Not checked by the pipeline", where `scripts/evidence.py` names each setting the new code requires that an environment doesn't define. `scripts/demos/ai_notes/verify.py` withholds the whole summary if one number, setting name, file or version isn't in the evidence. evidence.json is attached either way.
+- After a failed production check, once the rollback is recorded everywhere, the likely cause in the release message's Slack thread, as a work note and as a Jira comment: up to three quotes from the failed version's CloudWatch lines, the diff and the settings, each kept only if it matches a line of its source word for word. It never suggests a fix.
+
+Once, after the merge: the evidence reader role (`scripts/demos/ai_notes/tf.sh apply`, IAM, so you apply it), `scripts/tf.sh apply` for the new parameter names and the tools host's statements, `scripts/secrets.py set anthropic/api-key` if it isn't set, and `.venv/bin/python scripts/servicenow_setup.py` for the user ai.notes. The tools host installs the SDK from `requirements-dev.txt` at its next boot, and Jenkins makes the job ai-notes at its next configuration reload.
+
+Before each call or take: `scripts/reset.py ai-notes`: production on 1.4.0 from a real release, 1.4.1 staged, the switch on. Then `/release orders-service ORD-13` for the summary and Alex's rejection, and `/release orders-service ORD-13 standard` for the rollback and the likely cause.
+
+After it: `scripts/demos/ai_notes/switch.py off` (the main reset does it too). Off, nothing new runs anywhere. Each call's tokens and cost go to Splunk and Grafana Logs, priced from `scripts/demos/ai_notes/prices.yaml`; a summary costs about USD 0.13, a likely cause about USD 0.18.
+
+## Demo on a call: a cost check in staging (video 18)
+
+orders-service 1.7.0 asks Claude for a delivery message per order on every page view; 1.7.1 asks once per order with a smaller model and keeps the messages in DynamoDB. With the cost check on, the stage Cost check after Check staging sends 50 page views to staging, reads what each used from Lambda's REPORT lines and the function's own lines, prices it with `prices.yaml` and projects the month at the expected volume in `services.yaml`. Above the limit, the change becomes a normal one that only Cost approvers decide: Fiona Finance. It uses no model, and never stops or approves a release itself.
+
+Once, after the merge: `scripts/demo.sh up cost-gate` (the tables, each function's policy and the 30-second timeout; you apply, plans shown first), `scripts/secrets.py set servicenow/fiona-password`, then `.venv/bin/python scripts/demos/cost_gate/setup.py`, which makes the Jira issue and versions and runs `servicenow_setup.py --test`, and `.venv/bin/python scripts/grafana_setup.py` for the row "orders-service cost".
+
+Before each call or take: re-read the pricing pages and update `prices.yaml`'s date, `scripts/demo.sh check cost-gate`, then `scripts/reset.py cost-gate`: production on 1.4.0 from a real release with its cost check, 1.7.0 staged, the switch on. A 1.7.0 take costs about USD 1 in Claude calls.
+
+After it: `scripts/demo.sh down cost-gate` turns the switch off; the tables stay, at cents a month.
+
 ## Layout
 
 ```

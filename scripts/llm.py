@@ -85,7 +85,8 @@ def price_of(model):
     """USD per million tokens for a model, or LLMError if prices.yaml has none."""
     table = prices()["claude"]["per_million_tokens"]
     # A dated model name, should the API answer with one, takes its family's price.
-    known = model if model in table else next((name for name in table if (model or "").startswith(name)), None)
+    known = model if model in table else max((name for name in table if (model or "").startswith(name)), key=len,
+                                             default=None)
     if known is None:
         raise LLMError(f"prices.yaml has no price for {model}")
     return table[known]
@@ -177,10 +178,16 @@ def api_key(ssm=None):
     return value
 
 
-def client_for(key):
-    import anthropic
+def sdk():
+    try:
+        import anthropic
+    except ImportError as error:  # a host that hasn't installed requirements-dev.txt since this was added
+        raise LLMError("the Claude SDK isn't installed here (requirements-dev.txt)") from error
+    return anthropic
 
-    return anthropic.Anthropic(api_key=key, timeout=TIMEOUT_SECONDS, max_retries=RETRIES)
+
+def client_for(key):
+    return sdk().Anthropic(api_key=key, timeout=TIMEOUT_SECONDS, max_retries=RETRIES)
 
 
 def request_body(model, effort, system, schema, text, max_tokens=MAX_TOKENS):
@@ -206,8 +213,7 @@ def log_request(body):
 
 def send(client, body):
     """One request, with the SDK's errors turned into reasons a note can give."""
-    import anthropic
-
+    anthropic = sdk()
     try:
         return client.beta.messages.create(**body)
     except anthropic.APITimeoutError as error:
