@@ -39,6 +39,8 @@ def test_the_train_leaves_only_at_a_departure_on_a_weekday():
     assert train.departure(at(3, 13, 30), ["14:00"]) is None
     assert train.departure(at(7, 14, 0), ["14:00"]) is None           # a Saturday
     assert train.departure(at(3, 10, 30), ["10:30", "14:00"]) == "10:30"
+    assert train.departure(at(3, 14, 3), ["14:00"]) == "14:00"       # a run that waited for an executor
+    assert train.departure(at(3, 14, 10), ["14:00"]) is None
 
 
 def test_an_unfinished_issue_rides_behind_a_flag_that_is_off():

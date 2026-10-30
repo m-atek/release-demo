@@ -50,12 +50,20 @@ def now_in_amsterdam():
         return datetime.datetime.now(datetime.timezone.utc)
 
 
+LATE_MINUTES = 10  # a timer run that waited for an executor still takes its departure
+
+
 def departure(moment, departures):
-    """The departure this moment is, "14:00", or None: weekdays only, to the minute."""
+    """The departure this timer run is for, "14:00", or None: weekdays only, from the
+    departure's minute to LATE_MINUTES after it."""
     if moment.weekday() >= 5:
         return None
-    here = moment.strftime("%H:%M")
-    return here if here in departures else None
+    for planned in departures:
+        hour, minute = (int(part) for part in planned.split(":"))
+        start = moment.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if start <= moment < start + datetime.timedelta(minutes=LATE_MINUTES):
+            return planned
+    return None
 
 
 def note(text):
