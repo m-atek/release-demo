@@ -5,6 +5,7 @@
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -58,6 +59,17 @@ def test_the_bridges_headers_are_the_ones_it_reads():
 def test_release_bot_may_queue_read_and_cancel_the_pipeline_and_nothing_else():
     assert setup.RELEASE_BOT_RIGHTS == 1 + 128 + 512 + 1024  # view, queue and stop builds, view the pipeline
 
+
+
+def test_the_slack_handler_may_read_the_names_it_reads_and_not_the_agents_token():
+    tf = (HERE.parents[2] / "infra" / "demos" / "22-azure-devops-approval" / "main.tf").read_text()
+    statement = tf[tf.index('"ReadAzureDevOpsNames"'):]
+    granted = {f"azure-devops/{name}" for name in
+               re.findall(r'"([^"]+)"', re.search(r"for name in \[([^\]]*)\]", statement).group(1))}
+    handler = (HERE.parents[2] / "slack" / "handler.py").read_text()
+    names = re.search(r"AZURE_PARAMETERS = \[(.*?)\]", handler, re.S).group(1)
+    assert granted == {name for name in re.findall(r'"([^"]+)"', names) if name.startswith("azure-devops/")}
+    assert "azure-devops/agent-registration-token" not in granted and "azure-devops/*" not in statement
 
 class Response(SimpleNamespace):
     def __enter__(self):

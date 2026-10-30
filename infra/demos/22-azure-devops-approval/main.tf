@@ -105,13 +105,15 @@ data "aws_iam_policy_document" "release_bot" {
     }
   }
   # The Slack handler reads only its own parameters: the names of the organization,
-  # the pipeline, the tenant and Release Bot. The tools host reads them already.
+  # the pipeline, the tenant and Release Bot, and not the agent's registration
+  # token next to them. The tools host reads them already.
   dynamic "statement" {
     for_each = each.key == "slack-handler" ? [1] : []
     content {
-      sid       = "ReadAzureDevOpsNames"
-      actions   = ["ssm:GetParameter", "ssm:GetParameters"]
-      resources = ["arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/azure-devops/*"]
+      sid     = "ReadAzureDevOpsNames"
+      actions = ["ssm:GetParameter", "ssm:GetParameters"]
+      resources = [for name in ["organization", "pipeline-id", "tenant-id", "release-bot-client-id"] :
+      "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/azure-devops/${name}"]
     }
   }
 }
