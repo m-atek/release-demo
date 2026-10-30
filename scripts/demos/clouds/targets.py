@@ -166,11 +166,17 @@ class AzureContainerApp(Target):
         return call(method, f"{self.base}{path}{separator}{self.API}", self.login.access["arm"], body)
 
     def _wait(self, headers, what, timeout=300):
-        """Follow an Azure long-running operation to its end."""
+        """Follow an Azure long-running operation to its end. A deployer allowed only on its own
+        app may not read the operation; then it watches the app until it settles."""
         poll = headers.get("Azure-AsyncOperation") or headers.get("Location")
         deadline = time.monotonic() + timeout
         while poll and time.monotonic() < deadline:
-            status, _, reply = call("GET", poll, self.login.access["arm"])
+            try:
+                status, _, reply = call("GET", poll, self.login.access["arm"])
+            except CloudError as error:
+                if error.status not in (401, 403):
+                    raise
+                return self._settle(what, deadline)
             state = reply.get("status") if isinstance(reply, dict) else None
             if state in ("Succeeded", None) and status == 200:
                 return
@@ -179,6 +185,18 @@ class AzureContainerApp(Target):
             time.sleep(3)
         if poll:
             raise CloudError(f"Azure didn't {what} within {timeout} seconds")
+
+    def _settle(self, what, deadline):
+        """Wait for the app's own provisioning state to come back to Succeeded."""
+        time.sleep(3)
+        while time.monotonic() < deadline:
+            state = self.app().get("provisioningState")
+            if state == "Succeeded":
+                return
+            if state in ("Failed", "Canceled"):
+                raise CloudError(f"Azure couldn't {what}: the app's provisioning {state.lower()}")
+            time.sleep(3)
+        raise CloudError(f"Azure didn't {what} in time")
 
     def app(self):
         return self._call("GET")[2]["properties"]
@@ -278,16 +296,23 @@ class GoogleCloudRun(Target):
         return Revision(name, version_in(name))
 
     def _update(self, service, what, timeout=300):
+        """Patch the service, then watch the service itself until it settles. The deployer may
+        read its own service but not the project's operations, so the operation isn't polled."""
         body = {k: v for k, v in service.items() if k not in self.OUTPUT_ONLY}
         operation = self._call("PATCH", self.base, body)[2]
+        patched = int((operation.get("metadata") or {}).get("generation") or 0)
         deadline = time.monotonic() + timeout
-        while not operation.get("done"):
+        while True:
+            current = self.service()
+            generation = max(patched, int(current.get("generation") or 0))
+            if not current.get("reconciling") and int(current.get("observedGeneration") or 0) >= generation:
+                condition = current.get("terminalCondition") or {}
+                if condition.get("state") == "CONDITION_FAILED":
+                    raise CloudError(f"Google Cloud couldn't {what}: {condition.get('message', 'no reason given')}")
+                return
             if time.monotonic() > deadline:
                 raise CloudError(f"Google Cloud didn't {what} within {timeout} seconds")
             time.sleep(3)
-            operation = self._call("GET", f"https://run.googleapis.com/v2/{operation['name']}")[2]
-        if operation.get("error"):
-            raise CloudError(f"Google Cloud couldn't {what}: {operation['error'].get('message')}")
 
     def deploy(self, digest, version, label):
         service = self.service()
