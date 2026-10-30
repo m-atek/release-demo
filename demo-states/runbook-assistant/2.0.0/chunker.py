@@ -19,12 +19,12 @@ import re
 import sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
 FIELDS = ["id", "title", "kind", "status", "updated", "replaced_by"]
 
 
-def settings(path=HERE / "chunking.yaml"):
-    """chunking.yaml: flat "key: value" lines, read without a YAML library."""
+def settings(path):
+    """chunking.yaml: flat "key: value" lines, read without a YAML library. The job
+    passes the volume's copy: Databricks runs this file without __file__."""
     found = {}
     for line in Path(path).read_text().splitlines():
         line = line.split(" #", 1)[0].strip()

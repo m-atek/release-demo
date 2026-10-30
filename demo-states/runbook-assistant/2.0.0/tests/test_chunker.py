@@ -49,3 +49,12 @@ def test_past_changes_become_pages_of_kind_change():
     pages = [p for p in chunker.pages(CORPUS) if p["kind"] == "change"]
     assert len(pages) == len(changes)
     assert all(p["status"] == "current" for p in pages)
+
+
+def test_it_runs_as_databricks_runs_a_jobs_python_file_without_file():
+    """A serverless job's Python file is compiled and run in a notebook kernel, where
+    __file__ isn't defined: nothing at import may need it."""
+    path = HERE / "chunker.py"
+    namespace = {"__name__": "chunker_as_a_job"}
+    exec(compile(path.read_text(), str(path), "exec"), namespace)
+    assert namespace["settings"](HERE / "chunking.yaml") == chunker.settings(HERE / "chunking.yaml")
