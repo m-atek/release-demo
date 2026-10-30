@@ -1,11 +1,11 @@
 """Video 9's coding agent: Claude Code in its container, on its own AWS role.
 
-    python scripts/demos/agent-access/agent.py run          agent.sh: a fresh workspace and session, then Claude Code
-    python scripts/demos/agent-access/agent.py check        check.sh: acceptance checks 1 to 5, no model call
-    python scripts/demos/agent-access/agent.py check --expired   check 8, in the container check started an hour earlier
-    python scripts/demos/agent-access/agent.py build        build the image (scripts/demo.sh up agent-access)
-    python scripts/demos/agent-access/agent.py status       the role, the image's Claude Code, production's live alias
-    python scripts/demos/agent-access/agent.py trail        CloudTrail's record of the session coding-agent's refused calls
+    python scripts/demos/agent-access/agent_access.py run          agent.sh: a fresh workspace and session, then Claude Code
+    python scripts/demos/agent-access/agent_access.py check        check.sh: acceptance checks 1 to 5, no model call
+    python scripts/demos/agent-access/agent_access.py check --expired   check 8, in the container check started an hour earlier
+    python scripts/demos/agent-access/agent_access.py build        build the image (scripts/demo.sh up agent-access)
+    python scripts/demos/agent-access/agent_access.py status       the role, the image's Claude Code, production's live alias
+    python scripts/demos/agent-access/agent_access.py trail        CloudTrail's record of the session coding-agent's refused calls
 
 Runs on the Mac with your Identity Center session. Each run makes a fresh
 workspace in a temporary folder: orders-service 1.4.0 from demo-states at

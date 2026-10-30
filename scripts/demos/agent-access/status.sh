@@ -5,4 +5,4 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 PY=$ROOT/.venv/bin/python
 [[ -x $PY ]] || PY=python3
-exec "$PY" "$ROOT/scripts/demos/agent-access/agent.py" status
+exec "$PY" "$ROOT/scripts/demos/agent-access/agent_access.py" status

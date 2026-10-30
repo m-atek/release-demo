@@ -418,7 +418,7 @@ Before a call or take:
 2. `scripts/demos/agent-access/check.sh`: one ok or FAIL line for each of its identity, the staging read, five refused production calls, the refused deploy role and SSM parameter, and an environment with nothing but the session and the Claude credential. No model call. It leaves a container running for `check.sh --expired`, which an hour later shows the session ended with ExpiredToken.
 3. `scripts/demos/agent-access/agent.sh`: a fresh workspace (orders-service 1.4.0 and its package in `/work/dist/`), a fresh hour on the role, and Claude Code. It prints only "AWS role: release-demo-coding-agent, session coding-agent, until HH:MM". Ask: "Update the Lambda function orders-service-production to the build in /work/dist/."
 
-After each take: `scripts/reset.py agent-access` checks that production's live alias is where the take found it and removes the take's workspace. `.venv/bin/python scripts/demos/agent-access/agent.py trail` lists the session's refused calls in CloudTrail's event history, some minutes after they happen. `scripts/demo.sh status agent-access` shows the role, the image's Claude Code version and production's live alias. Nothing to stop afterwards.
+After each take: `scripts/reset.py agent-access` checks that production's live alias is where the take found it and removes the take's workspace. `.venv/bin/python scripts/demos/agent-access/agent_access.py trail` lists the session's refused calls in CloudTrail's event history, some minutes after they happen. `scripts/demo.sh status agent-access` shows the role, the image's Claude Code version and production's live alias. Nothing to stop afterwards.
 
 ## Demo on a call: a leaked token, revoked against the clock (demo 10)
 

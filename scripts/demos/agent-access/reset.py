@@ -22,7 +22,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-import agent  # noqa: E402
+import agent_access as agent  # noqa: E402
 
 
 def workspaces(base=None):

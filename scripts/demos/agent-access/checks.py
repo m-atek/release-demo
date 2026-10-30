@@ -2,7 +2,7 @@
 
     python3 /checks/checks.py --account <id> --allowed-env NAME,NAME,...
 
-Run by check.sh (agent.py check), never by hand. One line per check, ok or
+Run by check.sh (agent_access.py check), never by hand. One line per check, ok or
 FAIL, and no model call. Every call on production is one that changes
 nothing even if AWS were to allow it: a dry run, a version or alias call
 with a revision that can't match, an invoke of type DryRun. Values are never

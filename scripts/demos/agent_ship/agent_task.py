@@ -42,10 +42,10 @@ PROMPT = ("You are working in a clone of github.com/{repository} at /work/releas
 
 
 def agent_access():
-    """Video 9's agent.py: the image, the role and the role line come from there."""
+    """Video 9's agent_access.py: the image, the role and the role line come from there."""
     import importlib.util
 
-    spec = importlib.util.spec_from_file_location("agent_access", AGENT_ACCESS / "agent.py")
+    spec = importlib.util.spec_from_file_location("agent_access", AGENT_ACCESS / "agent_access.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

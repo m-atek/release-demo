@@ -17,8 +17,22 @@ from pathlib import Path
 
 import pytest
 
-import agent
-import reset
+import agent_access as agent
+
+HERE = Path(__file__).resolve().parents[1]
+
+
+def load_reset():
+    """agent-access/reset.py by its path: scripts/reset.py and other demos' share the name."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("agent_access_reset", HERE / "reset.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+reset = load_reset()
 
 ROOT = agent.ROOT
 CHECKS = Path(agent.__file__).with_name("checks.py")
