@@ -47,7 +47,7 @@ coding-agent:
   agent: true
   slack: false
   servicenow_user: null       # no ServiceNow account at all
-  github_login: release-demo-coding-agent-m-atek[bot]
+  github_login: release-demo-agent[bot]
 
 pieter:
   # Demo 19: on call, with break-glass access to production on the cluster

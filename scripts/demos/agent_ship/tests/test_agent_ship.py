@@ -182,7 +182,7 @@ class FakeGitHub:
         return [r for r in self.reviews.get(pull["number"], []) if r["commit_id"] == pull["head"]["sha"]]
 
 
-AGENT = "release-demo-coding-agent-m-atek[bot]"
+AGENT = "release-demo-agent[bot]"
 
 
 def pull(number, login=AGENT, head="h5"):
