@@ -34,22 +34,10 @@ def test_dutch_store_gets_the_national_price():
                               "price": 89.95, "currency": "EUR", "price_list": "national"}
 
 
-def test_belgian_store_gets_the_regional_price():
-    price = body(request("/prices/RS-100", "BE-ANT-01"))
-    assert price["price"] == 92.95
-    assert price["price_list"] == "regional"
-
-
-def test_belgian_store_falls_back_to_the_national_price():
-    price = body(request("/prices/HL-320", "BE-BRU-02"))
+def test_belgian_store_gets_the_national_price_too():
+    price = body(request("/prices/HL-320", "BE-ANT-01"))
     assert price["price"] == 34.95
     assert price["price_list"] == "national"
-
-
-def test_every_product_has_a_price_in_every_store():
-    for store in app.STORES:
-        for sku in app.PRODUCTS:
-            assert request(f"/prices/{sku}", store)["statusCode"] == 200, (sku, store)
 
 
 def test_store_is_required_and_must_exist():

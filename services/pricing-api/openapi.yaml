@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: pricing-api
-  version: 2.1.2
+  version: 2.0.4
   description: >-
     Shelf prices for every store. Called by orders-service and the store app.
     Demo system, not a client's. The release pipeline compares this file with
