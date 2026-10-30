@@ -133,17 +133,18 @@ class FakeSsm:
 def test_ai_notes_gets_a_generated_password_and_fiona_waits_for_hers(monkeypatch):
     ssm = FakeSsm({"servicenow/sam-password": "Sam#pass1", "servicenow/alex-password": "Alex#pass1",
                    "servicenow/release-pipeline-password": "Rp#pass1", "servicenow/ai-notes-password": "unset",
-                   "servicenow/fiona-password": "unset"})
+                   "servicenow/fiona-password": "unset", "servicenow/ines-password": "Ines#pass1",
+                   "servicenow/evidence-reader-password": "unset"})
     stored = {}
     monkeypatch.setattr(setup, "put_parameter", lambda client, name, value, secure=True: stored.update({name: value}))
     sn = MemoryServiceNow({"sys_user_role": [{"sys_id": f"role-{name}", "name": name} for name in
-                                             ("itil", "approver_user", "snc_basic_auth_api_access")]})
+                                             ("itil", "approver_user", "snc_basic_auth_api_access", "snc_read_only")]})
     monkeypatch.setattr(sn, "find", lambda table, query, fields=None: (
         {"sys_id": "u", "user_password": "set"} if table == "sys_user" and query.startswith("sys_id=")
         else setup.ServiceNow.find(sn, table, query, fields)))
     users = setup.setup_people(sn, ssm)
     assert "ai.notes" in users and "fiona.finance" not in users
-    assert list(stored) == ["servicenow/ai-notes-password"]
+    assert list(stored) == ["servicenow/ai-notes-password", "servicenow/evidence-reader-password"]
     notes_user = sn.rows("sys_user", "user_name=ai.notes")[0]
     assert notes_user["web_service_access_only"] == "true" and notes_user["first_name"] == "AI"
     roles = {setup.raw(row["role"]) for row in sn.tables["sys_user_has_role"] if row["user"] == notes_user["sys_id"]}
