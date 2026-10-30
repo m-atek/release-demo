@@ -18,13 +18,14 @@ node('tools-host') {
     '''
     currentBuild.displayName = "#${env.BUILD_NUMBER} orders-service ${params.VERSION} tests"
     currentBuild.description = "Commit ${env.GIT_COMMIT.substring(0, 7)}${params.COMMIT ? ', from flaky-night' : ''}"
-    if (params.COMMIT) {
-        // flaky-night's runs time a test on this host: each waits until no other
-        // build keeps its CPUs busy, as when calibrate.py measured the limit.
-        sh 'python3 scripts/demos/flaky/quiet.py'
-    }
     Map cfg = serviceConfig('orders-service')
     testsStage('Build') { toolchain.build('orders-service', 'CI', cfg) }
+    if (params.COMMIT) {
+        // flaky-night's runs time a test on this host: each waits, between the
+        // stages and right before the test, until no other build keeps the CPUs
+        // busy, as when calibrate.py measured the limit.
+        sh 'python3 scripts/demos/flaky/quiet.py'
+    }
     testsStage('Test') {
         toolchain.test('orders-service', cfg, 'tests')
         if (fileExists('.release/reports/unstable.txt')) {

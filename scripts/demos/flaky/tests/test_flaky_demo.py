@@ -172,9 +172,10 @@ def test_the_jobs_are_defined_as_the_spec_names_them():
     assert 'currentBuild.displayName = "#${env.BUILD_NUMBER} orders-service ${params.VERSION} tests"' in tests
     assert "toolchain.test('orders-service', cfg, 'tests')" in tests and "unstable(" in tests
     assert "stage.py orders-service \"$VERSION\" --no-commit" in tests
-    # A night's run waits for a quiet host before Build, outside the stages the video shows.
+    # A night's run waits for a quiet host between Build and Test, outside the stages the video shows.
     gate = tests.index("python3 scripts/demos/flaky/quiet.py")
-    assert tests.index("if (params.COMMIT) {\n        // flaky-night") < gate < tests.index("testsStage('Build')")
+    assert tests.index("testsStage('Build')") < tests.index("if (params.COMMIT) {\n        // flaky-night") < gate
+    assert gate < tests.index("testsStage('Test')")
     night = (ROOT / "jenkins" / "jobs" / "flaky-night.Jenkinsfile").read_text()
     assert "started[0].userId != 'admin'" in night and "string(name: 'COMMIT', value: commit)" in night
     assert "stringParam('RUNS', '80'" in jobs and "stringParam('PAUSE_SECONDS', '60'" in jobs

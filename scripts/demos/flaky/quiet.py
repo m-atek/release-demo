@@ -7,8 +7,8 @@ calibrate.py measured the timing test's limit while nothing else ran on the
 tools host. A night run that times it while another build keeps the CPUs busy
 (the ci job after every push to main, a release, another demo's script) runs
 it about a third slower and fails it twice, and the dashboard would count that
-as a real failure for 14 days. So each run that flaky-night starts first waits
-here, before its Build stage, until no other Jenkins build runs (the timer job
+as a real failure for 14 days. So each run that flaky-night starts waits here,
+between its Build and Test stages, until no other Jenkins build runs (the timer job
 pull-requests aside) and the host's CPUs, all of them together, are less than
 --busy busy in two samples of --seconds in a row. After --wait-minutes it goes
 on anyway and says so. If Jenkins doesn't answer, the CPUs decide alone.
