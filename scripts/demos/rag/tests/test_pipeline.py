@@ -180,5 +180,7 @@ def test_the_evaluation_runs_after_check_staging_for_this_service_only():
     stages = run_state.stages_for(service("runbook-assistant"))
     assert stages.index("Evaluation") == stages.index("Check staging") + 1
     assert stages.index("Change") == stages.index("Evaluation") + 1
-    assert len(run_state.stages_for(service("orders-service"))) == 12
+    # Only this service: orders-service's own stages (12, or 14 while video 20 stages a version with a
+    # migration) never gain it.
+    assert "Evaluation" not in run_state.stages_for(service("orders-service"))
     assert "Evaluation" not in run_state.stages_for(service("pricing-api"))
