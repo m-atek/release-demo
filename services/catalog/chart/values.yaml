@@ -9,11 +9,8 @@ replicas: 2
 # The Service's port on the node, so the pipeline's check reaches it.
 nodePort: null
 
-# Environment variables for the service, merged with the environment's
-# settings. The catalog database comes with the chart, so no environment can
-# miss it: 1.9.0 had it only where staging set it.
-settings:
-  CATALOG_DB_URL: file:///app/data/catalog.json
+# Environment variables for the service, merged with the environment's settings.
+settings: {}
 
 resources:
   requests: { cpu: 10m, memory: 32Mi }
