@@ -88,8 +88,7 @@ def on_host(with_github):
                 *[f for n in names for f in ("-e", n)], "-v", f"{clone}:/work/release-demo",
                 "-v", f"{HERE / 'container_checks.py'}:/checks/container_checks.py:ro",
                 "-v", f"{access.HERE / 'checks.py'}:/checks/checks.py:ro", "-w", "/work/release-demo", image]
-        account = subprocess.run(["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"],
-                                 capture_output=True, text=True).stdout.strip()
+        account = access.account()  # boto3: the tools host has no AWS CLI
         allowed = sorted({*names, *access.RUNTIME, *access.image_env_names(image)})
         nine = subprocess.run([*base, "python3", "/checks/checks.py", "--account", account,
                                "--allowed-env", ",".join(allowed)], env=env)
