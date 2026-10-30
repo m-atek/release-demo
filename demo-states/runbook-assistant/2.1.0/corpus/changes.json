@@ -1,1 +1,212 @@
-[]
+[
+  {
+    "number": "CHG0030009",
+    "short_description": "Release orders-service 1.4.1 (ORD-13)",
+    "close_code": "unsuccessful",
+    "close_notes": "Production check failed. The pipeline rolled back to 1.4.0 automatically in 4s and checked it. Total time: 2m 27s.",
+    "closed": "2026-10-27T16:22:26Z"
+  },
+  {
+    "number": "CHG0030013",
+    "short_description": "Release store-sync 3.3.0 (ORD-31)",
+    "close_code": "successful_issues",
+    "close_notes": "4 of 6 servers on 3.3.0. STORE-004 failed (UploadEndpoint is not set in C:\\StoreSync\\store.config) and is on 3.2.0. Not started: STORE-006. The wave stopped at STORE-004; the servers not on 3.3.0 are upgraded with /release store-sync ORD-31 resume. Total time: 1m 35s. Build:",
+    "closed": "2026-10-27T17:13:58Z"
+  },
+  {
+    "number": "CHG0030015",
+    "short_description": "Release store-sync 3.3.0 (ORD-31)",
+    "close_code": "successful_issues",
+    "close_notes": "4 of 6 servers on 3.3.0. STORE-004 failed (UploadEndpoint is not set in C:\\StoreSync\\store.config) and is on 3.2.0. Not started: STORE-006. The wave stopped at STORE-004; the servers not on 3.3.0 are upgraded with /release store-sync ORD-31 resume. Total time: 1m 30s. Build:",
+    "closed": "2026-10-27T17:26:17Z"
+  },
+  {
+    "number": "CHG0030020",
+    "short_description": "Release orders-service 1.2.4 (ORD-5)",
+    "close_code": "unsuccessful",
+    "close_notes": "Production check failed. The pipeline rolled back to 1.2.3 automatically in 2s and checked it. Total time: 2m 06s.",
+    "closed": "2026-10-27T20:53:10Z"
+  },
+  {
+    "number": "CHG0030021",
+    "short_description": "Release orders-service 1.2.5 (ORD-6)",
+    "close_code": "successful",
+    "close_notes": "Released orders-service 1.2.5. Total time: 2m 02s.",
+    "closed": "2026-10-27T20:55:35Z"
+  },
+  {
+    "number": "CHG0030024",
+    "short_description": "Release orders-service 1.2.8 (ORD-9)",
+    "close_code": "unsuccessful",
+    "close_notes": "Production check failed. The pipeline rolled back to 1.2.7 automatically in 2s and checked it. Total time: 2m 14s.",
+    "closed": "2026-10-27T21:03:01Z"
+  },
+  {
+    "number": "CHG0030026",
+    "short_description": "Release orders-service 1.3.0 (ORD-11)",
+    "close_code": "successful",
+    "close_notes": "Released orders-service 1.3.0. Total time: 2m 04s.",
+    "closed": "2026-10-27T21:07:54Z"
+  },
+  {
+    "number": "CHG0030027",
+    "short_description": "Release pricing-api 2.1.1 (ORD-52)",
+    "close_code": "unsuccessful",
+    "close_notes": "Canary: 2.1.1 took 10% of live traffic from 21:37:44 UTC. CloudWatch's Errors alarm on its version alone fired at 21:39:07 UTC. The pipeline took its share back to 0% at 21:39:07 UTC, 0 s after the alarm, with no one acting; 2.0.4 kept all traffic. Production check failed. The pipeline rolled back to 2.0.4 automatically in 3s and checked it. Total time: 4m 33s.",
+    "closed": "2026-10-27T21:39:52Z"
+  },
+  {
+    "number": "CHG0030029",
+    "short_description": "Release catalog 1.9.0 (ORD-90)",
+    "close_code": "unsuccessful",
+    "close_notes": "Helm rolled back: catalog 1.9.0 (revision 12, image artifactory-demo.es.nl/docker-local/catalog@sha256:85faf116e148125a278d0c1765527e5a52598afdd3075e4558da86bc87a429f1) was not ready after 3 minutes. Helm rolled back to revision 13, catalog 1.8.2 (image artifactory-demo.es.nl/docker-local/catalog@sha256:918076ac3523a0370c63e2887ba551226529fa102c82f03d6817276e633576b3). New pods started: 1. Ready pods never fewer than 3 of 3: the 1.8.2 pods kept running throughout. Production check failed. The pipeline rolled back to 1.8.2 automatically in 6s and checked it. Total time: 6m 30s.",
+    "closed": "2026-10-27T22:09:53Z"
+  },
+  {
+    "number": "CHG0030031",
+    "short_description": "Release store-sync 3.3.0 (ORD-31)",
+    "close_code": "successful_issues",
+    "close_notes": "4 of 6 servers on 3.3.0. STORE-004 failed (UploadEndpoint is not set in C:\\StoreSync\\store.config) and is on 3.2.0. Not started: STORE-006. The wave stopped at STORE-004; the servers not on 3.3.0 are upgraded with /release store-sync ORD-31 resume. Total time: 4m 53s.",
+    "closed": "2026-10-27T22:37:47Z"
+  },
+  {
+    "number": "CHG0030043",
+    "short_description": "Rollback of store-assistant in production: 1.7.0 to 1.6.0",
+    "close_code": "successful",
+    "close_notes": "Rolled back store-assistant in production from 1.7.0 to 1.6.0 with /rollback, and checked it, in 29s.",
+    "closed": "2026-10-28T00:50:13Z"
+  },
+  {
+    "number": "CHG0030045",
+    "short_description": "Release store-assistant 1.7.1 (ORD-71)",
+    "close_code": "successful",
+    "close_notes": "Released store-assistant 1.7.1. Total time: 7m 51s.",
+    "closed": "2026-10-28T00:59:16Z"
+  },
+  {
+    "number": "CHG0030046",
+    "short_description": "Release store-floor 2.4.0 (ORD-80)",
+    "close_code": "successful",
+    "close_notes": "Released store-floor 2.4.0. Total time: 8m 40s.",
+    "closed": "2026-10-28T02:13:54Z"
+  },
+  {
+    "number": "CHG0030047",
+    "short_description": "Release store-floor 2.4.0 (ORD-81)",
+    "close_code": "successful",
+    "close_notes": "Released store-floor 2.4.0. Total time: 7m 00s.",
+    "closed": "2026-10-28T02:34:54Z"
+  },
+  {
+    "number": "CHG0030048",
+    "short_description": "Rollback of store-floor in production: 2.4.0 to 2.3.0",
+    "close_code": "unsuccessful",
+    "close_notes": "Rolled back store-floor in production from 2.4.0 to 2.3.0 with /rollback, but 2.3.0 fails the production check too. Look at production now.",
+    "closed": "2026-10-28T02:37:38Z"
+  },
+  {
+    "number": "CHG0030049",
+    "short_description": "Release store-floor 2.4.0 (ORD-80)",
+    "close_code": "successful",
+    "close_notes": "Released store-floor 2.4.0. Total time: 9m 28s.",
+    "closed": "2026-10-28T02:49:39Z"
+  },
+  {
+    "number": "CHG0030050",
+    "short_description": "Rollback of store-floor in production: 2.4.0 to 2.3.0",
+    "close_code": "successful",
+    "close_notes": "Rolled back store-floor in production from 2.4.0 to 2.3.0 with /rollback, and checked it, in 57s.",
+    "closed": "2026-10-28T02:51:11Z"
+  },
+  {
+    "number": "CHG0030052",
+    "short_description": "Release orders-service 1.4.0 (ORD-12)",
+    "close_code": "successful",
+    "close_notes": "Released orders-service 1.4.0. Total time: 3m 43s.",
+    "closed": "2026-10-28T13:33:21Z"
+  },
+  {
+    "number": "CHG0030053",
+    "short_description": "Release orders-service 1.4.1 (ORD-13)",
+    "close_code": "unsuccessful",
+    "close_notes": "Production check failed. The pipeline rolled back to 1.4.0 automatically in 4s and checked it. Total time: 2m 20s.",
+    "closed": "2026-10-28T13:46:16Z"
+  },
+  {
+    "number": "CHG0030054",
+    "short_description": "Release store-sync 3.3.0 (ORD-31)",
+    "close_code": "successful_issues",
+    "close_notes": "4 of 6 servers on 3.3.0. STORE-004 failed (UploadEndpoint is not set in C:\\StoreSync\\store.config) and is on 3.2.0. Not started: STORE-006. The wave stopped at STORE-004; the servers not on 3.3.0 are upgraded with /release store-sync ORD-31 resume. Total time: 7m 31s.",
+    "closed": "2026-10-29T15:28:12Z"
+  },
+  {
+    "number": "CHG0030055",
+    "short_description": "Release store-sync 3.3.0 (ORD-31), resume: STORE-004, STORE-006",
+    "close_code": "successful",
+    "close_notes": "Released store-sync 3.3.0. Total time: 4m 19s.",
+    "closed": "2026-10-29T15:37:06Z"
+  },
+  {
+    "number": "CHG0030057",
+    "short_description": "Release inventory 2.8.0 (ORD-44)",
+    "close_code": "unsuccessful",
+    "close_notes": "The release stopped after the production deploy: script returned exit code 1. Look at production now.",
+    "closed": "2026-10-29T17:32:19Z"
+  },
+  {
+    "number": "CHG0030058",
+    "short_description": "Release pricing-api 2.1.1 (ORD-52)",
+    "close_code": "unsuccessful",
+    "close_notes": "Canary: 2.1.1 took 10% of live traffic from 10:21:44 UTC. CloudWatch's Errors alarm on its version alone fired at 10:23:54 UTC. The pipeline took its share back to 0% at 10:23:57 UTC, 4 s after the alarm, with no one acting; 2.0.4 kept all traffic. Production check failed. The pipeline rolled back to 2.0.4 automatically in 3s and checked it. Total time: 5m 56s.",
+    "closed": "2026-10-30T10:24:40Z"
+  },
+  {
+    "number": "CHG0030059",
+    "short_description": "Release pricing-api 2.1.2 (ORD-52)",
+    "close_code": "successful",
+    "close_notes": "Released pricing-api 2.1.2. Total time: 8m 24s.",
+    "closed": "2026-10-30T10:36:27Z"
+  },
+  {
+    "number": "CHG0030060",
+    "short_description": "Release quote-service 1.2.0 (ORD-60)",
+    "close_code": "successful",
+    "close_notes": "Released quote-service 1.2.0. Total time: 5m 22s.",
+    "closed": "2026-10-30T12:38:59Z"
+  },
+  {
+    "number": "CHG0030061",
+    "short_description": "Release quote-service 1.2.1 (ORD-60)",
+    "close_code": "unsuccessful",
+    "close_notes": "Each cloud now runs: Google Cloud 1.2.1, Azure 1.2.0 (rolled back), AWS 1.2.0 (not released). Production check failed. The pipeline rolled back to 1.2.0 automatically in 20s and checked it. Total time: 5m 48s.",
+    "closed": "2026-10-30T12:50:35Z"
+  },
+  {
+    "number": "CHG0030064",
+    "short_description": "Rollback of store-assistant in production: 1.7.0 to 1.6.0",
+    "close_code": "successful",
+    "close_notes": "Rolled back store-assistant in production from 1.7.0 to 1.6.0 with /rollback, and checked it, in 118s.",
+    "closed": "2026-10-30T13:34:55Z"
+  },
+  {
+    "number": "CHG0030065",
+    "short_description": "Release store-floor 2.4.0 (ORD-80)",
+    "close_code": "successful",
+    "close_notes": "Released store-floor 2.4.0. Total time: 7m 57s.",
+    "closed": "2026-10-30T14:08:45Z"
+  },
+  {
+    "number": "CHG0030066",
+    "short_description": "Release store-floor 2.4.0 (ORD-81)",
+    "close_code": "successful",
+    "close_notes": "Released store-floor 2.4.0. Total time: 8m 53s.",
+    "closed": "2026-10-30T14:24:38Z"
+  },
+  {
+    "number": "CHG0030067",
+    "short_description": "Release catalog 1.9.0 (ORD-90)",
+    "close_code": "unsuccessful",
+    "close_notes": "Helm rolled back: catalog 1.9.0 (revision 16, image artifactory-demo.es.nl/docker-local/catalog@sha256:4549e604d57277acbd30920fe6216a91faacd6a8276be285130890229a9df7ee) was not ready after 3 minutes. Helm rolled back to revision 17, catalog 1.8.2 (image artifactory-demo.es.nl/docker-local/catalog@sha256:615fcf81902f2fca73efb3344f1f6ea3ce0e34e6ffc89347f5d25ac7923f6862). New pods started: 1. Ready pods never fewer than 3 of 3: the 1.8.2 pods kept running throughout. Production check failed. The pipeline rolled back to 1.8.2 automatically in 4s and checked it. Total time: 6m 25s.",
+    "closed": "2026-10-30T15:05:21Z"
+  }
+]
