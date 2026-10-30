@@ -278,6 +278,11 @@ def argocd(config):
     kubectl("apply", "-f", str(HERE / "break-glass.yaml"))
     with tempfile.TemporaryDirectory() as out:
         rendered = render(config, manifest(), out)
+    # Argo CD's CRDs before the rest: on a new cluster, the API server only knows
+    # AppProject and Application once they are established.
+    crds = [d for d in yaml.safe_load_all(rendered) if d and d.get("kind") == "CustomResourceDefinition"]
+    kubectl("apply", "--server-side", "--force-conflicts", "-f", "-", stdin=yaml.safe_dump_all(crds))
+    kubectl("wait", "--for=condition=Established", "--timeout=120s", *(f"crd/{d['metadata']['name']}" for d in crds))
     kubectl("apply", "--server-side", "--force-conflicts", "-f", "-", stdin=rendered)
     notifications_secret(recorder_token())
     for kind, name in (("deployment", "argocd-redis"), ("deployment", "argocd-repo-server"),

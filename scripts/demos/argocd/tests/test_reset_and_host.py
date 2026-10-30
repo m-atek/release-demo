@@ -81,6 +81,28 @@ def test_setup_fills_in_the_repository_and_the_nodes_address(tmp_path, monkeypat
     assert "__" not in (out / "production.yaml").read_text() + (out / "drift-recorder.yaml").read_text()
 
 
+def test_argocds_crds_are_established_before_its_project_and_application_are_applied(monkeypatch):
+    import cluster
+
+    rendered = yaml.safe_dump_all([
+        {"apiVersion": "apiextensions.k8s.io/v1", "kind": "CustomResourceDefinition",
+         "metadata": {"name": "applications.argoproj.io"}},
+        {"apiVersion": "argoproj.io/v1alpha1", "kind": "Application", "metadata": {"name": "catalog-production"}},
+    ])
+    calls = []
+    monkeypatch.setattr(cluster, "kubectl", lambda *args, **kwargs: calls.append((args, kwargs.get("stdin"))) or "")
+    monkeypatch.setattr(cluster, "render", lambda *args: rendered)
+    monkeypatch.setattr(cluster, "manifest", lambda: None)
+    for name in ("notifications_secret", "recorder_token", "wait", "pipeline_token"):
+        monkeypatch.setattr(cluster, name, lambda *args, **kwargs: None)
+    cluster.argocd({})
+    crds, established, everything = calls[1:4]
+    assert [d["kind"] for d in yaml.safe_load_all(crds[1])] == ["CustomResourceDefinition"]
+    assert established[0][:2] == ("wait", "--for=condition=Established")
+    assert "crd/applications.argoproj.io" in established[0]
+    assert everything[1] == rendered
+
+
 def test_the_pinned_argocd_manifest_is_a_release_at_least_two_weeks_old():
     import cluster
 
