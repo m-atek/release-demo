@@ -427,6 +427,30 @@ What to say if asked: GitHub calls custom deployment protection rules and workfl
 
 After the call there is nothing to stop: GitHub's runners are free for public repositories, and the bridge costs cents a month.
 
+## Demo on a call: GitLab CI (demo 17)
+
+The main release, orders-service 1.4.0 for ORD-12, ported from Jenkins to GitLab CI on GitLab.com Free, with a project runner on the tools host. The port is the commits between the tags `before-gitlab` and `gitlab-port`: `.gitlab-ci.yml`, the runner (`tools-host/gitlab-runner.sh` and `release-demo-parameter`), the idle stop, and the few lines the Slack handler needs to start it. It changes no file in `scripts/`: `git diff --quiet before-gitlab gitlab-port -- scripts/ && echo "no changes in scripts/"`. Sam's Slack command, the gates, the ServiceNow change and Alex's approval stay as they are: the Approval job runs `change.py wait`, since GitLab's deployment approvals are Premium and Ultimate. `scripts/tests/test_gitlab_port.py` holds the pipeline to `releasePipeline.groovy`. GitLab holds no secrets and no CI/CD variables: the jobs read SSM through the tools host's role.
+
+Once, after the merge (the tags pushed too):
+
+1. GitLab.com Free on an address used only for this demo; a personal access token with the scopes `api` and `create_runner`, expiring within a year, into `.venv/bin/python scripts/secrets.py set gitlab`. It stays on the Mac: the tools host may not read it.
+2. `scripts/tf.sh apply`: the parameter names, the Slack handler's new reads and the tools host's deny. It changes IAM, so you apply it.
+3. `.venv/bin/python scripts/demos/gitlab_port/setup.py`: the private project, instance runners off, the project runner tools-host and the trigger token, their tokens straight into SSM. `--check` prints what the checks need.
+4. `scripts/tools.sh up`, then the first check: `.venv/bin/python scripts/demos/gitlab_port/day_one.py run`, a throwaway branch's one job started by the trigger token on tools-host. `day_one.py clean --yes` deletes the branch afterwards.
+
+Before each call or take:
+
+```bash
+scripts/tools.sh up
+scripts/demo.sh up gitlab-port                       # the runner on, GitLab's main synced, then /release on GitLab
+.venv/bin/python scripts/reset.py gitlab-port        # production on 1.3.0, 1.4.0 on main and on GitLab
+scripts/demo.sh status gitlab-port                   # the switch, the runner, both mains
+```
+
+The reset runs from the Mac only, since it cancels GitLab pipelines and pushes GitLab's main with the account's token; the Jenkins job reset says so in one line. On the call: `/release orders-service ORD-12` as Sam. Slack says "Starting on GitLab CI", then every stage with its time and a "Build #gl-..." link. The Build job's log names the runner tools-host. The Approval job prints "Waiting for ServiceNow change CHG..." and polls it every 15 seconds; Alex approves in ServiceNow, the job prints "Approved by Alex in ServiceNow." and Production starts.
+
+After the call: `scripts/demo.sh down gitlab-port` puts /release back on Jenkins, then stops the runner. GitLab costs nothing: the project runner has no minute limit, and artifacts expire after a day.
+
 ## Layout
 
 ```

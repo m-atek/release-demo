@@ -47,8 +47,8 @@ def normalized(script, rest):
         if words[:1] == ["annotate"]:
             return "events.py annotate"
         stage = words[1] if len(words) > 1 and words[0] == "--stage" else ""
-        # A stage named by a variable is the wrapper's event; Rollback is rollBack's own.
-        return f"events.py --stage {stage}" if re.fullmatch(r"[A-Z][a-z]+", stage) else "events.py --stage"
+        # Rollback's is rollBack's own event; any other stage's, named or not, is the wrapper's.
+        return "events.py --stage Rollback" if stage == "Rollback" else "events.py --stage"
     sub = next((w for w in words if re.fullmatch(r"[a-z][a-z-]*", w)), "")
     return f"{script} {sub}".strip()
 
