@@ -23,7 +23,7 @@ usage() {
 
 [[ $# -ge 1 ]] || usage
 action=$1 demo=${2:-}
-# cost-gate is scripts/demos/cost_gate: without a folder of its own name, a dash is an underscore.
+# cost-gate is scripts/demos/cost_gate, agent-ship scripts/demos/agent_ship: without a folder of its own name, a dash is an underscore.
 [[ -z $demo || -d $DEMOS/$demo ]] || demo=${demo//-/_}
 export AWS_PROFILE=${AWS_PROFILE:-release-demo} AWS_REGION=${AWS_REGION:-eu-west-1}
 

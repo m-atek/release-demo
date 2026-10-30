@@ -465,3 +465,39 @@ servicenow/fiona-password:
   source: you
   secure: true
   help: "A password you choose for Fiona Finance in ServiceNow (video 18). You sign in as Fiona to decide as the cost approver."
+
+# Video 11, the auditor's sample (scripts/demos/auditor). Read-only identities:
+# ines in Jenkins and ServiceNow, evidence.reader in ServiceNow, evidence-reader
+# in JFrog. The AWS role is infra/demos/evidence-reader's.
+jenkins/ines-password:
+  source: you
+  secure: true
+  help: "A password you choose for the Jenkins user ines (Ines, auditor), who may start evidence-sample and see nothing else. Until it is set, the host gives her a random one."
+servicenow/ines-password:
+  source: you
+  secure: true
+  help: "A password you choose for ines.auditor in ServiceNow (read only). You sign in as her to open the approval record from the report. Never on the tools host."
+servicenow/evidence-reader-password:
+  source: script
+  secure: true
+  help: "Password of the ServiceNow user evidence.reader (web service access only, read only), which evidence_sample.py reads as. Written by scripts/servicenow_setup.py."
+jcr/evidence-reader-token:
+  source: script
+  secure: true
+  help: "Access token of the JFrog user evidence-reader, which may read candidates and releases and deploy nothing. Written by scripts/jcr_setup.py --host."
+
+# Video 16, the coding agent that can't ship (scripts/demos/agent_ship): its own
+# GitHub App, which may push its own branches and open pull requests, and
+# nothing else. The agent's Claude credential is anthropic/api-key above.
+github/agent-app-id:
+  source: script
+  secure: false
+  help: "The coding agent's GitHub App's id. Written by scripts/demos/agent_ship/agent_app.py."
+github/agent-app-slug:
+  source: script
+  secure: false
+  help: "The coding agent's GitHub App's slug, release-demo-coding-agent-<owner>. Written by scripts/demos/agent_ship/agent_app.py."
+github/agent-app-private-key:
+  source: script
+  secure: true
+  help: "The coding agent's GitHub App's private key (PEM). Written by scripts/demos/agent_ship/agent_app.py."

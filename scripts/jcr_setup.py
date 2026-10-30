@@ -23,7 +23,9 @@ what the free edition allows and prints the rest as UI steps:
   A stored token that still works is kept. Then Jenkins reloads.
 
 The user release-pipeline and its permission (read, annotate and deploy on
-those repositories, no delete) are UI steps, printed below when needed.
+those repositories, no delete) are UI steps, printed below when needed. So
+are video 11's user evidence-reader (read only); with --host its token goes
+to SSM, jcr/evidence-reader-token.
 """
 
 import argparse
@@ -147,6 +149,37 @@ def create_token(jcr):
     fail(f"JCR didn't create the token ({status}): {str(reply)[:200]}")
 
 
+# Video 11: the auditor's sample reads JFrog's stored checksums as a user
+# that can read candidates and releases, and deploy nothing.
+READER = "evidence-reader"
+READER_STEPS = [
+    "Administration, User Management, Users, New user.",
+    f"User Name: {READER}. Email: evidence-reader@example.invalid. Untick Can Update Profile.",
+    "Tick Disable UI Access and Disable Internal Password Login (confirm the dialog). Leave the password empty, then Save.",
+    "Administration, User Management, Permissions, New Permission. Name: evidence-reader.",
+    "Resources: add orders-service-candidates, orders-service-releases, demos-candidates and demos-releases.",
+    f"Users: add {READER} with Read only. Leave Annotate, Deploy/Cache, Delete/Overwrite and Manage off, then Create.",
+]
+
+
+def reader_token(jcr, ssm):
+    """The evidence reader's token in SSM, jcr/evidence-reader-token: kept while it works, made when it doesn't.
+    Without the user yet, the UI steps, and the rest of the setup carries on."""
+    current = ssm.get_parameter(Name="/release-demo/jcr/evidence-reader-token", WithDecryption=True)["Parameter"]["Value"]
+    if current != "unset" and token_works(jcr, current):
+        print(f"  token for {READER}: the stored one still works")
+        return
+    status, reply = jcr.call("POST", "/artifactory/api/security/token", Form(
+        username=READER, scope=SCOPE, expires_in=str(TOKEN_SECONDS)))
+    if status == 200 and isinstance(reply, dict) and reply.get("access_token"):
+        put_parameter(ssm, "jcr/evidence-reader-token", reply["access_token"])
+        print(f"  token for {READER}: created, valid for a year, saved to SSM")
+        return
+    print(f"  token for {READER}: no user yet. For video 11, in the JCR UI:")
+    for number, step in enumerate(READER_STEPS, 1):
+        print(f"    {number}. {step}")
+
+
 def ui_steps(ui, groups):
     print(f"Still to do in the JCR UI at {ui}:")
     number = 0
@@ -218,6 +251,7 @@ def main():
         if token:
             put_parameter(ssm, "jcr/token", token)
             print("  saved the token to SSM")
+        reader_token(jcr, ssm)
         subprocess.run([sys.executable, str(ROOT / "tools-host" / "host_secrets.py"), str(HOST_SECRETS)], check=True)
         reload_jenkins(HOST_SECRETS)
     else:

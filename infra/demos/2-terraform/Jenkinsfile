@@ -15,6 +15,14 @@ properties([disableConcurrentBuilds(abortPrevious: true)])
 
 node('tools-host') {
     checkout scm
+    // Video 16: a pull request that changes nothing in the network stack, such as
+    // the coding agent's, isn't this job's. It ends here, before anything is posted.
+    if (env.CHANGE_ID && sh(returnStatus: true,
+            script: 'python3 scripts/demos/agent_ship/pull_requests.py touches "$CHANGE_ID" infra/demos/2-terraform/network/') == 1) {
+        currentBuild.result = 'NOT_BUILT'
+        currentBuild.description = 'Not a network stack change: nothing under infra/demos/2-terraform/network/.'
+        return
+    }
     def demo = load 'infra/demos/2-terraform/pipeline.groovy'
     String pr = 'python3 scripts/demos/terraform/pr.py'
     sh 'rm -rf .release'

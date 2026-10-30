@@ -2,7 +2,8 @@
 
     idle_stop.py /run/release-demo/secrets
 
-Idle means: no running or queued Jenkins build, and cloudflared's request
+Idle means: no running or queued Jenkins build (a timer's own check for work,
+such as pull-requests, doesn't count), and cloudflared's request
 counter unchanged, so nobody used Jenkins, JCR or Splunk through the tunnel.
 The host powers off; its shutdown behaviour is "stop", so the data stays.
 """
@@ -17,6 +18,9 @@ from pathlib import Path
 
 STATE = Path("/var/lib/release-demo/idle.json")
 IDLE_SECONDS = 30 * 60
+# Jobs a timer starts every minute, whose builds alone aren't anyone using the
+# host: video 16's pull-requests looks for a pull request to check, and mostly ends at once.
+NOT_ACTIVITY = {"pull-requests"}
 
 
 def jenkins_busy(secrets):
@@ -27,10 +31,16 @@ def jenkins_busy(secrets):
         with urllib.request.urlopen(urllib.request.Request("http://localhost:8080" + path, headers=auth), timeout=10) as r:
             return json.loads(r.read())
 
+    def ours(url):
+        return any(f"/job/{job}/" in (url or "") for job in NOT_ACTIVITY)
+
     try:
-        busy = get("/computer/api/json?tree=busyExecutors")["busyExecutors"]
-        queued = len(get("/queue/api/json?tree=items%5Bid%5D")["items"])
-        return busy > 0 or queued > 0
+        computers = get("/computer/api/json?tree=computer%5Bexecutors%5BcurrentExecutable%5Burl%5D%5D,"
+                        "oneOffExecutors%5BcurrentExecutable%5Burl%5D%5D%5D")["computer"]
+        running = [e["currentExecutable"]["url"] for c in computers
+                   for e in (c.get("executors") or []) + (c.get("oneOffExecutors") or []) if e.get("currentExecutable")]
+        queued = get("/queue/api/json?tree=items%5Btask%5Burl%5D%5D")["items"]
+        return any(not ours(url) for url in running) or any(not ours(i.get("task", {}).get("url")) for i in queued)
     except Exception:
         return False  # Jenkins down counts as idle: a broken host shouldn't run all night
 

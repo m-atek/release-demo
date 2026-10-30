@@ -57,6 +57,20 @@ orders-service:
       page_views: 3000000
       new_orders: 60000
 
+  # Video 16: /agent orders-service <Jira key> <note> hands an issue to the
+  # coding agent (scripts/demos/agent_ship), and pull requests that change
+  # this service get the release's first four stages as GitHub checks.
+  coding_agent:
+    model: claude-opus-5-5
+    max_turns: 40
+    minutes: 20
+  pull_requests:
+    checks: [Build, Test, Quality gate, SBOM and scan]
+    # SonarQube Cloud's Free plan analyses only main, so a pull request is
+    # analysed as the main branch of a project of its own. On the OSS plan,
+    # drop this and the check runs SonarQube's own pull request analysis.
+    sonar_project_key: m-atek_release-demo_orders-service-pull-requests
+
   environments:
     staging:
       function: orders-service-staging

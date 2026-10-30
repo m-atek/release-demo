@@ -153,6 +153,33 @@ kube_token_helper() {
   visudo -cf /etc/sudoers.d/release-demo-kube-token >/dev/null || rm -f /etc/sudoers.d/release-demo-kube-token
 }
 
+# Video 10: the Jenkins job rotate rewrites the tmpfs after it stores a new
+# token. One sudo rule, for exactly that command, as for the kube token.
+rotate_sudo_rule() {
+  printf 'jenkins-agent ALL=(root) NOPASSWD: %s %s %s\n' "$VENV/bin/python" "$HERE/host_secrets.py" "$SECRETS" \
+    > /etc/sudoers.d/release-demo-rotate
+  chmod 0440 /etc/sudoers.d/release-demo-rotate
+  visudo -cf /etc/sudoers.d/release-demo-rotate >/dev/null || rm -f /etc/sudoers.d/release-demo-rotate
+}
+
+# Video 16: the coding agent's containers (agent-task) reach the internet
+# only. Their own network, release-demo-agent, and rules that drop its traffic
+# to this host and to every private address, the tools network's included, so
+# the agent can't reach Jenkins, JFrog or Splunk, with or without a token.
+agent_network() {
+  docker network inspect release-demo-agent >/dev/null 2>&1 ||
+    docker network create --driver bridge -o com.docker.network.bridge.name=br-agent release-demo-agent >/dev/null
+  iptables -N RELEASE-DEMO-AGENT 2>/dev/null || iptables -F RELEASE-DEMO-AGENT
+  local range
+  for range in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10; do
+    iptables -A RELEASE-DEMO-AGENT -d "$range" -j DROP
+  done
+  iptables -A RELEASE-DEMO-AGENT -j RETURN
+  iptables -C DOCKER-USER -i br-agent -j RELEASE-DEMO-AGENT 2>/dev/null ||
+    iptables -I DOCKER-USER -i br-agent -j RELEASE-DEMO-AGENT
+  iptables -C INPUT -i br-agent -j DROP 2>/dev/null || iptables -I INPUT -i br-agent -j DROP
+}
+
 # Demo 5: the clouds trust Jenkins's ID tokens through the keys published in
 # the issuer bucket, and Jenkins makes new keys at every start and reload.
 publish_oidc_issuer() {
@@ -202,9 +229,11 @@ wait_for_jenkins
 reload_casc || echo "Configuration as Code reload failed: jobs added since the last start may be missing"
 wait_for_jenkins
 start_agent
+agent_network || echo "agent network: will retry at next boot"
 publish_oidc_issuer
 agent_secrets
 kube_token_helper
+rotate_sudo_rule
 release_bot_token
 arm_idle_stop
 echo "== boot done"

@@ -108,9 +108,11 @@ def test(String service, Map cfg = null) {
 // service's own script (demo 1: SonarScanner for .NET), in its toolchain:
 // <quality_gate> <service> <version>, with SONAR_TOKEN and SONAR_ORGANIZATION
 // set. Either way the scanner waits for the gate, so a failed gate fails the stage.
-def qualityGate(String service, String version, Map cfg = null) {
+// args, when given, replace sonar_args.py's: video 16's pull request checks
+// analyse into a project of their own (scripts/demos/agent_ship/pull_requests.py).
+def qualityGate(String service, String version, Map cfg = null, String args = null) {
     cfg = cfg ?: serviceConfig(service)
-    if (cfg.scripts.quality_gate) {
+    if (cfg.scripts.quality_gate && !args) {
         String organization = sh(returnStdout: true,
             script: "python3 scripts/sonar_args.py ${service} ${version} --organization").trim()
         withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
@@ -122,7 +124,7 @@ def qualityGate(String service, String version, Map cfg = null) {
         }
         return
     }
-    String args = sh(returnStdout: true, script: "python3 scripts/sonar_args.py ${service} ${version}").trim()
+    args = args ?: sh(returnStdout: true, script: "python3 scripts/sonar_args.py ${service} ${version}").trim()
     withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
         docker.image(SONAR).inside('-e SONAR_TOKEN -e SONAR_HOST_URL=https://sonarcloud.io -e SONAR_USER_HOME=/tmp/sonar') {
             sh "sonar-scanner ${args}"

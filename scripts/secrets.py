@@ -3,6 +3,7 @@
     python scripts/secrets.py                 which parameters are set, never their values
     python scripts/secrets.py set slack       ask for every slack/ value you provide
     python scripts/secrets.py set jira/email  ask for one value
+    python scripts/secrets.py inventory       how each secret rotates (--html: dist/secrets-inventory.html)
 
 Values are read from the terminal without echo and go straight to SSM, as
 SecureString unless infra/parameters.yaml says secure: false. They never reach
@@ -99,10 +100,16 @@ def main():
     setter = sub.add_parser("set", help="ask for values")
     setter.add_argument("selector", help="a name, or a group such as slack")
     setter.add_argument("--force", action="store_true", help="also values a script or Terraform writes")
+    lister = sub.add_parser("inventory", help="how each secret rotates, from metadata only (video 10)")
+    lister.add_argument("--html", action="store_true", help="also write dist/secrets-inventory.html")
     args = parser.parse_args()
 
     ssm = ssm_client()
-    if args.command == "set":
+    if args.command == "inventory":
+        import inventory
+
+        inventory.main(ssm, args.html)
+    elif args.command == "set":
         set_values(ssm, args.selector, args.force)
     else:
         show_status(ssm)

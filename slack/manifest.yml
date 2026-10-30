@@ -25,12 +25,21 @@ features:
       description: Roll production back to the previous version
       usage_hint: "<service>"
       should_escape: false
+    # Video 16: a Jira issue for the coding agent, which works on its own credentials.
+    - command: /agent
+      url: https://REPLACE-WITH-SLACK-HANDLER-URL.invalid/
+      description: Hand a Jira issue to the coding agent
+      usage_hint: "<service> <Jira key> <note>"
+      should_escape: false
 
 oauth_config:
   scopes:
     bot:
       - commands
       - chat:write
+      # Video 10: scripts/rotate.py jcr looks for the leaked token in #releases' last 100 messages.
+      - channels:history
+      - groups:history
 
 settings:
   org_deploy_enabled: false

@@ -28,6 +28,8 @@ locals {
       for name, s in local.services : name => {
         jira_project = s.jira.project
         options      = try(s.slack.options, [])
+        # Video 16: /agent works on the services that name a coding agent.
+        coding_agent = try(s.coding_agent, null) != null
       } if try(s.pipeline, "release") != "pull-request"
     }
   }

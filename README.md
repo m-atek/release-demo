@@ -429,6 +429,62 @@ Before each call or take: re-read the pricing pages and update `prices.yaml`'s d
 
 After it: `scripts/demo.sh down cost-gate` turns the switch off; the tables stay, at cents a month.
 
+## Demo on a call: a coding agent on its own AWS role (demo 9)
+
+Claude Code runs in a container on the Mac, on the IAM role `release-demo-coding-agent` (`infra/demos/9-agent-access/`): it may read orders-service-staging's logs and configuration, and every Lambda and log call on a `-production` function, the platform's SSM parameters, the deploy roles and IAM are denied explicitly. Asked to update orders-service-production, it tries, and AWS refuses with "explicit deny in an identity-based policy", naming the role. The container's Claude Code settings (`jenkins/toolchain/coding-agent/managed-settings.json`) allow its commands without asking, so nothing in the agent stands in the way: its credentials do. The role costs nothing.
+
+Once: `scripts/demo.sh up agent-access` applies the role (Terraform shows its plan and asks first) and builds the image `jenkins/toolchain/coding-agent.Dockerfile`, with Claude Code and AWS CLI v2 pinned. The agent signs in to Claude with `anthropic/api-key` from SSM.
+
+Before a call or take:
+
+1. `aws sso login --profile release-demo`.
+2. `scripts/demos/agent-access/check.sh`: one ok or FAIL line for each of its identity, the staging read, five refused production calls, the refused deploy role and SSM parameter, and an environment with nothing but the session and the Claude credential. No model call. It leaves a container running for `check.sh --expired`, which an hour later shows the session ended with ExpiredToken.
+3. `scripts/demos/agent-access/agent.sh`: a fresh workspace (orders-service 1.4.0 and its package in `/work/dist/`), a fresh hour on the role, and Claude Code. It prints only "AWS role: release-demo-coding-agent, session coding-agent, until HH:MM". Ask: "Update the Lambda function orders-service-production to the build in /work/dist/."
+
+After each take: `scripts/reset.py agent-access` checks that production's live alias is where the take found it and removes the take's workspace. `.venv/bin/python scripts/demos/agent-access/agent_access.py trail` lists the session's refused calls in CloudTrail's event history, some minutes after they happen. `scripts/demo.sh status agent-access` shows the role, the image's Claude Code version and production's live alias. Nothing to stop afterwards.
+
+## Demo on a call: a leaked token, revoked against the clock (demo 10)
+
+A JFrog token of the pipeline's user release-pipeline is pasted in `#releases`. `scripts/rotate.py jcr --reason "pasted in Slack"` finds the message that holds it, revokes every token of release-pipeline (the leaked one first), opens an incident in ServiceNow, issues a new token, stores it in SSM where the pipeline reads it, reloads Jenkins, and calls JFrog with the old token every half second until it answers 401. It resolves the incident with its timeline, replies in the message's thread, sends one Splunk event and a Grafana annotation tagged secret-rotation, and ends with "Leak to useless: Xm YYs", the first 401 minus the message's time. Nothing scans Slack: a person starts it. `scripts/rotate.py sonar` rotates the quality gate's SonarQube Cloud token the same way (`--old-name` with the name of the token you made by hand, the first time). The Jenkins job `rotate` runs either for admin.
+
+Once:
+
+1. In the Slack app: the manifest asks for `channels:history` and `groups:history` (paste it with `scripts/slack_manifest.py`), then Install App, Reinstall to Workspace, Allow.
+2. `scripts/demo.sh up leaked-token` applies `infra/demos/10-leaked-token`, which lets the tools host write `sonar/token` (Terraform shows its plan first).
+3. `.venv/bin/python scripts/servicenow_setup.py` adds the CMDB item jfrog-container-registry and puts Sam, Alex and release.pipeline in Europe/Amsterdam time.
+
+Before each take: `scripts/reset.py leaked-token` (it hands itself to the tools host): the main reset's steps with 1.4.0 staged instead of 1.3.0, production and staging on 1.3.0, a working token in SSM and nothing else of release-pipeline in JFrog, and no leak incident open. Then `.venv/bin/python scripts/demos/leaked-token/clipboard.py`: the tools host makes a second token of release-pipeline for the take, valid a day, with the pipeline's own rights, and hands it to your clipboard through Session Manager, so the pipeline's own token never goes into Slack (`--pipeline-token` copies that one instead). It prints its last four characters and clears the clipboard after 60 seconds.
+
+After the take: `.venv/bin/python scripts/demos/leaked-token/check.py` (the old token 401 on the host and through Access, the new one 200, SSM, the tmpfs and Jenkins holding the same token by hash, and no token in the log, the incident, the thread or Grafana), and `.venv/bin/python scripts/secrets.py inventory --html` for `dist/secrets-inventory.html`: each stored secret, where it lives, which files read it, and whether it rotates by script or by hand (`infra/secret-rotation.yaml`). `scripts/demo.sh status leaked-token` shows the token's id and age and any open leak incident. Nothing to stop.
+
+## Demo on a call: the auditor picks ten changes (demo 11)
+
+The Jenkins job `evidence-sample` (parameters FROM, TO, SAMPLE_SIZE and SEED) draws a sample of orders-service's production changes and answers five questions for each from the original records: who approved it against who asked (ServiceNow's approval records), whether the approval came before CloudTrail's record of the production deploy (UpdateAlias on the live alias), whether the package in the change, JFrog's stored SHA-256 and Lambda's CodeSha256 for the deployed version are the same, and whether the test report, the SBOM and the scan are attached and clean. A change from an active standard change template is "pre-approved"; a /rollback change, recorded after production is back on purpose, answers "by design". No AI anywhere in this path. The draw ranks each change by the SHA-256 of "<seed>:<change number>", so the same seed and period give the same sample and the same findings hash, which the build's description carries. The report, a page per change, findings.json and a ZIP of every record as read are the build's artifacts. Code: `scripts/demos/auditor/`; the readers are `scripts/evidence.py`'s.
+
+Everyone in it only reads: ines in Jenkins (Overall/Read, plus Build and Read on this one job), ines.auditor and evidence.reader in ServiceNow (snc_read_only), evidence-reader in JFrog (read on candidates and releases), and the role release-demo-evidence-reader in AWS (`infra/demos/evidence-reader/`, which the tools host may assume).
+
+Once:
+
+1. `.venv/bin/python scripts/secrets.py set jenkins/ines-password` and `set servicenow/ines-password` (after `scripts/tf.sh apply` has made their names).
+2. `.venv/bin/python scripts/servicenow_setup.py`: ines.auditor and evidence.reader, whose password it generates into SSM.
+3. In JFrog's UI, the user evidence-reader and its read-only permission, then `scripts/jcr_setup.py --host` stores its token (it prints the UI steps while the user is missing).
+4. Reload Jenkins' configuration: ines and the job evidence-sample appear.
+
+Before a call: history.py has run and at least one main take is closed. `.venv/bin/python scripts/demos/auditor/evidence_sample.py --dry-run --from <day> --to <day>` lists, from the Mac, every closed orders-service change that moved production in the period, and what it leaves out. Sign in to Jenkins as ines and to ServiceNow as ines.auditor in one browser profile. Nothing to stop afterwards.
+
+## Demo on a call: the agent wrote the code, but can't ship it (demo 16)
+
+`/agent orders-service <Jira key> <note>` in Slack hands an issue to the coding agent: the Jenkins job `agent-task` runs Claude Code in the coding-agent image (video 9's, with git, gh and pytest) on the tools host, on the network release-demo-agent, which reaches the internet only. The agent has its own GitHub App (contents and pull requests write, nothing else, in no ruleset's bypass list) and video 9's AWS role. Its prompt says what Sam asked and which tools it has, nothing about limits. GitHub refuses its push to main, AWS its production calls, GitHub its approval of its own pull request; each refusal is a Slack line within seconds, and its pull request gets the checks Build, Test, Quality gate and SBOM and scan from the pipeline's own app (the job `pull-requests`, from main's definitions). After your review as Sam and a squash merge, `/release orders-service <key>` opens a normal change with "Code written by" and "Code reviewed by" filled from the pull request; a pull request the agent wrote without a person's approving review stops the release at Change. Code: `scripts/demos/agent_ship/`, `scripts/authorship.py`.
+
+Once:
+
+1. `.venv/bin/python scripts/demos/agent_ship/agent_app.py --owner <your GitHub username>`, click once on http://localhost:8765, and install the app on release-demo only from the printed link.
+2. The Slack app: paste the manifest from `scripts/slack_manifest.py` (it adds /agent), then reinstall. `scripts/tf.sh apply` puts /agent in the Slack handler.
+3. `.venv/bin/python scripts/demos/agent_ship/ruleset.py --apply` with your own gh login: the three rulesets.
+4. `.venv/bin/python scripts/servicenow_setup.py` adds the two fields to the change's form; `.venv/bin/python scripts/demos/agent_ship/setup.py --sonar` makes the Jira issue and the SonarQube Cloud project the pull request checks analyse into (the Free plan analyses only main).
+
+Before a take: `scripts/demo.sh up agent-ship` (its Terraform root, the image on the tools host, the rulesets on, demo 14's workflow off), `scripts/demos/agent_ship/check.sh` (the app's rights, the refusals from inside the container with a test pull request, video 9's checks, the network, no secret in the last log; no model call), then `scripts/reset.py agent-ship`: production and main on 1.4.0 from a real release, the agent's open pull requests closed, the issue reopened. About 7 minutes. Afterwards `scripts/demo.sh down agent-ship` turns the rulesets off, so video 14's merge box shows no bypass and demo 2's pull requests need no review. A run costs about USD 1 to 2 in Claude API usage.
+
 ## Layout
 
 ```

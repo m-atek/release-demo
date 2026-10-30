@@ -10,6 +10,7 @@ Prints counts only, never values.
 """
 
 import os
+import secrets
 import subprocess
 import sys
 from pathlib import Path
@@ -22,7 +23,11 @@ JENKINS_GID = 1000  # the jenkins user's group inside the controller image
 CLOUDFLARED_UID = 65532  # the nonroot user inside the cloudflared image
 NOT_ON_HOST = {"cloudflare/api-token", "cloudflare/account-id", "cloudflare/zone-id",
                "grafana/external-id", "terraform/state-bucket", "servicenow/admin-password",
-               "servicenow/sam-password", "servicenow/alex-password", "grafana/setup-token"}
+               "servicenow/sam-password", "servicenow/alex-password", "grafana/setup-token",
+               "servicenow/ines-password"}
+# Jenkins users whose password you type: until it is set, a random one, so
+# the user never exists with an empty password.
+RANDOM_UNTIL_SET = {"jenkins/ines-password"}
 
 
 def write(directory, name, value, uid=0, gid=JENKINS_GID, mode=0o640):
@@ -50,6 +55,8 @@ def main():
             if parameter["Value"] != "unset":
                 values[parameter["Name"].removeprefix(SSM_PREFIX)] = parameter["Value"]
 
+    for name in RANDOM_UNTIL_SET - set(values):
+        values[name] = secrets.token_urlsafe(32)
     for name, value in values.items():
         if name == "cloudflare/tunnel-token":
             write(directory, "cloudflare-tunnel-token", value, uid=CLOUDFLARED_UID, gid=0, mode=0o400)

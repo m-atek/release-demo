@@ -30,3 +30,21 @@ fiona:
   slack: false
   servicenow_user: fiona.finance
   cost_approver: true
+
+ines:
+  # Video 11: the auditor. Reads only: the Jenkins job evidence-sample and
+  # ServiceNow as ines.auditor (snc_read_only). Never asks for or approves.
+  display_name: Ines, auditor
+  slack: false
+  servicenow_user: ines.auditor
+  jenkins_user: ines
+
+coding-agent:
+  # Video 16: the coding agent, with its own GitHub App. It writes code, and
+  # never asks for, reviews or approves a release: change.py refuses a
+  # pull request it wrote without a person's approving review.
+  display_name: Coding agent
+  agent: true
+  slack: false
+  servicenow_user: null       # no ServiceNow account at all
+  github_login: release-demo-coding-agent-m-atek[bot]

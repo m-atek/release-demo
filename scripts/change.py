@@ -12,7 +12,9 @@ Works through ServiceNow's Change Management API as release.pipeline. The
 change names the service's CMDB item, who asked (Sam), the plans, the
 evidence as attachments, and the links. An approval by the person who asked
 is refused, whatever ServiceNow says, and so is one recorded by a machine
-user: release.pipeline, ai.notes or evidence.reader.
+user (release.pipeline, ai.notes or evidence.reader) or by a coding agent. A
+pull request written by a coding agent needs a person's approving review on
+GitHub before the change opens (scripts/authorship.py).
 
 With the run state cost_review (video 18's cost check, above its limit or
 without a measurement), the change is a normal one even when the option asks
@@ -83,6 +85,35 @@ def stage_summary(state):
     return "\n".join(done)
 
 
+def code_review(state):
+    """Video 16: who wrote the release's code and who reviewed it (scripts/authorship.py), for a
+    service with pull_requests in services.yaml and a release built from a commit; else None.
+    When GitHub or AWS doesn't answer, the change says so and the release goes on."""
+    import authorship
+
+    if not authorship.SHA.fullmatch(state.get("commit") or ""):
+        return None
+    try:
+        found = authorship.for_release(state)
+    except (Exception, SystemExit) as error:
+        return {"fields": {}, "refused": [],
+                "lines": [f"Pull requests not read from GitHub ({error.__class__.__name__}): code authorship not recorded."]}
+    if found is None:
+        return None
+    fields, lines = authorship.record(found)
+    return {"fields": fields, "lines": lines, "refused": found["refused"]}
+
+
+def refuse_unreviewed(state, lines):
+    """The Change stage stops before the change opens; Slack says why, then stopped() says where."""
+    import notify
+
+    state.setdefault("lines", []).extend(lines)
+    run_state.save(state)
+    notify.post(state)
+    fail(lines[0])
+
+
 def open_change(sn, ssm, state):
     """The change, plus what a deploy script may have put in the run state:
     change_extras (fields for the change, and affected_cis, the sys_ids of the
@@ -91,6 +122,9 @@ def open_change(sn, ssm, state):
     once it exists). The servers a service lists in services.yaml
     (servicenow.servers, CI names of any class) are affected items too."""
     config = service(state["service"])
+    code = code_review(state)
+    if code and code["refused"]:
+        refuse_unreviewed(state, code["refused"])
     # A service may release as standard changes by default (services.yaml servicenow.change),
     # or name the Slack options that make one (servicenow.standard_options, by default standard).
     standard = (state.get("option") in config["servicenow"].get("standard_options", ["standard"])
@@ -125,6 +159,9 @@ def open_change(sn, ssm, state):
         fields["u_cost_review"] = cost_review
     if state.get("change_details"):
         fields["description"] += "\n\n" + "\n".join(state["change_details"])
+    if code:
+        fields.update(code["fields"])
+        fields["description"] += "\n\n" + "\n".join(code["lines"])
     if standard:
         name = config["servicenow"]["templates"]["standard"]
         template = sn.find("std_change_record_producer", f"name={name}^active=true", "sys_id")
@@ -234,7 +271,7 @@ def wait(sn, state, timeout, interval):
     from notify import post
 
     change = state["change"]
-    machines = machine_ids(sn)
+    machines, agents = machine_ids(sn), agent_users(sn)
     deadline = time.time() + timeout
     while time.time() < deadline:
         record = sn.call("GET", f"/api/now/table/change_request/{change['sys_id']}", sysparm_fields="approval,state")
@@ -254,6 +291,10 @@ def wait(sn, state, timeout, interval):
         if machines & set(approvers):
             cancel(sn, state, "Approved by a machine user. Refused by the pipeline: only a person approves a change.")
             fail("The change was approved by a machine user. Refused.")
+        if agents & set(approvers):
+            cancel(sn, state, "Approved by a coding agent's ServiceNow user. Refused by the pipeline: "
+                              "an agent never approves a release.")
+            fail("The change was approved by a coding agent. Refused.")
         if record["approval"] == "approved" and approvers:
             state["change"]["approved_by"] = names([first_name(sn, sys_id) for sys_id in dict.fromkeys(approvers)])
             run_state.save(state)
@@ -262,6 +303,16 @@ def wait(sn, state, timeout, interval):
         time.sleep(interval)
     cancel(sn, state, f"No approval within {timeout // 60} minutes. The release stopped before production.")
     fail("No approval in time.")
+
+
+def agent_users(sn):
+    """The ServiceNow users of people.yaml's agent: true entries. The coding agent has none
+    today, so this guards the day one gets an account."""
+    from authorship import everyone
+
+    names = [p["servicenow_user"] for p in everyone().values() if p.get("agent") and p.get("servicenow_user")]
+    found = (sn.find("sys_user", f"user_name={name}", "sys_id") for name in names)
+    return {user["sys_id"] for user in found if user}
 
 
 def implement(sn, state, started=None):
