@@ -83,10 +83,15 @@ def slack_post(text):
 
 
 def live_version(name, config):
+    """Production's live version, with the deploy role on the tools host, or your sign-in for a dry run on the Mac."""
     import deploy
+    from common import aws_session
 
-    client = deploy.lambda_client(name)
     function = config["environments"]["production"]["function"]
+    try:
+        client = deploy.lambda_client(name)
+    except Exception:
+        client = aws_session().client("lambda")
     return deploy.app_version(client, function, deploy.alias_version(client, function))
 
 

@@ -120,6 +120,8 @@ def requester(deployment, tags, people):
     description = deployment.get("Description") or ""
     if "reset.py" in description:
         return PIPELINE, "reset.py", "reset.py"
+    if tags.get("requested_by") == "terraform":
+        return PIPELINE, "Terraform", "Terraform"
     for display, person in people.items():
         if description.startswith(display):
             mention = f"<@{tags['requested_by']}>" if re.fullmatch(r"[UW][A-Z0-9]{8,}", tags.get("requested_by", "")) \

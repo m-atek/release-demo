@@ -37,11 +37,18 @@ BATCH_SECONDS = 5
 
 
 def production_url():
-    import deploy
+    """The production function URL, with your sign-in on the Mac (the deploy role trusts only the tools host)."""
+    from common import aws_session
 
-    client = deploy.lambda_client(SERVICE)
     function = service(SERVICE)["environments"]["production"]["function"]
-    return client.get_function_url_config(FunctionName=function, Qualifier="live")["FunctionUrl"].rstrip("/")
+    try:
+        client = aws_session().client("lambda")
+        return client.get_function_url_config(FunctionName=function, Qualifier="live")["FunctionUrl"].rstrip("/")
+    except Exception:
+        import deploy
+
+        client = deploy.lambda_client(SERVICE)
+        return client.get_function_url_config(FunctionName=function, Qualifier="live")["FunctionUrl"].rstrip("/")
 
 
 def loki():
