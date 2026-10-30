@@ -2,14 +2,15 @@
 
 An AWS Lambda function behind a function URL. It serves one page with the
 service, environment, version, commit and deploy time in large type, a /health
-endpoint for the pipeline's checks, and /api/orders with today's fictional
-orders for the desktop and mobile demos. Standard library only.
+endpoint for the pipeline's checks, and /api/orders with the fictional orders
+for the desktop and mobile demos. The orders come from Postgres, through
+pg8000, which the build vendors from requirements.txt; the connection string
+comes from SSM, read with the function's own role at cold start. /health
+doesn't touch the database, so the checks read the version first.
 """
 
 import datetime
-import hashlib
 import html
-import itertools
 import json
 import os
 from pathlib import Path
@@ -17,25 +18,18 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SERVICE = "orders-service"
 
-STORES = [
-    "Utrecht Centraal",
-    "Amsterdam Zuid",
-    "Rotterdam Blaak",
-    "Eindhoven Strijp",
-    "Den Haag Spui",
-    "Groningen Vismarkt",
-]
-PRODUCTS = [
-    ("Running shoes", 89.95),
-    ("Rain jacket", 74.50),
-    ("Day backpack", 49.00),
-    ("Water bottle", 12.95),
-    ("Training shirt", 24.99),
-    ("Sports socks, 3 pairs", 14.99),
-]
-STATUSES = ["received", "picking", "packed", "shipped"]
+DELIVERY_ESTIMATE_DAYS = 2
+
+# The page and /api/orders read the same columns. The last is each order's
+# delivery estimate in days.
+SELECT = "SELECT id, store, items, total_eur, status, "
+FROM = " FROM orders ORDER BY id"
+PAGE_SQL = SELECT + "delivery_days" + FROM
+API_SQL = SELECT + "delivery_days" + FROM
+FIELDS = ("id", "store", "items", "total_eur", "status", "delivery_estimate")
 
 _deployed_at = None
+_database = {"url": None, "connection": None}
 
 
 def read_package(directory):
@@ -79,36 +73,74 @@ def _lambda_last_modified():
         return "unknown"
 
 
-def todays_orders(today=None):
-    """Fictional orders, the same all day, different every day."""
+def database_url():
+    """The connection string, from the SSM parameter the settings name, or None."""
+    name = os.environ.get("DATABASE_URL_PARAMETER")
+    if not name or not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        return None
+    try:
+        import boto3
+
+        parameter = boto3.client("ssm").get_parameter(Name=f"/release-demo/{name}", WithDecryption=True)
+        return parameter["Parameter"]["Value"]
+    except Exception as error:
+        print(f"{VERSION} database settings: {error.__class__.__name__}")
+        return None
+
+
+def connect(url):
+    """A connection to Postgres over TLS, from a postgresql:// URL."""
+    import ssl
+    import urllib.parse
+
+    import pg8000.native
+
+    parts = urllib.parse.urlsplit(url)
+    return pg8000.native.Connection(
+        user=urllib.parse.unquote(parts.username or ""), password=urllib.parse.unquote(parts.password or ""),
+        host=parts.hostname, port=parts.port or 5432, database=parts.path.lstrip("/"),
+        ssl_context=ssl.create_default_context(), timeout=5)
+
+
+def database_message(error):
+    """Postgres's own message for a database error, else the error itself."""
+    details = error.args[0] if error.args else None
+    return details.get("M", str(error)) if isinstance(details, dict) else str(error)
+
+
+def query(sql):
+    """The rows of a query, as dicts of FIELDS. A dropped connection is opened
+    again once; any other database error is logged in one line, then raised, so
+    the function URL answers 502 and Lambda counts the error."""
+    for attempt in (1, 2):
+        try:
+            if _database["connection"] is None:
+                if not _database["url"]:
+                    raise RuntimeError("no database connection string")
+                _database["connection"] = connect(_database["url"])
+            rows = _database["connection"].run(sql)
+            return [dict(zip(FIELDS, row)) for row in rows]
+        except Exception as error:
+            _database["connection"] = None
+            dropped = error.__class__.__name__ in ("InterfaceError", "BrokenPipeError", "ConnectionResetError")
+            if attempt == 1 and dropped:
+                continue
+            print(f"{VERSION} database error: {database_message(error)}")
+            raise
+
+
+def as_json(order):
+    return {**order, "items": list(order["items"]), "total_eur": float(order["total_eur"])}
+
+
+def todays_orders(sql=API_SQL, today=None):
+    """The orders from the database."""
     today = today or datetime.date.today()
-    pick = _picker(today.isoformat())
-    orders = []
-    for number in range(1, 8 + pick(7) + 1):
-        first = pick(len(PRODUCTS))
-        lines = [PRODUCTS[(first + n) % len(PRODUCTS)] for n in range(1 + pick(3))]
-        orders.append(
-            {
-                "id": f"{today:%y%m%d}-{number:03d}",
-                "store": STORES[pick(len(STORES))],
-                "items": [name for name, _ in lines],
-                "total_eur": round(sum(price for _, price in lines), 2),
-                "status": STATUSES[pick(len(STATUSES))],
-            }
-        )
-    return {"date": today.isoformat(), "orders": orders}
+    return {"date": today.isoformat(), "orders": [as_json(order) for order in query(sql)]}
 
 
-def _picker(seed):
-    """pick(n) gives a number below n, derived from the seed and a counter: the
-    same seed always gives the same numbers. For demo data, not for security."""
-    counter = itertools.count()
-
-    def pick(n):
-        digest = hashlib.sha256(f"{seed}/{next(counter)}".encode()).digest()
-        return int.from_bytes(digest[:8], "big") % n
-
-    return pick
+# Read once at cold start, with the function's own role.
+_database["url"] = database_url()
 
 
 def health():
@@ -123,11 +155,11 @@ def health():
 
 def page():
     env = environment()
-    orders = todays_orders()["orders"]
+    orders = todays_orders(PAGE_SQL)["orders"]
     rows = "\n".join(
         f"<tr><td>{html.escape(o['id'])}</td><td>{html.escape(o['store'])}</td>"
         f"<td>{len(o['items'])}</td><td>&euro; {o['total_eur']:.2f}</td>"
-        f"<td>{html.escape(o['status'])}</td></tr>"
+        f"<td>{html.escape(o['status'])}</td><td>{int(o['delivery_estimate'])} days</td></tr>"
         for o in orders[:5]
     )
     return PAGE.format(
@@ -136,6 +168,7 @@ def page():
         version=html.escape(VERSION),
         commit=html.escape(COMMIT[:7]),
         deployed=html.escape(deployed_at()),
+        estimate_days=DELIVERY_ESTIMATE_DAYS,
         order_count=len(orders),
         rows=rows,
     )
@@ -191,7 +224,6 @@ PAGE = """<!doctype html>
   .env.staging {{ background: var(--staging); }}
   .env.production {{ background: var(--production); }}
   .env.local {{ background: var(--local); }}
-  .demo {{ margin-left: auto; color: var(--muted); font-size: 15px; }}
   .version {{ font-size: 120px; font-weight: 700; letter-spacing: -0.04em; line-height: 1;
     margin: 40px 0 8px; font-variant-numeric: tabular-nums; }}
   .facts {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -213,17 +245,17 @@ PAGE = """<!doctype html>
   <header>
     <h1>{service}</h1>
     <span class="env {env}">{env}</span>
-    <span class="demo">Demo system</span>
   </header>
   <div class="version">{version}</div>
+  <p class="note">Delivery estimate: {estimate_days} days</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>
     <div class="fact"><span>Deployed</span><strong>{deployed}</strong></div>
   </section>
-  <h2>Today's orders ({order_count})</h2>
+  <h2>Open orders ({order_count})</h2>
   <table>
-    <thead><tr><th>Order</th><th>Store</th><th>Items</th><th>Total</th><th>Status</th></tr></thead>
+    <thead><tr><th>Order</th><th>Store</th><th>Items</th><th>Total</th><th>Status</th><th>Delivery</th></tr></thead>
     <tbody>
 {rows}
     </tbody>
