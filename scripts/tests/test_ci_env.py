@@ -1,6 +1,6 @@
 """The CI adapter, scripts/ci_env.py, and what the stage scripts take from it:
-under Jenkins everything stays as it was; GitHub Actions gives its own run id,
-link, build id and correlation id. No AWS: fakes.
+under Jenkins everything stays as it was; GitHub Actions and the neutral names
+give their own run ids, links, build ids and correlation ids. No AWS: fakes.
 
     .venv/bin/python -m pytest -q scripts/tests
 """
@@ -31,7 +31,10 @@ SAM = "U0SAM000001"
 JENKINS = {"BUILD_NUMBER": "57", "BUILD_URL": "https://jenkins-demo.es.nl/job/release/57/", "GIT_COMMIT": "a" * 40}
 GITHUB = {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": "m-atek/release-demo", "GITHUB_RUN_ID": "18300000001",
           "GITHUB_RUN_NUMBER": "12", "GITHUB_SHA": HEAD, "GITHUB_ACTOR": "m-atek", "GITHUB_SERVER_URL": "https://github.com"}
-CI_VARIABLES = {*JENKINS, *GITHUB, "WORKSPACE"}
+GITLAB = {"RELEASE_CI_NAME": "GitLab pipeline", "RELEASE_RUN_ID": "2100000001",
+          "RELEASE_RUN_URL": "https://gitlab.com/demo/release-demo/-/pipelines/2100000001", "RELEASE_BUILD_ID": "gl-7",
+          "RELEASE_COMMIT": "b" * 40, "RELEASE_CORRELATION_ID": "gitlab-ci:demo/release-demo:2100000001"}
+CI_VARIABLES = {*JENKINS, *GITHUB, *GITLAB, "WORKSPACE"}
 PEOPLE = {"mateusz": {"github_login": "m-atek", "slack_user_id": "U0MATEUSZ01"},
           "sam": {"github_login": "m-atek", "slack_user_id": SAM, "releaser": True},
           "alex": {"slack_user_id": None, "approver": True}}
@@ -73,6 +76,14 @@ def test_github_actions_names_its_run_and_never_clashes_with_jenkins_builds():
     assert run.run_url == "https://github.com/m-atek/release-demo/actions/runs/18300000001"
     assert run.correlation_id == "github-actions:m-atek/release-demo:18300000001"
     assert (run.commit, run.actor, run.splunk, run.job_role, run.masks) == (HEAD, "m-atek", False, True, True)
+
+
+def test_the_neutral_names_win_and_nothing_else_is_read():
+    run = ci_env.current({**GITHUB, **JENKINS, **GITLAB})
+    assert (run.ci, run.name, run.run_id, run.run_url, run.build_id, run.commit, run.correlation_id) == (
+        "neutral", "GitLab pipeline", "2100000001", GITLAB["RELEASE_RUN_URL"], "gl-7", "b" * 40,
+        "gitlab-ci:demo/release-demo:2100000001")
+    assert (run.actor, run.splunk, run.job_role, run.masks, run.request_time_is_commit) == ("", True, False, False, False)
 
 
 def test_on_github_the_requester_is_the_releaser_whose_login_merged():

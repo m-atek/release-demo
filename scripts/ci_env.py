@@ -5,8 +5,14 @@
     run.name, run.run_id, run.run_url, run.build_id, run.commit, run.correlation_id
 
 The stage scripts read the run's id, link, build id, commit and correlation id
-here, so the same scripts run from Jenkins or GitHub Actions:
+here, so the same scripts run from Jenkins, GitHub Actions or any other CI.
+Three routes, tried in this order:
 
+- Neutral names, for a CI whose pipeline file sets them (GitLab CI, Azure
+  Pipelines). With RELEASE_CI_NAME set, every value comes from
+  RELEASE_CI_NAME (the link label, for example "GitLab pipeline"),
+  RELEASE_RUN_ID, RELEASE_RUN_URL, RELEASE_BUILD_ID, RELEASE_COMMIT and
+  RELEASE_CORRELATION_ID, and nothing else.
 - GitHub Actions, from the variables GitHub sets: build id gh-<run number>,
   so JFrog paths never clash with Jenkins builds; the run's page; the
   commit; and the correlation id github-actions:<repository>:<run id>, which
@@ -26,7 +32,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Run:
-    ci: str                     # jenkins or github-actions
+    ci: str                     # jenkins, github-actions or neutral
     name: str                   # the run's link label in the change and its notes
     run_id: str
     run_url: str
@@ -43,6 +49,10 @@ class Run:
 
 def current(environ=None):
     env = os.environ if environ is None else environ
+    if env.get("RELEASE_CI_NAME"):
+        return Run(ci="neutral", name=env["RELEASE_CI_NAME"], run_id=env.get("RELEASE_RUN_ID", ""),
+                   run_url=env.get("RELEASE_RUN_URL", ""), build_id=env.get("RELEASE_BUILD_ID", "") or "local",
+                   commit=env.get("RELEASE_COMMIT", ""), correlation_id=env.get("RELEASE_CORRELATION_ID", ""))
     if env.get("GITHUB_ACTIONS") == "true":
         repository, run_id = env.get("GITHUB_REPOSITORY", ""), env.get("GITHUB_RUN_ID", "")
         server = env.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
