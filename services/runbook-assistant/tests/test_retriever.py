@@ -25,3 +25,7 @@ def test_the_package_asks_for_five_passages():
 
     settings = yaml.safe_load((Path(__file__).resolve().parents[1] / "assistant.yaml").read_text())
     assert settings["num_results"] == 5
+
+
+def test_search_is_hybrid_so_service_names_match_exactly():
+    assert retriever.search_arguments("ORD-12", SETTINGS)["query_type"] == "hybrid"

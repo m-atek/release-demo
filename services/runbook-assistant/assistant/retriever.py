@@ -12,7 +12,7 @@ def search_arguments(question, settings):
     """The index query for one question: the passages the model may answer from."""
     return search(
         query_text=question,
-        filters={"status": "current"},
+        query_type="hybrid",
         num_results=settings["num_results"],
     )
 
