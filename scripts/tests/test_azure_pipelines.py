@@ -86,9 +86,7 @@ def test_only_the_slack_handler_queues_it():
 
 
 def test_its_parameters_are_the_jenkins_jobs():
-    jobs_groovy = (ROOT / "jenkins" / "jobs" / "jobs.groovy").read_text()
-    release = jobs_groovy[jobs_groovy.index("pipelineJob('release')"):jobs_groovy.index("pipelineJob('rollback')")]
-    jenkins = re.findall(r"stringParam\('(\w+)'", release)
+    jenkins = pipeline_calls.release_parameters()
     camel = [re.sub(r"_([a-z])", lambda m: m.group(1).upper(), name.lower()) for name in jenkins]
     assert [p["name"] for p in PIPELINE["parameters"]] == camel
     for name, parameter in zip(jenkins, camel):

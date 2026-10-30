@@ -138,9 +138,8 @@ Test:
   variables: {STAGE: Test}
   script:
     - mkdir -p .release/reports
-    - toolchain sh -c "cd services/$SERVICE && python -m pytest -q -p no:cacheprovider
-        --junitxml=$CI_PROJECT_DIR/.release/reports/junit.xml
-        --cov=. --cov-report=xml:$CI_PROJECT_DIR/.release/reports/coverage.xml"
+    # services.yaml's scripts.test (demo 15): pytest with JUnit and coverage, then one rerun of a failed test.
+    - toolchain python3 scripts/tests_run.py "$SERVICE"
   artifacts:
     paths: [.release/, dist/]
     when: always
@@ -195,7 +194,7 @@ Staging:
   extends: [.stage, .one-release]
   variables: {STAGE: Staging, STAGE_ENVIRONMENT: staging}
   script:
-    - python3 scripts/deploy.py "$SERVICE" staging
+    - python3 scripts/demos/rollback-trap/deploy.py "$SERVICE" staging
 
 Check staging:
   stage: Check staging
@@ -204,7 +203,7 @@ Check staging:
   script:
     - |
       if ! python3 scripts/check.py "$SERVICE" staging --version "$VERSION" --url "$(state deploys.staging.url)"; then
-        python3 scripts/deploy.py "$SERVICE" staging --back
+        python3 scripts/demos/rollback-trap/deploy.py "$SERVICE" staging --back
         python3 scripts/run_state.py set "stop_reason=Staging check failed: staging is back on $(state deploys.staging.previous_version)."
         exit 1
       fi
@@ -242,7 +241,7 @@ Production:
   variables: {STAGE: Production, STAGE_ENVIRONMENT: production, STAGE_DEPLOY: "1"}
   script:
     - python3 scripts/change.py implement
-    - python3 scripts/deploy.py "$SERVICE" production
+    - python3 scripts/demos/rollback-trap/deploy.py "$SERVICE" production
 
 Check production:
   stage: Check production
@@ -260,7 +259,7 @@ Check production:
         local started previous recovery check_notes
         started=$(date +%s.%N)
         previous=$(state deploys.production.previous_version)
-        python3 scripts/deploy.py "$SERVICE" production --back || return 1
+        python3 scripts/demos/rollback-trap/deploy.py "$SERVICE" production --back || return 1
         if ! python3 scripts/check.py "$SERVICE" production --version "$previous" --url "$(state deploys.production.url)"; then
           python3 scripts/notify.py line "The previous version, $previous, fails its check too. Look now."
           python3 scripts/run_state.py set "stop_reason=Rolled back to $previous, but it fails its check too."

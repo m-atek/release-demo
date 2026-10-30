@@ -8,26 +8,45 @@ so the tests can hold every other CI's release to Jenkins'.
 
 A call is the script and what it does, without the values: "deploy.py
 staging", "deploy.py staging --back", "change.py open", "notify.py finish",
-"pytest", "syft". What releaseStage.groovy does around every stage (Slack's
-row, the event, the work note) and the run state's reads are left out:
-stage_calls() holds those to releaseStage's. Jenkins' failure paths come in
-the place they run: the staging rollback after Check staging, rollBack()
-after Check production. stopped() is its own list, stopped_calls().
+"pytest", "syft". A demo's own script keeps its folder:
+"rollback-trap/deploy.py staging". What releaseStage.groovy does around
+every stage (Slack's row, the event, the work note) and the run state's reads
+are left out: stage_calls() holds those to releaseStage's. Jenkins' failure
+paths come in the place they run: the staging rollback after Check staging,
+rollBack() after Check production. stopped() is its own list, stopped_calls().
 """
 
 import re
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 LIBRARY = ROOT / "jenkins" / "shared-library" / "vars"
+ORDERS = yaml.safe_load((ROOT / "services.yaml").read_text())["orders-service"]
 
+
+def script_name(path):
+    """scripts/deploy.py is deploy.py; a demo's own, scripts/demos/rollback-trap/deploy.py, is rollback-trap/deploy.py."""
+    parts = Path(path.split()[-1]).parts
+    return "/".join(parts[2:]) if parts[:2] == ("scripts", "demos") else parts[-1]
+
+
+# orders-service's own test and deploy scripts in services.yaml (demo 15's
+# tests_run.py, demo 20's deploy wrapper), or the defaults.
+DEPLOY = script_name(ORDERS["scripts"]["deploy"])
 # What toolchain.groovy's steps and serviceConfig's defaults run, for orders-service.
 TOOLCHAIN = {
     "build": ["build.py"],
-    "test": ["pytest"],
+    "test": [script_name(ORDERS["scripts"]["test"])] if ORDERS["scripts"].get("test") else ["pytest"],
     "qualityGate": ["sonar_args.py", "sonar-scanner"],
     "sbomAndScan": ["syft", "grype"],
 }
+# Stages Jenkins runs only when something orders-service's release from
+# another CI never has: a contract (demo 4), a plan (demo 1), migrations in the
+# version (demo 20's Migration check and Rollback check), the cost check's
+# switch (video 18). The other CIs release 1.4.0, which has none of them.
+NOT_ON_OTHER_CIS = ("Contract check", "Plan", "Migration check", "Rollback check", "Cost check")
 # The calls a stage wrapper makes, compared on their own.
 WRAPPER = ("notify.py stage", "change.py note")
 
@@ -35,7 +54,7 @@ WRAPPER = ("notify.py stage", "change.py note")
 def normalized(script, rest):
     """'deploy.py', ' orders-service staging --back' to 'deploy.py staging --back'."""
     words = [w.strip("'\"") for w in re.split(r"\s+", rest.strip()) if w]
-    if script in ("deploy.py", "check.py"):
+    if script.endswith(("deploy.py", "check.py")):
         environment = next((w for w in words if w in ("staging", "production")), "")
         back = " --back" if "--back" in words else ""
         return f"{script} {environment}{back}".strip()
@@ -54,7 +73,7 @@ def normalized(script, rest):
 
 
 CALL = re.compile(
-    r"scripts/(?P<script>\w+\.py)(?P<rest>[^\n;&|)]*)"           # python3 scripts/change.py open ...
+    r"scripts/(?:demos/(?P<demo>[\w-]+)/)?(?P<script>\w+\.py)(?P<rest>[^\n;&|)]*)"  # python3 scripts/change.py open ...
     r"|(?P<pytest>-m pytest)"                                     # the service's test step
     r"|(?P<scanner>sonar-scanner)(?![\w.:-])"                     # sonar-scanner, not its image's name
     r"|(?P<syft>\$\{?SYFT\b|\$\{SYFT\})"                          # docker run ... $SYFT
@@ -68,7 +87,7 @@ def calls(text, wrapper=False):
     found = []
     for match in CALL.finditer(text):
         if match.group("script"):
-            script = match.group("script")
+            script = f"{match.group('demo')}/{match.group('script')}" if match.group("demo") else match.group("script")
             if script == "run_state.py" and "init" not in match.group("rest"):
                 continue  # the run state's reads and writes
             call = normalized(script, match.group("rest"))
@@ -103,10 +122,12 @@ def jenkins():
     rollback = groovy_function(text, "rollBack")
     expansions = [
         (r"toolchain\.(build|test|qualityGate|sbomAndScan)\(", lambda m: TOOLCHAIN[m.group(1)]),
-        (r"\$\{(deploy)\} \$\{service\} (\w+)( --back)?", lambda m: [f"deploy.py {m.group(2)}{m.group(3) or ''}"]),
+        (r"\$\{(deploy)\} \$\{service\} (\w+)( --back)?", lambda m: [f"{DEPLOY} {m.group(2)}{m.group(3) or ''}"]),
         (r"\$\{serviceConfig\.command\(cfg, 'deploy'\)\} \$\{service\} (\w+)( --back)?",
-         lambda m: [f"deploy.py {m.group(1)}{m.group(2) or ''}"]),
+         lambda m: [f"{DEPLOY} {m.group(1)}{m.group(2) or ''}"]),
         (r"\bcheck\(cfg, service, '(\w+)'", lambda m: [f"check.py {m.group(1)}"]),
+        # rollBack()'s own check of the version it went back to (video 13 keeps its output apart).
+        (r"\bcheckTo\(cfg, service, '(\w+)'", lambda m: [f"check.py {m.group(1)}"]),
         (r"\$\{publish\} \$\{service\}", lambda m: ["publish.py"]),
         (r"\$PUBLISH \"\$SERVICE\" --release", lambda m: ["publish.py --release"]),
         (r"\brollBack\(cfg, service\)", lambda m: expand(rollback)),
@@ -129,10 +150,19 @@ def jenkins():
 
 def jenkins_stages():
     """The stages releasePipeline.groovy runs for orders-service, in order:
-    the ones it may skip included, the contract check and the plan left out."""
+    the ones it may skip included, those in NOT_ON_OTHER_CIS left out."""
     text = groovy_function((LIBRARY / "releasePipeline.groovy").read_text(), "call")
     names = re.findall(r"releaseStage(?:\.skip)?\('([^']+)'", text)
-    return [n for n in dict.fromkeys(names) if n not in ("Contract check", "Plan")]
+    return [n for n in dict.fromkeys(names) if n not in NOT_ON_OTHER_CIS]
+
+
+def release_parameters():
+    """The release job's parameters a release from Slack sends, from jobs.groovy.
+    ROWS is the release train's (demo 21), which starts Jenkins' release job
+    itself, so no other CI takes it."""
+    text = (ROOT / "jenkins" / "jobs" / "jobs.groovy").read_text()
+    release = text[text.index("pipelineJob('release')"):text.index("pipelineJob('rollback')")]
+    return [name for name in re.findall(r"stringParam\('(\w+)'", release) if name != "ROWS"]
 
 
 def stopped_calls():

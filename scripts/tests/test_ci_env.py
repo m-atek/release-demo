@@ -124,7 +124,7 @@ def test_get_parameter_masks_secure_strings_only(monkeypatch, capsys):
 
 def init(**overrides):
     args = {"service": "orders-service", "jira_key": "ORD-12", "option": "", "requested_by": "",
-            "slack_channel": "", "slack_ts": "", "requested_at": "", **overrides}
+            "slack_channel": "", "slack_ts": "", "requested_at": "", "rows": "", **overrides}
     run_state.init(Namespace(**args))
     return run_state.load()
 

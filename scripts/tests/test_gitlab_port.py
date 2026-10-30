@@ -73,9 +73,7 @@ def test_only_a_trigger_starts_it():
 
 
 def test_its_inputs_are_the_jenkins_jobs_parameters():
-    jobs_groovy = (ROOT / "jenkins" / "jobs" / "jobs.groovy").read_text()
-    release = jobs_groovy[jobs_groovy.index("pipelineJob('release')"):jobs_groovy.index("pipelineJob('rollback')")]
-    parameters = re.findall(r"stringParam\('(\w+)'", release)
+    parameters = pipeline_calls.release_parameters()
     assert list(HEADER["spec"]["inputs"]) == [p.lower() for p in parameters]
     for parameter in parameters:
         assert PIPELINE["variables"][parameter] == f"$[[ inputs.{parameter.lower()} ]]"
