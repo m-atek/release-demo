@@ -86,8 +86,17 @@ class Neon:
                     still.append(op_id)
             pending = still
 
-    def project(self):
-        for project in self.call("GET", "/projects", search=PROJECT).get("projects", []):
+    def organization(self):
+        """The organization the project lives in. A personal API key must name it
+        to list or make projects: Neon answers 400 "org_id is required" otherwise."""
+        found = self.call("GET", "/users/me/organizations").get("organizations", [])
+        if len(found) != 1:
+            names = ", ".join(f"{org.get('name')} ({org['id']})" for org in found) or "none"
+            fail(f"Neon's API key reaches {len(found)} organizations ({names}); setup needs exactly one.")
+        return found[0]["id"]
+
+    def project(self, org_id):
+        for project in self.call("GET", "/projects", search=PROJECT, org_id=org_id).get("projects", []):
             if project["name"] == PROJECT:
                 return project
         return None
@@ -131,11 +140,12 @@ def app_role(connection, password):
 
 def setup():
     api = neon()
-    project = api.project()
+    org_id = api.organization()
+    project = api.project(org_id)
     if project is None:
         print(f"Making the Neon project {PROJECT}: {REGION}, Postgres {PG_VERSION}, root branch baseline")
         made = api.call("POST", "/projects", {"project": {
-            "name": PROJECT, "region_id": REGION, "pg_version": PG_VERSION,
+            "name": PROJECT, "region_id": REGION, "pg_version": PG_VERSION, "org_id": org_id,
             "branch": {"name": "baseline", "role_name": trap.OWNER, "database_name": DATABASE}}})
         project = made["project"]
         api.wait(project["id"], made.get("operations"))

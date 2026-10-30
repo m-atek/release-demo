@@ -42,6 +42,54 @@ def test_restore_puts_staging_and_production_back_to_baseline(monkeypatch):
     assert all("preserve_under_name" not in (body or {}) for _, _, body in fake.calls if isinstance(body, dict))
 
 
+def test_a_personal_key_names_its_organization_to_find_and_make_the_project(monkeypatch, capsys):
+    # Neon answers GET /projects with a personal API key and no org_id with 400
+    # "org_id is required": setup asks for the key's organization first.
+    calls = []
+
+    def call(self, method, path, body=None, **query):
+        calls.append((method, path, body, query))
+        if path == "/users/me/organizations":
+            return {"organizations": [{"id": "org-quiet-1", "name": "Mateusz"}]}
+        if path == "/projects" and method == "GET":
+            return {"projects": [{"name": "release-demo-orders-old"}]}
+        return {"project": {"id": "p-1"}}
+
+    monkeypatch.setattr(neon.Neon, "call", call)
+    api = neon.Neon("key")
+    org_id = api.organization()
+    assert org_id == "org-quiet-1"
+    assert api.project(org_id) is None
+    assert calls[1] == ("GET", "/projects", None, {"search": "release-demo-orders", "org_id": "org-quiet-1"})
+
+    monkeypatch.setattr(neon.Neon, "call", lambda self, method, path, body=None, **query: {"organizations": [
+        {"id": "org-1", "name": "One"}, {"id": "org-2", "name": "Two"}]})
+    with pytest.raises(SystemExit):
+        api.organization()
+    assert "reaches 2 organizations (One (org-1), Two (org-2)); setup needs exactly one." in capsys.readouterr().err
+
+
+def test_setup_makes_the_project_in_that_organization(monkeypatch):
+    made = []
+
+    def call(self, method, path, body=None, **query):
+        if path == "/users/me/organizations":
+            return {"organizations": [{"id": "org-quiet-1", "name": "Mateusz"}]}
+        if path == "/projects" and method == "GET":
+            return {"projects": []}
+        if path == "/projects" and method == "POST":
+            made.append(body)
+            raise RuntimeError("stop after the POST")
+        raise AssertionError(path)
+
+    monkeypatch.setattr(neon.Neon, "call", call)
+    monkeypatch.setattr(neon, "neon", lambda: neon.Neon("key"))
+    with pytest.raises(RuntimeError, match="stop after the POST"):
+        neon.setup()
+    assert made[0]["project"]["org_id"] == "org-quiet-1"
+    assert made[0]["project"]["name"] == "release-demo-orders" and made[0]["project"]["region_id"] == "aws-eu-west-2"
+
+
 def test_the_app_role_is_made_with_sql_and_keeps_one_password():
     ran = []
 
