@@ -241,6 +241,10 @@ def set_admin(enabled):
             "-p", json.dumps({"data": {"admin.enabled": "true" if enabled else "false"}}))
 
 
+def initial_admin_secret():
+    return kubectl("get", "secret", "argocd-initial-admin-secret", "-n", "argocd", "-o", "json", check=False)
+
+
 def pipeline_token():
     """release-pipeline's API token in SSM, made once. A stored token that still
     reads the application is kept. The admin account is on only while the
@@ -249,12 +253,17 @@ def pipeline_token():
     if stored and api("GET", f"/api/v1/applications/{APPLICATION}", stored)[0] == 200:
         print("  release-pipeline's token in SSM: still works")
         return
-    secret = kubectl("get", "secret", "argocd-initial-admin-secret", "-n", "argocd", "-o", "json", check=False)
-    if not secret:
-        raise SystemExit("No argocd-initial-admin-secret: the admin password is unknown, so no token can be made.")
-    password = base64.b64decode(json.loads(secret)["data"]["password"]).decode()
     set_admin(True)
     try:
+        secret = initial_admin_secret()
+        if not secret:
+            # argocd-server makes the admin's first password only when it starts with the
+            # account on, and settings.yaml has it off from the first apply.
+            kubectl("rollout", "restart", "deployment/argocd-server", "-n", "argocd")
+            wait("argocd-server with the admin account on", rolled_out("deployment", "argocd-server"), 300)
+            wait("argocd-initial-admin-secret", lambda: bool(initial_admin_secret()), 60)
+            secret = initial_admin_secret()
+        password = base64.b64decode(json.loads(secret)["data"]["password"]).decode()
         for _ in range(20):  # the server picks up argocd-cm within seconds
             status, session = api("POST", "/api/v1/session", body={"username": "admin", "password": password})
             if status == 200:

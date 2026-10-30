@@ -103,6 +103,34 @@ def test_argocds_crds_are_established_before_its_project_and_application_are_app
     assert everything[1] == rendered
 
 
+def test_a_new_cluster_restarts_argocd_server_with_admin_on_for_its_first_password(monkeypatch):
+    import cluster
+
+    secret = json.dumps({"data": {"password": base64.b64encode(b"first").decode()}})
+    calls, stored = [], {}
+
+    def kubectl(*args, **kwargs):
+        calls.append(args)
+        if args[:3] == ("get", "secret", "argocd-initial-admin-secret"):
+            return secret if ("rollout", "restart", "deployment/argocd-server", "-n", "argocd") in calls else ""
+        return ""
+
+    def api(method, path, token=None, body=None):
+        if path == "/api/v1/session":
+            return (200, {"token": "session"}) if body["password"] == "first" else (401, {})
+        return 200, {"token": "pipeline"}
+
+    monkeypatch.setattr(cluster, "kubectl", kubectl)
+    monkeypatch.setattr(cluster, "api", api)
+    monkeypatch.setattr(cluster, "parameter", lambda name: None)
+    monkeypatch.setattr(cluster, "wait", lambda what, check, timeout: check())
+    monkeypatch.setattr(cluster, "rolled_out", lambda *args: lambda: True)
+    monkeypatch.setattr(cluster, "ssm", lambda: type("SSM", (), {"put_parameter": lambda self, **k: stored.update(k)})())
+    cluster.pipeline_token()
+    assert [json.loads(c[-1])["data"]["admin.enabled"] for c in calls if c[0] == "patch"] == ["true", "false"]
+    assert stored["Name"] == "/release-demo/argocd/pipeline-token" and stored["Value"] == "pipeline"
+
+
 def test_the_pinned_argocd_manifest_is_a_release_at_least_two_weeks_old():
     import cluster
 
