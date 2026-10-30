@@ -56,7 +56,7 @@ PEOPLE = {
                          "roles": ["itil", "snc_basic_auth_api_access"], "machine": True},
     # Videos 12 and 13: writes the AI notes on changes. In no group, never an approver.
     "ai.notes": {"first_name": "AI", "last_name": "Notes", "password": "servicenow/ai-notes-password",
-                 "roles": ["itil", "snc_basic_auth_api_access"], "machine": True},
+                 "roles": ["itil", "snc_basic_auth_api_access"], "machine": True, "generated": True},
     # Video 18: the cost approver. Set up once her password is in SSM.
     "fiona.finance": {"first_name": "Fiona", "last_name": "Finance", "password": "servicenow/fiona-password",
                       "roles": ["itil", "approver_user"], "optional": "video 18"},
@@ -148,7 +148,7 @@ def setup_people(sn, ssm):
     users = {}
     for user_name, person in PEOPLE.items():
         password = get_parameter_or_none(ssm, person["password"])
-        if password is None and person.get("machine"):
+        if password is None and (person.get("machine") or person.get("generated")):
             password = generated_password()
             put_parameter(ssm, person["password"], password)
             print(f"  {user_name}: generated a password and stored it in SSM")
