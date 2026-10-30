@@ -5,6 +5,6 @@
 # train leaves with an issue that isn't done only if a flag here names it and
 # that flag is off in production. /flag in Slack switches it in production.
 delivery_estimate_v2:
-  issue: null  # scripts/demos/release-train/setup.py writes ORD-[w] here
+  issue: ORD-94
   default: off
   description: Delivery estimate per carrier, on the page and at /api/estimate.
