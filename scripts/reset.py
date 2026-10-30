@@ -448,8 +448,10 @@ def reset_main(dry_run, slack_url=None):
 
 
 def other_demo(demo, args):
-    # reset.py ai-notes runs scripts/demos/ai_notes/reset.py.
-    folder = ROOT / "scripts" / "demos" / demo.replace("-", "_")
+    # reset.py ai-notes runs scripts/demos/ai_notes/reset.py: without a folder of its own name, a dash is an underscore.
+    folder = ROOT / "scripts" / "demos" / demo
+    if not folder.is_dir():
+        folder = folder.with_name(demo.replace("-", "_"))
     if not folder.is_dir():
         demos = sorted(p.name for p in folder.parent.iterdir() if p.is_dir()) if folder.parent.is_dir() else []
         fail(f"No demo {demo}. Demos: {', '.join(['main', *demos])}")
