@@ -22,6 +22,7 @@ account's API token, generated into SSM as argocd/pipeline-token.
 """
 
 import base64
+import functools
 import hashlib
 import json
 import os
@@ -49,7 +50,7 @@ REGISTRY_NAME = "artifactory-demo.es.nl"
 ARGOCD_VERSION = "v3.5.5"
 ARGOCD_MANIFEST = f"https://raw.githubusercontent.com/argoproj/argo-cd/{ARGOCD_VERSION}/manifests/install.yaml"
 ARGOCD_SHA256 = "90dc9094bf4c5964afd9c0e35d735e1c2fcbbda4f8e36799c092d9864ed65f50"
-ARGOCD_API = "http://127.0.0.1:30080"
+ARGOCD_PORT = 30080  # the NodePort, on the node's own address: kube-proxy may not serve it on localhost
 APPLICATION = "catalog-production"
 PIPELINE_ACCOUNT = "release-pipeline"
 BREAK_GLASS_GROUP = "release-demo:break-glass"
@@ -87,6 +88,7 @@ def parameter(name):
     return None if value == "unset" else value
 
 
+@functools.lru_cache(maxsize=1)
 def settings():
     found = parameter("cluster-host/settings")
     if not found:
@@ -220,7 +222,7 @@ def notifications_secret(token):
 
 
 def api(method, path, token=None, body=None):
-    request = urllib.request.Request(ARGOCD_API + path, method=method,
+    request = urllib.request.Request(f"http://{settings()['address']}:{ARGOCD_PORT}{path}", method=method,
                                      data=json.dumps(body).encode() if body is not None else None,
                                      headers={"Content-Type": "application/json",
                                               **({"Authorization": f"Bearer {token}"} if token else {})})
@@ -272,10 +274,11 @@ def pipeline_token():
 
 
 def argocd(config):
+    # The namespace production and its break-glass role first: the application syncs into it at once.
+    kubectl("apply", "-f", str(HERE / "break-glass.yaml"))
     with tempfile.TemporaryDirectory() as out:
         rendered = render(config, manifest(), out)
     kubectl("apply", "--server-side", "--force-conflicts", "-f", "-", stdin=rendered)
-    kubectl("apply", "-f", str(HERE / "break-glass.yaml"))
     notifications_secret(recorder_token())
     for kind, name in (("deployment", "argocd-redis"), ("deployment", "argocd-repo-server"),
                        ("statefulset", "argocd-application-controller"), ("deployment", "argocd-server"),

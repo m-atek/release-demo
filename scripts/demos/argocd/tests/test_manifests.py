@@ -129,7 +129,9 @@ def test_the_kustomization_renders_without_dex_and_applicationset(tmp_path):
     docs = [d for d in yaml.safe_load_all(rendered.stdout) if d]
     names = {(d["kind"], d["metadata"]["name"]) for d in docs}
     assert not any("dex" in name or "applicationset" in name for _, name in names)
-    assert all(d["metadata"].get("namespace") == "argocd" for d in docs if d["kind"] != "ClusterRole")
+    cluster_wide = ("Namespace", "ClusterRole", "ClusterRoleBinding", "CustomResourceDefinition")
+    assert all(d["metadata"].get("namespace") == "argocd" for d in docs if d["kind"] not in cluster_wide)
+    assert ("Namespace", "argocd") in names
     server = by_name(docs, "Service", "argocd-server")["spec"]
     assert server["type"] == "NodePort" and server["ports"][0]["nodePort"] == 30080
     cm = by_name(docs, "ConfigMap", "argocd-cm")["data"]
