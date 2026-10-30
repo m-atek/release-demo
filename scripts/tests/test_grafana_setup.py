@@ -94,9 +94,12 @@ def test_marks_follow_the_tags_events_py_sends():
     tags = sorted(tuple(a["target"]["tags"]) for a in marks)
     marked = sorted({service for _, _, service in tags})
     assert "orders-service" in marked and set(marked) <= set(SERVICES)
-    assert tags == sorted(("release-demo", kind, service) for service in marked for kind in ("release", "rollback"))
+    flags = [("release-demo", "flag", "orders-service")]  # demo 21's switches, from the event bridge
+    assert tags == sorted([*(("release-demo", kind, service) for service in marked for kind in ("release", "rollback")),
+                           *flags])
     pipeline = (ROOT / "jenkins" / "shared-library" / "vars" / "releasePipeline.groovy").read_text()
     assert '--tags "release,$SERVICE"' in pipeline and '--tags "rollback,$SERVICE"' in pipeline
+    assert '"tags": ["release-demo", "flag", "orders-service"]' in (ROOT / "bridge" / "appconfig.py").read_text()
 
 
 def kind_senders(kind):

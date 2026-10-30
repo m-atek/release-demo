@@ -28,8 +28,11 @@ locals {
       for name, s in local.services : name => {
         jira_project = s.jira.project
         options      = try(s.slack.options, [])
+        flags        = try(s.flags.names, []) # demo 21: the flags /flag may switch in production
       } if try(s.pipeline, "release") != "pull-request"
     }
+    # Demo 21: the name /flag gives the person who switched a flag, for the change.
+    people = { for name in local.releasers : name => local.people[name].display_name }
   }
 }
 
