@@ -15,14 +15,24 @@ force-pushed. Main must be on 1.3.0: reset.py github-actions puts it there.
 
 import argparse
 import base64
+import subprocess
 import sys
 
 from github_demo import BASELINE, BRANCH, ROOT, SERVICE, TITLE, VERSION, fail, gh_api, gh_signed_in, repository
 
-AUTHOR = {"name": "Mateusz Ulas", "email": "noreply@es.nl"}
 BODY = ("Shows the delivery estimate on the order page: \"Delivery estimate: 2 days\".\n\n"
         "ORD-12. Merging it releases orders-service 1.4.0 from GitHub Actions; production waits for the change's "
         "approval in ServiceNow.")
+
+
+def author():
+    """The commit's author as this Mac's git knows you, as on your other commits; GitHub's default without one."""
+    found = {}
+    for key in ("name", "email"):
+        value = subprocess.run(["git", "-C", str(ROOT), "config", f"user.{key}"], capture_output=True, text=True).stdout.strip()
+        if value:
+            found[key] = value
+    return found if len(found) == 2 else None
 
 
 def open_pulls(repo):
@@ -74,8 +84,10 @@ def open_pull(repo):
     main_files = [e["path"] for e in tree["tree"] if e["type"] == "blob" and e["path"].startswith(f"services/{SERVICE}/")]
     new_tree = gh_api("POST", f"/repos/{repo}/git/trees",
                       {"base_tree": commit["tree"]["sha"], "tree": tree_entries(main_files, state_files())})
-    new_commit = gh_api("POST", f"/repos/{repo}/git/commits", {"message": TITLE, "tree": new_tree["sha"],
-                                                                "parents": [head], "author": AUTHOR})
+    commit_body = {"message": TITLE, "tree": new_tree["sha"], "parents": [head]}
+    if author():
+        commit_body["author"] = author()
+    new_commit = gh_api("POST", f"/repos/{repo}/git/commits", commit_body)
     branch = free_branch(repo)
     gh_api("POST", f"/repos/{repo}/git/refs", {"ref": f"refs/heads/{branch}", "sha": new_commit["sha"]})
     pull = gh_api("POST", f"/repos/{repo}/pulls", {"title": TITLE, "head": branch, "base": "main", "body": BODY})
