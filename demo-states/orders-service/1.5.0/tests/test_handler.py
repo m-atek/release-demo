@@ -10,8 +10,8 @@ from conftest import request
 # this test 200 times with coverage, as the pipeline runs it, and sets the
 # limit near the 90th percentile.
 RENDERS_PER_REGION = 200
-# Measured: p50 0.098 s, p90 0.102 s, p99 0.107 s in 200 runs on a Mac, 30 Oct 2026.
-TIME_LIMIT_SECONDS = 0.102
+# Measured: p50 0.347 s, p90 0.406 s, p99 0.461 s in 200 runs on the tools host, 30 Oct 2026.
+TIME_LIMIT_SECONDS = 0.406
 
 
 def test_health_reports_version_and_environment():
