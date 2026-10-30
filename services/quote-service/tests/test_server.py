@@ -31,11 +31,11 @@ def test_page_shows_service_cloud_version_and_platform():
     assert "Azure Container Apps, westeurope" in body
 
 
-def test_page_quotes_in_eur_and_gbp():
+def test_page_quotes_in_eur():
     body = request("/")[2]
-    assert "Quotes in EUR and GBP" in body
-    assert "103.20 GBP" in body
+    assert "Quotes in EUR" in body
     assert "120.00 EUR" in body
+    assert "GBP" not in body
 
 
 def test_page_escapes_environment_name(monkeypatch):
@@ -43,32 +43,10 @@ def test_page_escapes_environment_name(monkeypatch):
     assert "<staging>" not in request("/")[2]
 
 
-def test_quote_in_gbp():
-    status, _, body = request("/api/quote?amount=100&currency=gbp")
-    assert status == 200
-    assert body["currency"] == "GBP"
-    assert body["total"] == 86.0
-
-
-def test_gbp_rate_comes_from_the_setting(monkeypatch):
-    monkeypatch.setenv("QUOTE_GBP_RATE", "0.9")
-    assert request("/api/quote?amount=100&currency=GBP")[2]["total"] == 90.0
-
-
-def test_without_the_setting_gbp_quotes_and_the_page_fail(monkeypatch):
-    monkeypatch.delenv("QUOTE_GBP_RATE")
+def test_no_quotes_in_gbp_yet():
     status, _, body = request("/api/quote?amount=100&currency=GBP")
-    assert status == 500
-    assert body["error"] == "QUOTE_GBP_RATE is not set"
-    assert request("/")[0] == 500
-    assert request("/health")[0] == 200
-
-
-def test_a_gbp_rate_that_is_not_a_number_fails_the_quote(monkeypatch):
-    monkeypatch.setenv("QUOTE_GBP_RATE", "eighty-six")
-    status, _, body = request("/api/quote?amount=100&currency=GBP")
-    assert status == 500
-    assert body["error"] == "QUOTE_GBP_RATE is not a number: 'eighty-six'"
+    assert status == 400
+    assert "Quotes come in EUR" in body["error"]
 
 
 def test_quote_in_eur_is_valid_for_30_days():
