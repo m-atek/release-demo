@@ -205,3 +205,33 @@ def test_the_check_fails_while_release_bots_cant_see_the_project():
     assert setup.release_bot_problems(FakeOrganization(project_bits=1, build_bits=rights), {"id": "p-1"}, "7") == []
     outside = setup.release_bot_problems(FakeOrganization(member=False, project_bits=1, build_bits=rights), {"id": "p-1"}, "7")
     assert outside == ["release-demo Release Bot isn't in Release bots: run --apply"]
+
+
+def test_whoami_says_whether_release_bot_reads_the_release_pipeline(monkeypatch, capsys):
+    values = {"organization": "demo-org", "pipeline-id": "7"}
+    monkeypatch.setattr("sys.argv", ["release_bot.py", "whoami"])
+    monkeypatch.setattr(release_bot, "settings", lambda: values)
+    monkeypatch.setattr(release_bot, "token", lambda values: "token")
+
+    def call(method, path, body=None, values=None, bearer=None):
+        if path == "/_apis/connectionData":
+            return {"authenticatedUser": {"providerDisplayName": "release-demo Release Bot"}}
+        raise release_bot.urllib.error.HTTPError(path, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(release_bot, "call", call)
+    with pytest.raises(SystemExit):
+        release_bot.main()
+    out = capsys.readouterr()
+    assert "Azure DevOps sees: release-demo Release Bot" in out.out
+    assert "can't read the release pipeline's runs (404)" in out.out + out.err
+    monkeypatch.setattr(release_bot, "runs_in_progress", lambda values, bearer: [])
+    release_bot.main()
+    assert capsys.readouterr().out.endswith("Release Bot reads the release pipeline: 0 run(s) in progress\n")
+
+
+def test_day_one_token_shows_whoamis_refusal_too(monkeypatch, capsys):
+    monkeypatch.setattr(day_one.host, "Host", lambda: SimpleNamespace(shell=lambda script, timeout=60: (
+        1, "Azure DevOps sees: release-demo Release Bot\n", "Release Bot can't read the release pipeline's runs (404).\n")))
+    assert day_one.token() == 1
+    assert capsys.readouterr().out == ("Azure DevOps sees: release-demo Release Bot\n"
+                                       "Release Bot can't read the release pipeline's runs (404).\n")

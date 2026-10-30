@@ -42,7 +42,7 @@ def token():
     code, out, err = host.Host().shell(
         f"cd {host.REPO_DIR} && (git pull --ff-only -q || true) && "
         f"/opt/release-demo-venv/bin/python scripts/demos/azure_devops/release_bot.py whoami", timeout=60)
-    print((out or err).strip())
+    print("\n".join(part.strip() for part in (out, err) if part and part.strip()))  # whoami's refusal is on stderr
     return code
 
 

@@ -88,11 +88,20 @@ def run_in_progress():
 
 
 def main():
-    """python scripts/demos/azure_devops/release_bot.py whoami: who Azure DevOps sees, on the tools host."""
+    """python scripts/demos/azure_devops/release_bot.py whoami: who Azure DevOps sees, on the tools host, and
+    whether Release Bot may read the release pipeline's runs, as /release, reset.py and the idle stop need."""
     if sys.argv[1:] != ["whoami"]:
         fail("usage: release_bot.py whoami")
-    reply = call("GET", "/_apis/connectionData")
+    values = settings()
+    bearer = token(values)
+    reply = call("GET", "/_apis/connectionData", values=values, bearer=bearer)
     print(f"Azure DevOps sees: {reply['authenticatedUser']['providerDisplayName']}")
+    try:
+        going = runs_in_progress(values, bearer)
+    except urllib.error.HTTPError as error:
+        fail(f"Release Bot can't read the release pipeline's runs ({error.code}). As the organization's owner: "
+             "python scripts/demos/azure_devops/setup.py --apply, which lets Release bots see the project.")
+    print(f"Release Bot reads the release pipeline: {len(going)} run(s) in progress")
 
 
 if __name__ == "__main__":
