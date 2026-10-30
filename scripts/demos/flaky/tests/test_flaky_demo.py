@@ -176,6 +176,7 @@ def test_the_jobs_are_defined_as_the_spec_names_them():
     gate = tests.index("python3 scripts/demos/flaky/quiet.py")
     assert tests.index("testsStage('Build')") < tests.index("if (params.COMMIT) {\n        // flaky-night") < gate
     assert gate < tests.index("testsStage('Test')")
+    assert "quiet.py --wait-minutes 600'" in tests  # within the night's 14 hours
     night = (ROOT / "jenkins" / "jobs" / "flaky-night.Jenkinsfile").read_text()
     assert "started[0].userId != 'admin'" in night and "string(name: 'COMMIT', value: commit)" in night
     assert "stringParam('RUNS', '80'" in jobs and "stringParam('PAUSE_SECONDS', '60'" in jobs

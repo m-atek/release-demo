@@ -23,8 +23,9 @@ node('tools-host') {
     if (params.COMMIT) {
         // flaky-night's runs time a test on this host: each waits, between the
         // stages and right before the test, until no other build keeps the CPUs
-        // busy, as when calibrate.py measured the limit.
-        sh 'python3 scripts/demos/flaky/quiet.py'
+        // busy, as when calibrate.py measured the limit. As long as it takes: a
+        // run timed beside another build is worse than a night that ends later.
+        sh 'python3 scripts/demos/flaky/quiet.py --wait-minutes 600'
     }
     testsStage('Test') {
         toolchain.test('orders-service', cfg, 'tests')
