@@ -452,3 +452,33 @@ def test_the_host_keeps_the_agent_s_network_off_private_addresses():
     for range_ in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"):
         assert range_ in block
     assert "iptables -I DOCKER-USER -i br-agent" in block and "iptables -I INPUT -i br-agent -j DROP" in block
+
+
+def test_the_minute_timer_of_pull_requests_alone_doesn_t_keep_the_host_up(monkeypatch, tmp_path):
+    spec = importlib.util.spec_from_file_location("idle_stop", ROOT / "tools-host" / "idle_stop.py")
+    idle = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(idle)
+    (tmp_path / "jenkins-admin-password").write_text("test")
+
+    def answers(running, queued):
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def urlopen(request, timeout):
+            if "/computer/" in request.full_url:
+                return Response(json.dumps({"computer": [{"executors": [{"currentExecutable": {"url": u}} for u in running],
+                                                          "oneOffExecutors": []}]}).encode())
+            return Response(json.dumps({"items": [{"task": {"url": u}} for u in queued]}).encode())
+
+        monkeypatch.setattr(idle.urllib.request, "urlopen", urlopen)
+
+    answers(["http://localhost:8080/job/pull-requests/1201/"], [])
+    assert idle.jenkins_busy(tmp_path) is False
+    answers(["http://localhost:8080/job/pull-requests/1201/", "http://localhost:8080/job/release/88/"], [])
+    assert idle.jenkins_busy(tmp_path) is True
+    answers([], ["http://localhost:8080/job/agent-task/"])
+    assert idle.jenkins_busy(tmp_path) is True
