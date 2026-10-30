@@ -41,10 +41,12 @@ orders-service:
     quarantine: { file: tests/quarantine.yaml, after_flaky_runs: 3, window_days: 14, days: 14 }
 
   # Demo 21: the release train (scripts/demos/release-train/train.py). It leaves
-  # at these times on weekdays, Europe/Amsterdam, while scripts/demo.sh up
-  # release-train has it switched on. Set them to suit a recording day.
+  # at these times on these days, Europe/Amsterdam, while scripts/demo.sh up
+  # release-train has it switched on. Set them to suit a recording day: a
+  # weekend recording adds Sat or Sun to days (the job's timer ticks daily).
   train:
     departures: ["14:00"]
+    days: [Mon, Tue, Wed, Thu, Fri]
 
   # Demo 21: feature flags in AWS AppConfig (infra/demos/21-release-train-flags),
   # read from 1.8.0 on and named, with the issue each hides, in the version's

@@ -18,9 +18,10 @@ message's own time, so "Live in" counts from the message the video's clock
 starts on.
 
 A timer run leaves only at a departure (services.yaml, train.departures,
-Europe/Amsterdam, weekdays) and only while scripts/demo.sh up release-train
-has the train switched on (SSM release-train/enabled); any other tick ends
-at once with exit code 3, which the job shows as not built.
+Europe/Amsterdam, on train.days, weekdays unless a recording day adds one)
+and only while scripts/demo.sh up release-train has the train switched on
+(SSM release-train/enabled); any other tick ends at once with exit code 3,
+which the job shows as not built.
 """
 
 import argparse
@@ -51,12 +52,27 @@ def now_in_amsterdam():
 
 
 LATE_MINUTES = 10  # a timer run that waited for an executor still takes its departure
+DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+WEEKDAYS = DAYS[:5]
 
 
-def departure(moment, departures):
-    """The departure this timer run is for, "14:00", or None: weekdays only, from the
-    departure's minute to LATE_MINUTES after it."""
-    if moment.weekday() >= 5:
+def train_days(trains):
+    """The days the trains leave, in week order: services.yaml's train.days, weekdays by default."""
+    wanted = {day for config in trains.values() for day in (config["train"].get("days") or WEEKDAYS)}
+    unknown = wanted - set(DAYS)
+    if unknown:
+        raise SystemExit(f"services.yaml's train.days has {', '.join(sorted(unknown))}: use {', '.join(DAYS)}.")
+    return [day for day in DAYS if day in wanted]
+
+
+def spoken_days(days):
+    return "weekdays" if days == WEEKDAYS else ", ".join(days)
+
+
+def departure(moment, departures, days=WEEKDAYS):
+    """The departure this timer run is for, "14:00", or None: on the train's days only,
+    from the departure's minute to LATE_MINUTES after it."""
+    if DAYS[moment.weekday()] not in days:
         return None
     for planned in departures:
         hour, minute = (int(part) for part in planned.split(":"))
@@ -176,9 +192,11 @@ def main():
     moment = now_in_amsterdam()
     if args.timer:
         departures = sorted({d for config in trains.values() for d in config["train"]["departures"]})
-        at = departure(moment, departures)
+        days = train_days(trains)
+        at = departure(moment, departures, days)
         if not at:
-            note(f"No departure at {moment:%H:%M}: the train leaves at {', '.join(departures)} on weekdays.")
+            note(f"No departure at {moment:%a %H:%M}: the train leaves at {', '.join(departures)} on "
+                 f"{spoken_days(days)}.")
             return NOT_DEPARTING
         try:
             enabled = get_parameter(ssm_client(), "release-train/enabled")

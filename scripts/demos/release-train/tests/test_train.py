@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 import demo
 import flags
@@ -41,6 +42,21 @@ def test_the_train_leaves_only_at_a_departure_on_a_weekday():
     assert train.departure(at(3, 10, 30), ["10:30", "14:00"]) == "10:30"
     assert train.departure(at(3, 14, 3), ["14:00"]) == "14:00"       # a run that waited for an executor
     assert train.departure(at(3, 14, 10), ["14:00"]) is None
+
+
+def test_a_recording_day_on_a_weekend_adds_it_to_the_trains_days():
+    assert train.departure(at(7, 14, 0), ["14:00"], ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) == "14:00"
+    assert train.departure(at(8, 14, 0), ["14:00"], ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) is None  # a Sunday
+    assert train.train_days({"orders-service": {"train": {"departures": ["14:00"]}}}) == train.WEEKDAYS
+    assert train.train_days({"orders-service": {"train": {"days": ["Sat", "Mon"]}}}) == ["Mon", "Sat"]
+    assert train.spoken_days(train.WEEKDAYS) == "weekdays" and train.spoken_days(["Mon", "Sat"]) == "Mon, Sat"
+    with pytest.raises(SystemExit, match="Saturday"):
+        train.train_days({"orders-service": {"train": {"days": ["Saturday"]}}})
+
+
+def test_services_yaml_keeps_the_train_on_weekdays():
+    config = yaml.safe_load((ROOT / "services.yaml").read_text())["orders-service"]["train"]
+    assert config == {"departures": ["14:00"], "days": ["Mon", "Tue", "Wed", "Thu", "Fri"]}
 
 
 def test_an_unfinished_issue_rides_behind_a_flag_that_is_off():
@@ -126,7 +142,7 @@ def test_a_timer_tick_that_isnt_a_departure_or_while_switched_off_leaves_nothing
     monkeypatch.setattr(sys, "argv", ["train.py", "--timer"])
     monkeypatch.setattr(train, "now_in_amsterdam", lambda: at(3, 10, 30))
     assert train.main() == train.NOT_DEPARTING
-    assert (tmp_path / "train.txt").read_text().startswith("No departure at 10:30")
+    assert (tmp_path / "train.txt").read_text() == "No departure at Tue 10:30: the train leaves at 14:00 on weekdays.\n"
     monkeypatch.setattr(train, "now_in_amsterdam", lambda: at(3, 14, 0))
     monkeypatch.setattr(train, "get_parameter", lambda ssm, name: "off")
     monkeypatch.setattr(train, "ssm_client", lambda: None)
@@ -358,6 +374,8 @@ def test_the_reset_archives_only_what_this_demo_releases():
 def test_the_schedule_starts_the_host_half_an_hour_before_the_first_departure():
     assert demo.start_expression("14:00") == ("cron(30 13 ? * MON-FRI *)", "13:30")
     assert demo.start_expression("10:15") == ("cron(45 9 ? * MON-FRI *)", "09:45")
+    assert demo.start_expression("14:00", ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) == (
+        "cron(30 13 ? * MON,TUE,WED,THU,FRI,SAT *)", "13:30")
 
 
 def test_the_traffic_goes_round_the_stores_and_names_the_one_that_fails(monkeypatch):
@@ -374,7 +392,7 @@ def test_the_traffic_goes_round_the_stores_and_names_the_one_that_fails(monkeypa
 def test_the_jobs_and_the_trigger():
     jobs = (ROOT / "jenkins" / "jobs" / "jobs.groovy").read_text()
     assert "pipelineJob('release-train')" in jobs
-    assert r"cron { spec('TZ=Europe/Amsterdam\n0,30 7-19 * * 1-5') }" in jobs
+    assert r"cron { spec('TZ=Europe/Amsterdam\n0,30 7-19 * * *') }" in jobs  # every day: train.py picks the days
     assert "stringParam('ROWS', ''" in jobs
     jenkinsfile = (ROOT / "jenkins" / "jobs" / "release-train.Jenkinsfile").read_text()
     assert "--timer" in jenkinsfile and "currentBuild.result = 'NOT_BUILT'" in jenkinsfile

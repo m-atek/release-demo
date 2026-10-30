@@ -248,17 +248,18 @@ pipelineJob('flaky-night') {
     definition fromRepository('jenkins/jobs/flaky-night.Jenkinsfile')
 }
 
-// Demo 21: the release train. Its timer ticks every half hour on weekdays;
-// train.py leaves only at services.yaml's departures, and only while
-// scripts/demo.sh up release-train has the train switched on.
+// Demo 21: the release train. Its timer ticks every half hour, every day;
+// train.py leaves only at services.yaml's departures on its days (weekdays
+// unless a recording day adds one), and only while scripts/demo.sh up
+// release-train has the train switched on.
 pipelineJob('release-train') {
-    description('Demo 21: the release train, on its timer at the departures in services.yaml (14:00 by default), Europe/Amsterdam. By hand only as a rehearsal.')
+    description('Demo 21: the release train, on its timer at the departures in services.yaml (14:00 on weekdays by default), Europe/Amsterdam. By hand only as a rehearsal.')
     parameters {
         booleanParam('REHEARSAL', false, 'By hand: leave now, as a rehearsal. Slack says "requested by a release train rehearsal".')
     }
     properties {
         disableConcurrentBuilds()
-        pipelineTriggers { triggers { cron { spec('TZ=Europe/Amsterdam\n0,30 7-19 * * 1-5') } } }
+        pipelineTriggers { triggers { cron { spec('TZ=Europe/Amsterdam\n0,30 7-19 * * *') } } }
     }
     logRotator { numToKeep(60) }
     definition fromRepository('jenkins/jobs/release-train.Jenkinsfile')

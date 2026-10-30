@@ -1,7 +1,8 @@
-// release-train (demo 21): its timer ticks every half hour on weekdays, and the
+// release-train (demo 21): its timer ticks every half hour, every day, and the
 // train leaves at the departures services.yaml names (train.departures, by
-// default 14:00 Europe/Amsterdam), when scripts/demo.sh up release-train has
-// switched it on. scripts/demos/release-train/train.py decides: nothing new,
+// default 14:00 Europe/Amsterdam) on its days (train.days, by default
+// weekdays), when scripts/demo.sh up release-train has switched it on.
+// scripts/demos/release-train/train.py decides: nothing new,
 // an unfinished issue without a flag that's off, or a departure that starts
 // the release job as release-bot. A tick that isn't a departure ends at once,
 // not built. By hand, REHEARSAL leaves now, whatever the time.
