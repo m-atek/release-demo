@@ -65,8 +65,19 @@ def test_only_the_retriever_tests_version_and_changelog_differ():
         assert different == {"VERSION", "CHANGELOG.md", "assistant/retriever.py", "tests/test_retriever.py"}
 
 
-def test_the_service_folder_holds_2_0_0():
+def test_the_service_folder_holds_one_of_the_three_demo_states():
+    """Main holds 2.0.0 after setup and 2.1.0 or 2.1.1 while a take is staged (reset.py
+    rag stages them): always one demo state as stage.py copies it, never a mix."""
+    import filecmp
+
     from common import ROOT
 
-    assert (ROOT / "services" / "runbook-assistant" / "VERSION").read_text().strip() == "2.0.0"
-    assert rag.chunk_hash(ROOT / "services" / "runbook-assistant") == rag.chunk_hash(STATES / "2.0.0")
+    service = ROOT / "services" / "runbook-assistant"
+    version = (service / "VERSION").read_text().strip()
+    assert version in ("2.0.0", "2.1.0", "2.1.1")
+    assert rag.chunk_hash(service) == rag.chunk_hash(STATES / "2.0.0")
+    compare = filecmp.dircmp(service, STATES / version, ignore=["__pycache__", ".pytest_cache"])
+    different = set(compare.diff_files) | set(compare.left_only) | set(compare.right_only)
+    for sub in compare.subdirs.values():
+        different |= set(sub.diff_files) | set(sub.left_only) | set(sub.right_only)
+    assert not different, different
