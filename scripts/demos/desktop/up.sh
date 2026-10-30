@@ -28,9 +28,13 @@ ids=$(aws ec2 describe-instances --output text --query 'Reservations[].Instances
   --filters Name=tag:Demo,Values=6-desktop Name=instance-state-name,Values=pending,running,stopping,stopped)
 if [[ -n $ids ]]; then
   echo "== Windows instances: $ids"
+  # Wait only for machines still stopping: with no ids, the waiter watches every machine in the
+  # account and, while the tools host runs, sits out its full 10 minutes.
   # shellcheck disable=SC2086
-  aws ec2 wait instance-stopped --instance-ids $(aws ec2 describe-instances --output text --instance-ids $ids \
-    --query "Reservations[].Instances[?State.Name=='stopping'].InstanceId") 2>/dev/null || true
+  stopping=$(aws ec2 describe-instances --output text --instance-ids $ids \
+    --query "Reservations[].Instances[?State.Name=='stopping'].InstanceId")
+  # shellcheck disable=SC2086
+  [[ -z $stopping ]] || aws ec2 wait instance-stopped --instance-ids $stopping
   # shellcheck disable=SC2086
   aws ec2 start-instances --instance-ids $ids >/dev/null
   # shellcheck disable=SC2086
