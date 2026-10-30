@@ -32,3 +32,20 @@ def test_the_production_check_lines_come_from_the_build_log():
         "[2026-10-27T15:01:02.700Z] Production check failed", "ok   /health reports 1.2.3 after 1s"])
     assert history_sources.check_lines(console) == ["ok   /health reports 1.2.4 after 3s", "FAIL / answered 502",
                                                      "ok   /api/orders answered 200", "Production check failed"]
+
+
+def test_the_failed_check_wins_over_the_rollbacks_own_check():
+    # Build #10's log (1.2.4, ORD-5): the rollback's check of 1.2.3 passes after the failed one.
+    console = "\n".join([
+        "[2026-10-27T20:52:30.919Z] ok   /health reports 1.2.4 after 0s", "[2026-10-27T20:52:30.919Z] Staging check passed",
+        "[2026-10-27T20:53:02.696Z] ok   /health reports 1.2.4 after 0s",
+        "[2026-10-27T20:53:02.696Z] FAIL / answered 502", "[2026-10-27T20:53:02.696Z] FAIL /api/orders answered 502",
+        "[2026-10-27T20:53:02.696Z] Production check failed",
+        "[2026-10-27T20:53:04.849Z] ok   /health reports 1.2.3 after 0s",
+        "[2026-10-27T20:53:04.849Z] ok   / answered 200", "[2026-10-27T20:53:04.849Z] ok   /api/orders answered 200",
+        "[2026-10-27T20:53:04.849Z] Production check passed"])
+    assert history_sources.check_lines(console) == ["ok   /health reports 1.2.4 after 0s", "FAIL / answered 502",
+                                                     "FAIL /api/orders answered 502", "Production check failed"]
+    passed = console.replace("FAIL", "ok  ").replace("Production check failed", "Production check passed")
+    assert history_sources.check_lines(passed)[-1] == "Production check passed"
+    assert history_sources.check_lines("no check here") == []

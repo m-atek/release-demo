@@ -33,17 +33,22 @@ def build_of(job, version, key):
 
 
 def check_lines(console):
-    """The production check's own lines from a build's log: the last check in it."""
-    lines, current = [], []
+    """The failed production check's own lines from a build's log. After the
+    rollback the pipeline checks the previous version too, and that check
+    passes: it is the rollback's, so the last failed production check wins,
+    as check-production.txt holds it in a live run."""
+    blocks, current = [], []
     for raw in console.splitlines():
         match = CHECK_LINE.search(raw.rstrip())
         if not match:
             continue
         current.append(match.group(1))
         if match.group(1).endswith(("check passed", "check failed")):
-            lines = current if match.group(1).startswith("Production") else lines
+            if match.group(1).startswith("Production"):
+                blocks.append(current)
             current = []
-    return lines
+    failed = [block for block in blocks if block[-1] == "Production check failed"]
+    return (failed or blocks or [[]])[-1]
 
 
 def main():
