@@ -86,19 +86,32 @@ def build(String service, String jiraKey, Map cfg = null) {
     }
 }
 
-def test(String service, Map cfg = null) {
+// job, 'release' or 'tests': with a tests block in services.yaml (demo 15), the
+// per-test results go to Splunk and Grafana from the host, and Slack gets the
+// stage's lines; a release first decides the quarantine (scripts/flaky.py).
+def test(String service, Map cfg = null, String job = null) {
     cfg = cfg ?: serviceConfig(service)
+    if (job == 'release' && cfg.tests?.quarantine) {
+        sh "python3 scripts/flaky.py decide ${service}"
+    }
     onBuildAgents(cfg, service, 'test')
-    inToolchain(cfg, 'test', '.release/reports/**') {
-        if (cfg.scripts.test) {
-            sh "mkdir -p .release/reports && ${serviceConfig.command(cfg, 'test')} ${service}"
-        } else {
-            sh """
-                mkdir -p .release/reports
-                cd ${cfg.path}
-                python -m pytest -q -p no:cacheprovider --junitxml=${env.WORKSPACE}/.release/reports/junit.xml \\
-                    --cov=. --cov-report=xml:${env.WORKSPACE}/.release/reports/coverage.xml
-            """
+    try {
+        inToolchain(cfg, 'test', '.release/reports/**') {
+            if (cfg.scripts.test) {
+                sh "mkdir -p .release/reports && ${serviceConfig.command(cfg, 'test')} ${service}"
+            } else {
+                sh """
+                    mkdir -p .release/reports
+                    cd ${cfg.path}
+                    python -m pytest -q -p no:cacheprovider --junitxml=${env.WORKSPACE}/.release/reports/junit.xml \\
+                        --cov=. --cov-report=xml:${env.WORKSPACE}/.release/reports/coverage.xml
+                """
+            }
+        }
+    } finally {
+        if (job && cfg.tests) {
+            sh(returnStatus: true, script: "python3 scripts/events.py tests --job ${job}")
+            sh(returnStatus: true, script: "python3 scripts/flaky.py lines ${service}")
         }
     }
     junit testResults: '.release/reports/junit.xml', allowEmptyResults: false

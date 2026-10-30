@@ -1,0 +1,323 @@
+{
+  "uid": "release-demo-flaky",
+  "title": "Flaky tests",
+  "description": "Demo 15. Per-test results of orders-service's releases and orders-service-tests runs, from real runs.",
+  "tags": [
+    "release-demo",
+    "orders-service",
+    "flaky-tests"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 0,
+  "refresh": "",
+  "time": {
+    "from": "now-14d",
+    "to": "now"
+  },
+  "schemaVersion": 39,
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 2
+      },
+      "transparent": true,
+      "options": {
+        "mode": "markdown",
+        "content": "orders-service is a fictional service."
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Flaky tests, last 14 days",
+      "description": "Per test of orders-service, from the per-test events each release and orders-service-tests run sends (events.py tests), in the dashboard's range. Runs: the runs that ran the test. Failed, passed on rerun: the sum of flaky, 1 for a run where the test failed and its one in-place rerun passed. Failed twice: the sum of failed_twice, 1 for a run where the test failed and its rerun failed too. Quarantined until: the latest end date of a quarantine that a run applied to it.",
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 2,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "queryType": "range",
+          "maxLines": 5000,
+          "expr": "{source=\"release-demo\", service=\"orders-service\", kind=\"test\"} | json | event=\"test\""
+        }
+      ],
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "format": "auto",
+            "replace": true,
+            "keepTime": false
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "targetField": "flaky",
+                "destinationType": "number"
+              },
+              {
+                "targetField": "failed_twice",
+                "destinationType": "number"
+              },
+              {
+                "targetField": "quarantine_until_ms",
+                "destinationType": "number"
+              }
+            ],
+            "fields": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "name": {
+                "operation": "groupby",
+                "aggregations": []
+              },
+              "outcome": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "count"
+                ]
+              },
+              "flaky": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "sum"
+                ]
+              },
+              "failed_twice": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "sum"
+                ]
+              },
+              "quarantine_until_ms": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "max"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "name": 0,
+              "outcome (count)": 1,
+              "flaky (sum)": 2,
+              "failed_twice (sum)": 3,
+              "quarantine_until_ms (max)": 4
+            },
+            "renameByName": {
+              "name": "Test",
+              "outcome (count)": "Runs",
+              "flaky (sum)": "Failed, passed on rerun",
+              "failed_twice (sum)": "Failed twice",
+              "quarantine_until_ms (max)": "Quarantined until"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Failed, passed on rerun",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "noValue": "0",
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Quarantined until"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "time:D MMM YYYY"
+              },
+              {
+                "id": "noValue",
+                "value": ""
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Test"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 420
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "md",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Reruns avoided",
+      "description": "Runs in which one in-place rerun turned every failed test into a pass, in the dashboard's range. Each would otherwise have been a red build for someone to start again. Formula: the sum of avoided (1 or 0) over the runs' summary events.",
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "queryType": "instant",
+          "expr": "sum(sum_over_time({source=\"release-demo\", service=\"orders-service\", kind=\"test\"} | json event, avoided | event=\"summary\" | unwrap avoided | __error__=\"\" [$__range]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Minutes saved",
+      "description": "For the runs in Reruns avoided: each run's own Build seconds plus its first Test pass, minus its in-place rerun's seconds, summed and shown in minutes. What a person's rerun of the build would have repeated, at the least, measured on those runs and never projected.",
+      "datasource": {
+        "type": "loki",
+        "uid": "grafanacloud-logs"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 11,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "queryType": "instant",
+          "expr": "sum(sum_over_time({source=\"release-demo\", service=\"orders-service\", kind=\"test\"} | json event, saved_seconds | event=\"summary\" | unwrap saved_seconds | __error__=\"\" [$__range])) / 60"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 1,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    }
+  ]
+}
