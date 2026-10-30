@@ -62,6 +62,17 @@ def test_the_states_carry_no_demo_disclaimer():
         assert "Demo system" not in (STATES / state / "handler.py").read_text()
 
 
+def test_the_container_runs_calibrate_where_its_paths_resolve():
+    # The toolchain container runs calibrate.py from CONTAINER_SCRIPT. Its
+    # module-level paths must resolve there: from /calibrate they didn't.
+    namespace = {"__file__": calibrate.CONTAINER_SCRIPT, "__name__": "calibrate_in_container"}
+    exec(compile((HERE / "calibrate.py").read_text(), calibrate.CONTAINER_SCRIPT, "exec"), namespace)
+    assert str(namespace["SCRIPTS"]) == "/release-demo/scripts"
+    with pytest.raises(IndexError):
+        exec(compile((HERE / "calibrate.py").read_text(), "/calibrate/calibrate.py", "exec"),
+             {"__file__": "/calibrate/calibrate.py", "__name__": "calibrate_at_root"})
+
+
 def test_percentiles_and_the_limit_lines():
     times = [i / 100 for i in range(1, 101)]
     assert calibrate.percentile(times, 0.5) == 0.5

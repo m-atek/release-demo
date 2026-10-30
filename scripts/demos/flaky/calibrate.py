@@ -33,6 +33,9 @@ ROOT = SCRIPTS.parent
 STATES = ROOT / "demo-states" / "orders-service"
 VERSION = "1.5.0"
 TEST = "test_delivery_estimate_timeout"
+# In the toolchain container this file sits as deep as in the repository, so the
+# paths above resolve there too (at /calibrate, HERE.parents[1] doesn't exist).
+CONTAINER_SCRIPT = "/release-demo/scripts/demos/flaky/calibrate.py"
 # The limit and the figures it came from, the line above it.
 LIMIT_LINES = re.compile(r"^# Measured: .*\nTIME_LIMIT_SECONDS = .*$", re.MULTILINE)
 
@@ -87,8 +90,8 @@ def in_container(state_dir, runs):
         subprocess.run(["cp", "-R", str(state_dir), str(work)], check=True)
         subprocess.run(["chmod", "-R", "a+rwX", temp], check=True)
         result = subprocess.run(["docker", "run", "--rm", "--network", "none", "-v", f"{work}:/work", "-v",
-                                 f"{HERE}:/calibrate:ro", "-w", "/work", "-e", "HOME=/tmp", tag, "python",
-                                 "/calibrate/calibrate.py", "--inside", "/work", "--runs", str(runs)],
+                                 f"{HERE}:{CONTAINER_SCRIPT.rsplit('/', 1)[0]}:ro", "-w", "/work", "-e", "HOME=/tmp",
+                                 tag, "python", CONTAINER_SCRIPT, "--inside", "/work", "--runs", str(runs)],
                                 stdout=subprocess.PIPE, text=True, check=True)
     return json.loads(result.stdout.strip().splitlines()[-1])
 
