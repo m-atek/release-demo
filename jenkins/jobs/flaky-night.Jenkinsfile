@@ -1,13 +1,15 @@
 // flaky-night (demo 15), the night before recording: runs orders-service-tests
 // RUNS times in a row, PAUSE_SECONDS apart, all from the commit main has when
-// it starts: 80 runs take about 4 hours. Its runs keep the tools host awake,
+// it starts: 80 runs take about 4 hours on a quiet host. Each run first waits
+// until no other build keeps the host busy (scripts/demos/flaky/quiet.py), so
+// a night beside ci runs takes longer. Its runs keep the tools host awake,
 // and the idle stop powers it off 30 minutes after the last. Only admin may
 // start it, like history and reset: release-bot may start every job.
 
 pipeline {
     agent none
     options {
-        timeout(time: 8, unit: 'HOURS')
+        timeout(time: 12, unit: 'HOURS')
     }
     stages {
         stage('Who asked') {

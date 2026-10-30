@@ -22,6 +22,7 @@ sys.path.insert(1, str(ROOT / "scripts"))
 
 import calibrate  # noqa: E402
 import quarantine  # noqa: E402
+import quiet  # noqa: E402
 
 STATES = ROOT / "demo-states" / "orders-service"
 DASHBOARD = json.loads((HERE / "dashboard.json").read_text())
@@ -171,6 +172,76 @@ def test_the_jobs_are_defined_as_the_spec_names_them():
     assert 'currentBuild.displayName = "#${env.BUILD_NUMBER} orders-service ${params.VERSION} tests"' in tests
     assert "toolchain.test('orders-service', cfg, 'tests')" in tests and "unstable(" in tests
     assert "stage.py orders-service \"$VERSION\" --no-commit" in tests
+    # A night's run waits for a quiet host before Build, outside the stages the video shows.
+    gate = tests.index("python3 scripts/demos/flaky/quiet.py")
+    assert tests.index("if (params.COMMIT) {\n        // flaky-night") < gate < tests.index("testsStage('Build')")
     night = (ROOT / "jenkins" / "jobs" / "flaky-night.Jenkinsfile").read_text()
     assert "started[0].userId != 'admin'" in night and "string(name: 'COMMIT', value: commit)" in night
     assert "stringParam('RUNS', '80'" in jobs and "stringParam('PAUSE_SECONDS', '60'" in jobs
+
+
+class FakeHost:
+    """/proc/stat of a 4-CPU host whose CPUs are shares[i] busy during sample i, and a clock."""
+
+    def __init__(self, shares, builds=None):
+        self.shares, self.builds_seen = list(shares), list(builds or [])
+        self.busy = self.idle = 0.0
+        self.now = 0.0
+        self.samples = 0
+
+    def read(self):
+        return f"cpu  {int(self.busy)} 0 0 {int(self.idle)} 0 0 0 0 0 0\ncpu0 1 2 3 4 5 6 7 8 0 0\n"
+
+    def sleep(self, seconds):
+        share = self.shares[min(self.samples, len(self.shares) - 1)]
+        self.samples += 1
+        self.busy += share * seconds * 400
+        self.idle += (1 - share) * seconds * 400
+        self.now += seconds
+
+    def builds(self):
+        return self.builds_seen[min(self.samples, len(self.builds_seen) - 1)] if self.builds_seen else []
+
+    def wait(self, **settings):
+        said = []
+        result = quiet.wait_until_quiet(builds=self.builds, read=self.read, sleep=self.sleep, clock=lambda: self.now,
+                                        out=said.append, **settings)
+        return result, said
+
+
+def test_quiet_reads_the_share_of_all_cpus_that_worked():
+    assert quiet.cpu_times("cpu  100 5 20 800 50 3 2 10 7 0\ncpu0 1 2 3 4 5 6 7 8 0 0\n") == (140, 990)
+    host = FakeHost([0.25])
+    assert quiet.busy_share(read=host.read, sleep=host.sleep) == pytest.approx(0.25, abs=0.001)
+
+
+def test_a_quiet_host_starts_the_run_after_two_samples():
+    (waited, ok), said = FakeHost([0.05]).wait()
+    assert ok and waited == 20 and said == ["The host is quiet: its CPUs are 5% busy."]
+
+
+def test_a_night_run_waits_while_ci_builds_even_when_its_cpus_look_quiet():
+    # ci waiting on SonarQube's gate leaves the CPUs nearly idle, then builds the next service.
+    host = FakeHost([0.7, 0.12, 0.6, 0.1, 0.08, 0.06], builds=[["ci #82"], ["ci #82"], ["ci #82"], [], [], []])
+    (waited, ok), said = host.wait()
+    assert ok and waited == 50
+    assert said == ["Waited 0.8 minutes for a quiet host while ci #82 ran: its CPUs were up to 70% busy, now 8%."]
+
+
+def test_a_host_that_stays_busy_runs_anyway_after_the_wait_and_says_so():
+    (waited, ok), said = FakeHost([0.5], builds=[["release #61"]]).wait(wait_minutes=1)
+    assert not ok and waited == 60
+    assert said == ["Going on after 1 minutes: the host stayed busy (50% of its CPUs, release #61). "
+                    "This run's timing test may fail for that reason."]
+
+
+def test_without_jenkins_the_cpus_decide():
+    host = FakeHost([0.3, 0.1, 0.1])
+    host.builds = lambda: None
+    (waited, ok), said = host.wait()
+    assert ok and waited == 30
+
+
+def test_the_night_has_room_for_its_waits():
+    night = (ROOT / "jenkins" / "jobs" / "flaky-night.Jenkinsfile").read_text()
+    assert "timeout(time: 12, unit: 'HOURS')" in night
