@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: pricing-api
-  version: 2.1.0
+  version: 2.1.1
   description: >-
     Shelf prices for every store. Called by orders-service and the store app.
     Demo system, not a client's. The release pipeline compares this file with
@@ -101,7 +101,7 @@ components:
                 type: string
     Price:
       type: object
-      required: [sku, name, store, price, price_list]
+      required: [sku, name, store, price, currency, price_list]
       properties:
         sku:
           type: string
@@ -116,6 +116,10 @@ components:
           type: number
           description: Shelf price, VAT included
           example: 89.95
+        currency:
+          type: string
+          description: ISO 4217 code
+          example: EUR
         price_list:
           type: string
           description: national, or regional where the store's region has its own list

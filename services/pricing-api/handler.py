@@ -101,6 +101,7 @@ def price(sku, store):
         "name": PRODUCTS[sku][0],
         "store": store,
         "price": amount,
+        "currency": "EUR",
         "price_list": price_list,
     })
 
