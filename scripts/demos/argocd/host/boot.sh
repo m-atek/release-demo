@@ -47,8 +47,8 @@ ExecStart=$VENV/bin/python $REPO_DIR/scripts/demos/argocd/recorder.py serve
 Restart=always
 RestartSec=5
 EOF
+  # Not enabled: this boot starts it on every start, once k3s and Argo CD are up.
   systemctl daemon-reload
-  systemctl enable release-demo-recorder.service
   systemctl restart release-demo-recorder.service
 }
 
