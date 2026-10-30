@@ -3,6 +3,9 @@
     .venv/bin/python -m pytest -q scripts/demos/github_actions/tests
 """
 
+import importlib.util
+from pathlib import Path
+
 import pytest
 
 import app_hook
@@ -10,7 +13,11 @@ import bridge_test
 import environments
 import github_demo
 import pr
-import reset
+
+# The demo's reset.py by its path: scripts/reset.py has the same name.
+_spec = importlib.util.spec_from_file_location("github_actions_reset", Path(__file__).resolve().parents[1] / "reset.py")
+reset = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(reset)
 
 APP_ID = "123456"
 
