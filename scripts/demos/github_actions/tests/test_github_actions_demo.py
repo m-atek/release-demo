@@ -178,6 +178,33 @@ def test_clean_needs_mateusz_s_yes(monkeypatch):
         bridge_test.main()
 
 
+def test_the_throwaway_workflow_comes_and_goes_with_your_gh_login_not_the_app(monkeypatch):
+    calls = []
+    on_main = {}
+
+    def gh_api(method, path, body=None, check=True):
+        calls.append((method, path.split("?")[0]))
+        if method == "GET":
+            return {"name": "bridge-test"} if "/environments/" in path else on_main.get("file")
+        if method == "PUT":
+            on_main["file"] = {"sha": "abc"}
+        if method == "DELETE" and "contents" in path:
+            assert body["sha"] == "abc" and "[skip ci]" in body["message"]
+            on_main.pop("file")
+        return {}
+
+    monkeypatch.setattr(bridge_test, "gh_api", gh_api)
+    monkeypatch.setattr(bridge_test, "gh_signed_in", lambda: True)
+    monkeypatch.setattr(bridge_test, "repository", lambda: "owner/release-demo")
+    monkeypatch.setattr(bridge_test, "App", lambda *a: pytest.fail("the GitHub App may not write workflow files"))
+    bridge_test.workflow_on_main("owner/release-demo")
+    bridge_test.workflow_on_main("owner/release-demo")
+    workflow = "/repos/owner/release-demo/contents/.github/workflows/bridge-test.yml"
+    assert [call for call in calls if call[0] == "PUT"] == [("PUT", workflow)]
+    bridge_test.clean()
+    assert ("DELETE", workflow) in calls and ("DELETE", "/repos/owner/release-demo/environments/bridge-test") in calls
+
+
 def test_the_demos_names():
     assert github_demo.TITLE == "ORD-12 Show the delivery estimate on the order page"
     assert github_demo.BRANCH == "demo-14/delivery-estimate"

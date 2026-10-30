@@ -7,9 +7,10 @@ before anything else of demo 14 is trusted (its acceptance check 1).
 Before: environments.py --apply --bridge-test (the environment bridge-test,
 with the GitHub App as its rule), and the app's webhook (app_hook.py).
 
-run puts .github/workflows/bridge-test.yml on main as the GitHub App, if it
-isn't there, starts it with your gh login, and opens a test change in
-ServiceNow whose correlation id names the run, requested by Sam. Its one job
+run puts .github/workflows/bridge-test.yml on main with your gh login, if it
+isn't there (the GitHub App may write contents, not workflow files), starts
+it, and opens a test change in ServiceNow whose correlation id names the run,
+requested by Sam. Its one job
 waits on bridge-test, and the run page shows the bridge's report naming the
 change. Approve the change as Alex: the job should start within 20 seconds,
 and this prints how many. Reject another: the job fails with the bridge's
@@ -33,14 +34,15 @@ SOURCE = "scripts/demos/github_actions/bridge-test.yml"
 NOTE = "Approval bridge check by bridge_test.py: cancelled after the check."
 
 
-def workflow_on_main(app):
-    status, _ = app.status("GET", f"/repos/{app.repository}/contents/.github/workflows/{WORKFLOW}?ref=main")
-    if status == 200:
+def workflow_on_main(repo):
+    """With your gh login: GitHub refuses workflow files from an app without the
+    workflows permission, which the release-demo app doesn't need otherwise."""
+    if gh_api("GET", f"/repos/{repo}/contents/.github/workflows/{WORKFLOW}?ref=main", check=False):
         return
     content = base64.b64encode((ROOT / SOURCE).read_bytes()).decode()
-    app.call("PUT", f"/repos/{app.repository}/contents/.github/workflows/{WORKFLOW}",
-             {"message": "Day one: a throwaway workflow for the approval bridge [skip ci]", "content": content,
-              "branch": "main"})
+    gh_api("PUT", f"/repos/{repo}/contents/.github/workflows/{WORKFLOW}",
+           {"message": "Day one: a throwaway workflow for the approval bridge [skip ci]", "content": content,
+            "branch": "main"})
     print(f"Put .github/workflows/{WORKFLOW} on main")
 
 
@@ -107,7 +109,7 @@ def run():
     if not gh_signed_in():
         fail("gh isn't signed in: gh auth login.")
     app = App()
-    workflow_on_main(app)
+    workflow_on_main(app.repository)
     run_id = start_run(app.repository)
     sn, _ = connect()
     change_id, number = test_change(sn, app.repository, run_id)
@@ -123,12 +125,12 @@ def run():
 def clean():
     if not gh_signed_in():
         fail("gh isn't signed in: gh auth login.")
-    app, repo = App(), repository()
-    status, reply = app.status("GET", f"/repos/{repo}/contents/.github/workflows/{WORKFLOW}?ref=main")
-    if status == 200:
-        app.call("DELETE", f"/repos/{repo}/contents/.github/workflows/{WORKFLOW}",
-                 {"message": "Day one done: the approval bridge's throwaway workflow goes [skip ci]", "sha": reply["sha"],
-                  "branch": "main"})
+    repo = repository()
+    reply = gh_api("GET", f"/repos/{repo}/contents/.github/workflows/{WORKFLOW}?ref=main", check=False)
+    if reply:
+        gh_api("DELETE", f"/repos/{repo}/contents/.github/workflows/{WORKFLOW}",
+               {"message": "Day one done: the approval bridge's throwaway workflow goes [skip ci]", "sha": reply["sha"],
+                "branch": "main"})
         print(f"Deleted .github/workflows/{WORKFLOW}")
     if gh_api("GET", f"/repos/{repo}/environments/bridge-test", check=False):
         gh_api("DELETE", f"/repos/{repo}/environments/bridge-test")
