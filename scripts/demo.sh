@@ -23,6 +23,8 @@ usage() {
 
 [[ $# -ge 1 ]] || usage
 action=$1 demo=${2:-}
+# A demo's name may have dashes where its folder has underscores: gitlab-port is scripts/demos/gitlab_port.
+demo=${demo//-/_}
 export AWS_PROFILE=${AWS_PROFILE:-release-demo} AWS_REGION=${AWS_REGION:-eu-west-1}
 
 case $action in

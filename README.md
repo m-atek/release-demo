@@ -406,6 +406,27 @@ scripts/demo.sh status windows         # what each server runs, the drift, the c
 
 `scripts/demo.sh down windows` stops the fleet; only its disks cost, about USD 0.52 a day. `scripts/demos/windows/down.sh --destroy` removes it with Terraform.
 
+## Demo on a call: GitHub Actions (demo 14)
+
+The main release, orders-service 1.4.0 for ORD-12, run from `.github/workflows/release.yml` instead of Jenkins: the same stage scripts in the same order (`scripts/tests/test_github_actions.py` holds the workflow to `releasePipeline.groovy`), the same JFrog repositories and the same ServiceNow change. A squash merge to main that changes the service, with the Jira key at the start of its subject, starts it; the pull request's label `standard` asks for a standard change. The production environment has no reviewers and no admin bypass: its only protection rule is the GitHub App, which the approval bridge (`bridge/handler.py`) answers once Alex approves the change in ServiceNow. GitHub stores no secrets. Each job signs in to AWS with GitHub's OIDC token as a role that trusts only its own job (`infra/demos/14-github-actions`), and masks every value it reads from SSM; the run state passes from job to job encrypted, since a public repository's artifacts are public. Publish attests the package with signed provenance, and `.github/workflows/actions.lock` locks every action to a commit. GitHub's runners reach JFrog on the tools host through Cloudflare Access, so the tools host must be up.
+
+Once, after the merge:
+
+1. `scripts/tf.sh apply` (the bridge, the Cloudflare Access service token "release-demo GitHub Actions" on JFrog only, the new parameter names), then `scripts/demos/github_actions/tf.sh apply` (GitHub's OIDC provider, the roles `release-demo-github-ci`, `-staging` and `-production`, and the run state's key). Both change IAM, so you apply them.
+2. `.venv/bin/python scripts/demos/github_actions/app_hook.py`: the GitHub App's webhook to the bridge, signed with a secret it generates into SSM. Then, in the app's settings on GitHub: Webhook Active; Repository permissions, Deployments read and write, Actions read-only; the event Deployment protection rule; and accept the new permissions on the installation. `app_hook.py --check` lists what is still missing.
+3. `.venv/bin/python scripts/servicenow_setup.py`: the business rule "release-demo: approval bridge" and its two system properties, the bridge's URL and its token.
+4. `.venv/bin/python scripts/demos/github_actions/environments.py --apply` with your gh login, the repository's admin: staging and production from main only, production with the app as its only rule, and the repository variable `AWS_ACCOUNT_ID`. `--check` prints what the acceptance checks need.
+5. `gh extension install github/gh-actions-lock --pin v0.4.0`, then `gh actions-lock` once, which writes `.github/workflows/actions.lock`; commit it.
+6. The bridge's first check, on a throwaway environment: `environments.py --apply --bridge-test`, then `.venv/bin/python scripts/demos/github_actions/bridge_test.py run`, approving one test change as Alex and rejecting another. `bridge_test.py clean --yes` removes the throwaway workflow and environment afterwards.
+
+Before each call or take: `scripts/tools.sh up`, then `.venv/bin/python scripts/reset.py github-actions` from the Mac. It rejects a release run still waiting, runs the main reset, closes the demo's open pull request and opens a fresh one as you. The Jenkins job reset with DEMO=github-actions does the same except the pull request, which needs your gh login. `--dry-run` shows what it would do.
+
+On the call: merge "ORD-12 Show the delivery estimate on the order page" with Squash and merge. The run goes from Build to Change, then Production waits, with the bridge's report "ServiceNow change CHG... is waiting for approval." under the app's name. Approve the change as Alex: within seconds the bridge's comment "Approved by Alex in ServiceNow. Change CHG..." appears and the job starts. Slack's message, posted by the workflow, shows every stage with its time and "Live in ...", counted from the merge commit. `gh attestation verify orders-service-1.4.0.zip -R <owner>/release-demo` checks the zip from JFrog against its provenance.
+
+What to say if asked: GitHub calls custom deployment protection rules and workflow lockfiles public previews. A repository admin can still change the environment's settings; that is a settings change, not an approval. The production job gets AWS credentials only because GitHub issues the environment's token to a job that passed its rules. Splunk listens on the tools host only, so a GitHub run sends its events to Grafana alone, and its change has no Splunk link.
+
+After the call there is nothing to stop: GitHub's runners are free for public repositories, and the bridge costs cents a month.
+
 ## Layout
 
 ```

@@ -428,7 +428,9 @@ def reset_main(dry_run, slack_url=None):
 
 
 def other_demo(demo, args):
-    folder = ROOT / "scripts" / "demos" / demo
+    # A demo's name may have dashes where its folder, a Python package name, has
+    # underscores: reset.py github-actions runs scripts/demos/github_actions/reset.py.
+    folder = ROOT / "scripts" / "demos" / demo.replace("-", "_")
     if not folder.is_dir():
         demos = sorted(p.name for p in folder.parent.iterdir() if p.is_dir()) if folder.parent.is_dir() else []
         fail(f"No demo {demo}. Demos: {', '.join(['main', *demos])}")

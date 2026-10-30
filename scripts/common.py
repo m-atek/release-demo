@@ -115,17 +115,23 @@ def github_api(method, path, token, body=None, scheme="Bearer"):
 
 
 def github_app_token(client):
-    """An installation token for the GitHub App on release-demo, valid for an hour.
+    """An installation token for the GitHub App on release-demo, valid for an hour."""
+    repository = get_parameter(client, "github/repository")
+    jwt = github_app_jwt(client)
+    installation = github_api("GET", f"/repos/{repository}/installation", jwt)
+    token = github_api("POST", f"/app/installations/{installation['id']}/access_tokens", jwt)
+    return token["token"], repository, installation
 
-    The app's JWT is signed with openssl. The private key reaches it through a
-    pipe, so it never touches the disk.
-    """
+
+def github_app_jwt(client):
+    """The GitHub App's own JWT, for the app's settings (demo 14's webhook) and
+    its installation tokens. Signed with openssl: the private key reaches it
+    through a pipe, so it never touches the disk."""
     import base64
     import time
 
     app_id = get_parameter(client, "github/app-id")
     key = get_parameter(client, "github/app-private-key")
-    repository = get_parameter(client, "github/repository")
 
     encode = lambda data: base64.urlsafe_b64encode(data).rstrip(b"=")
     now = int(time.time())
@@ -139,11 +145,7 @@ def github_app_token(client):
                                    input=signing_input, capture_output=True, pass_fds=(read_end,), check=True).stdout
     finally:
         os.close(read_end)
-    jwt = (signing_input + b"." + encode(signature)).decode()
-
-    installation = github_api("GET", f"/repos/{repository}/installation", jwt)
-    token = github_api("POST", f"/app/installations/{installation['id']}/access_tokens", jwt)
-    return token["token"], repository, installation
+    return (signing_input + b"." + encode(signature)).decode()
 
 
 def write_json(path, data):

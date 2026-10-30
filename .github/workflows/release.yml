@@ -1,0 +1,625 @@
+# Releases orders-service from a merged pull request: the same stage scripts,
+# in the same order and with the same arguments, as Jenkins' release pipeline
+# (jenkins/shared-library/vars/releasePipeline.groovy), with the stage logic in
+# scripts/. Only a push to main that changes the service starts it, and only one
+# whose commit subject starts with its Jira key: a squash merge such as
+# "ORD-12 Show the delivery estimate on the order page (#7)". stage.py's commits
+# carry [skip ci], which GitHub Actions honours too. The pull request's label
+# standard asks for a standard change, as /release's option does.
+#
+# Production waits for ServiceNow: its environment's only protection rule is
+# the release-demo GitHub App, which the approval bridge (bridge/handler.py)
+# answers once the change is approved, so there is no approve button in GitHub.
+# No secrets in GitHub: each job signs in to AWS with GitHub's OIDC token, as
+# a role that trusts only its own job (infra/demos/14-github-actions), and
+# reads SSM; every value it reads is masked in the log. Steps source
+# .github/release-stage.sh, which does what releaseStage.groovy does.
+
+name: Release orders-service
+
+on:
+  push:
+    branches: [main]
+    paths: ["services/orders-service/**"]
+
+permissions: {}
+
+concurrency:
+  group: release-orders-service
+  cancel-in-progress: false
+
+env:
+  SERVICE: orders-service
+  AWS_REGION: eu-west-1
+  BASH_ENV: .github/release-stage.sh
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  # JFrog Container Registry, on the tools host, through Cloudflare Access.
+  JCR_URL: https://artifactory-demo.es.nl
+  JCR_ACCESS: cloudflare/github-actions
+
+jobs:
+  build:
+    name: Build
+    if: startsWith(github.event.head_commit.message, 'ORD-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Every action locked to a commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh extension install github/gh-actions-lock --pin v0.4.0
+          gh actions-lock --verify
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Tools for the stage scripts
+        run: python3 -m pip install --quiet --disable-pip-version-check -r requirements-dev.txt
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/release-demo-github-ci
+          aws-region: eu-west-1
+          mask-aws-account-id: true
+      - name: Jira key and option
+        env:
+          SUBJECT: ${{ github.event.head_commit.message }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          subject=${SUBJECT%%$'\n'*}
+          [[ $subject =~ ^(ORD-[1-9][0-9]*)[[:space:]] ]] ||
+            { echo "The merge commit's subject doesn't start with a Jira key: $subject"; exit 1; }
+          labels=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '.[0].labels[]?.name' || true)
+          option=$(grep -qx standard <<<"$labels" && echo standard || true)
+          { echo "JIRA_KEY=${BASH_REMATCH[1]}"; echo "OPTION=$option"; } >> "$GITHUB_ENV"
+      - name: Run state
+        id: init
+        run: |
+          rm -rf .release dist
+          python3 scripts/run_state.py init --service "$SERVICE" --jira-key "$JIRA_KEY" \
+            --option "$OPTION" --requested-by "" \
+            --slack-channel "" --slack-ts "" --requested-at ""
+          python3 scripts/jira.py fix-version
+          echo "VERSION=$(state version)" >> "$GITHUB_ENV"
+      - name: Build
+        run: stage Build -- python3 scripts/build.py "$SERVICE" --jira-key "$JIRA_KEY"
+      - name: Run state for the next job
+        if: always() && steps.init.outcome == 'success'
+        run: save_state
+      - uses: actions/upload-artifact@v7.0.2
+        if: always() && steps.init.outcome == 'success'
+        with:
+          name: run-state
+          path: run-state.enc
+          overwrite: true
+          retention-days: 1
+
+  test:
+    name: Test
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Tools for the stage scripts
+        run: python3 -m pip install --quiet --disable-pip-version-check -r requirements-dev.txt
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/release-demo-github-ci
+          aws-region: eu-west-1
+          mask-aws-account-id: true
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: run-state
+      - name: Run state
+        id: restore
+        run: restore_state
+      - name: Test
+        run: |
+          run_tests() {
+            mkdir -p .release/reports &&
+              (cd services/orders-service &&
+                python -m pytest -q -p no:cacheprovider --junitxml="$GITHUB_WORKSPACE/.release/reports/junit.xml" \
+                  --cov=. --cov-report="xml:$GITHUB_WORKSPACE/.release/reports/coverage.xml")
+          }
+          stage Test -- run_tests
+      - name: Run state for the next job
+        if: always() && steps.restore.outcome == 'success'
+        run: save_state
+      - uses: actions/upload-artifact@v7.0.2
+        if: always() && steps.restore.outcome == 'success'
+        with:
+          name: run-state
+          path: run-state.enc
+          overwrite: true
+          retention-days: 1
+
+  quality-gate:
+    name: Quality gate
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # the scanner reads blame, as from Jenkins' full clone
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Tools for the stage scripts
+        run: python3 -m pip install --quiet --disable-pip-version-check -r requirements-dev.txt
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/release-demo-github-ci
+          aws-region: eu-west-1
+          mask-aws-account-id: true
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: run-state
+      - name: Run state
+        id: restore
+        run: restore_state
+      - name: Quality gate
+        env:
+          # The pinned scanner from jenkins/shared-library/vars/toolchain.groovy, by the same digest.
+          SONAR: sonarsource/sonar-scanner-cli:12.2@sha256:a3f4215076706c95a17a68c19322ee916e40a3acd081a8c1a1e839e0194afa57
+        run: |
+          quality_gate() {
+            local args SONAR_TOKEN
+            args=$(python3 scripts/sonar_args.py "$SERVICE" "$VERSION") || return 1
+            ssm_secret sonar/token SONAR_TOKEN || return 1
+            export SONAR_TOKEN
+            # shellcheck disable=SC2086 # the arguments are one word each, as Jenkins passes them
+            docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:$PWD" -w "$PWD" --entrypoint sonar-scanner \
+              -e SONAR_TOKEN -e SONAR_HOST_URL=https://sonarcloud.io -e SONAR_USER_HOME=/tmp/sonar \
+              "$SONAR" $args
+          }
+          stage "Quality gate" -- quality_gate
+      - name: Run state for the next job
+        if: always() && steps.restore.outcome == 'success'
+        run: save_state
+      - uses: actions/upload-artifact@v7.0.2
+        if: always() && steps.restore.outcome == 'success'
+        with:
+          name: run-state
+          path: run-state.enc
+          overwrite: true
+          retention-days: 1
+
+  sbom-and-scan:
+    name: SBOM and scan
+    needs: quality-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Tools for the stage scripts
+        run: python3 -m pip install --quiet --disable-pip-version-check -r requirements-dev.txt
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/release-demo-github-ci
+          aws-region: eu-west-1
+          mask-aws-account-id: true
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: run-state
+      - name: Run state
+        id: restore
+        run: restore_state
+      - name: Grype's database, one a day
+        id: day
+        run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6.1.0
+        with:
+          path: ${{ runner.temp }}/scan-cache/grype
+          key: grype-db-${{ steps.day.outputs.day }}
+      - name: SBOM and scan
+        env:
+          # The pinned Syft and Grype from jenkins/shared-library/vars/toolchain.groovy, by the same digests.
+          SYFT: anchore/syft:v1.54.1@sha256:3eb5379ba7b409c3f4069b686110527af0c47df993fa5c10d13e7cf34f49b1aa
+          GRYPE: anchore/grype:v0.120.1@sha256:e4a44ef45d285b829ce6efe2642980329661bd2d18eab5fc539138d4adaebbbe
+          CACHE: ${{ runner.temp }}/scan-cache
+        run: |
+          sbom_and_scan() {
+            local source=dir:/work/.release/package
+            rm -rf .release/package && mkdir -p .release/package .release/reports "$CACHE/syft" "$CACHE/grype" || return 1
+            python3 -c "import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" \
+              dist/"$SERVICE"/*.zip .release/package || return 1
+            # A package that holds a container image as an OCI layout is scanned as that image.
+            [[ -f .release/package/image/index.json ]] && source=oci-dir:/work/.release/package/image
+            docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" -v "$CACHE/syft:/cache" \
+              -e SYFT_CACHE_DIR=/cache -e TMPDIR=/cache "$SYFT" \
+              "$source" --source-name "$SERVICE" -o cyclonedx-json=/work/.release/reports/sbom.cdx.json || return 1
+            docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" -v "$CACHE/grype:/cache" \
+              -e GRYPE_DB_CACHE_DIR=/cache -e TMPDIR=/cache "$GRYPE" sbom:/work/.release/reports/sbom.cdx.json \
+              --fail-on critical -o table -o json=/work/.release/reports/grype.json
+          }
+          stage "SBOM and scan" -- sbom_and_scan
+      - name: Run state for the next job
+        if: always() && steps.restore.outcome == 'success'
+        run: save_state
+      - uses: actions/upload-artifact@v7.0.2
+        if: always() && steps.restore.outcome == 'success'
+        with:
+          name: run-state
+          path: run-state.enc
+          overwrite: true
+          retention-days: 1
+
+  publish:
+    name: Publish
+    needs: sbom-and-scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Tools for the stage scripts
+        run: python3 -m pip install --quiet --disable-pip-version-check -r requirements-dev.txt
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/release-demo-github-ci
+          aws-region: eu-west-1
+          mask-aws-account-id: true
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: run-state
+      - name: Run state
+        id: restore
+        run: restore_state
+      - name: Publish starts
+        run: |
+          echo "PUBLISH_STARTED=$(date +%s.%N)" >> "$GITHUB_ENV"
+          python3 scripts/notify.py stage Publish running
+      # Signed provenance for the package: this workflow, on main. gh attestation
+      # verify checks the zip downloaded from JFrog against it.
+      - uses: actions/attest@v4.2.2
+        with:
+          subject-path: dist/${{ env.SERVICE }}/${{ env.SERVICE }}-${{ env.VERSION }}.zip
+      - name: Publish
+        run: STAGE_STARTED=$PUBLISH_STARTED stage Publish -- python3 scripts/publish.py "$SERVICE"
+      - name: Run state for the next job
+        if: always() && steps.restore.outcome == 'success'
+        run: save_state
+      - uses: actions/upload-artifact@v7.0.2
+        if: always() && steps.restore.outcome == 'success'
+        with:
+          name: run-state
+          path: run-state.enc
+          overwrite: true
+          retention-days: 1
+
+  staging:
+    name: Staging
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Tools for the stage scripts
+        run: python3 -m pip install --quiet --disable-pip-version-check -r requirements-dev.txt
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/release-demo-github-staging
+          aws-region: eu-west-1
+          mask-aws-account-id: true
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: run-state
+      - name: Run state
+        id: restore
+        run: restore_state
+      - name: Staging
+        run: stage Staging --environment staging -- python3 scripts/deploy.py "$SERVICE" staging
+      - name: Check staging
+        run: |
+          check_staging() {
+            python3 scripts/check.py "$SERVICE" staging --version "$VERSION" --url "$(state deploys.staging.url)" && return 0
+            python3 scripts/deploy.py "$SERVICE" staging --back
+            stop_reason "Staging check failed: staging is back on $(state deploys.staging.previous_version)."
+            return 1
+          }
+          stage "Check staging" --environment staging -- check_staging
+      - name: Run state for the next job
+        if: always() && steps.restore.outcome == 'success'
+        run: save_state
+      - uses: actions/upload-artifact@v7.0.2
+        if: always() && steps.restore.outcome == 'success'
+        with:
+          name: run-state
+          path: run-state.enc
+          overwrite: true
+          retention-days: 1
+
+  change:
+    name: Change
+    needs: staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Tools for the stage scripts
+        run: python3 -m pip install --quiet --disable-pip-version-check -r requirements-dev.txt
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/release-demo-github-ci
+          aws-region: eu-west-1
+          mask-aws-account-id: true
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: run-state
+      - name: Run state
+        id: restore
+        run: restore_state
+      - name: Change
+        run: stage Change -- python3 scripts/change.py open
+      # The approval waits in GitHub, between this job and Production, so its
+      # row in Slack starts here and Production gives it its time.
+      - name: Approval waits for ServiceNow
+        run: |
+          if [[ $(state change.type) == standard ]]; then
+            skip Approval "A standard change is pre-approved."
+          else
+            python3 scripts/notify.py stage Approval running
+            python3 scripts/run_state.py set "approval_started_at=$(date +%s.%N)"
+          fi
+      - name: Run state for the next job
+        if: always() && steps.restore.outcome == 'success'
+        run: save_state
+      - uses: actions/upload-artifact@v7.0.2
+        if: always() && steps.restore.outcome == 'success'
+        with:
+          name: run-state
+          path: run-state.enc
+          overwrite: true
+          retention-days: 1
+
+  production:
+    name: Production
+    needs: change
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Its one protection rule is the GitHub App: the job starts once the bridge
+    # has Alex's approval from ServiceNow. No reviewers, and no admin bypass.
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Tools for the stage scripts
+        run: python3 -m pip install --quiet --disable-pip-version-check -r requirements-dev.txt
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/release-demo-github-production
+          aws-region: eu-west-1
+          mask-aws-account-id: true
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: run-state
+      - name: Run state
+        id: restore
+        run: restore_state
+      # change.py wait finds the approval at once, and refuses one by the
+      # person who asked, whatever ServiceNow and GitHub say.
+      - name: Approval
+        run: |
+          approval() {
+            local APPROVER
+            python3 scripts/change.py wait || return 1
+            APPROVER=$(state change.approved_by)
+            python3 scripts/notify.py line "Approved by $APPROVER in ServiceNow."
+          }
+          if [[ $(state change.type) != standard ]]; then
+            STAGE_STARTED=$(state approval_started_at) stage Approval -- approval
+          fi
+      - name: Production
+        run: |
+          production() {
+            python3 scripts/change.py implement &&
+              python3 scripts/deploy.py "$SERVICE" production
+          }
+          stage Production --environment production --deploy -- production
+      - name: Check production
+        run: |
+          check_production() {
+            python3 scripts/check.py "$SERVICE" production --version "$VERSION" --url "$(state deploys.production.url)" && return 0
+            roll_back
+            return 1
+          }
+          # rollBack() in releasePipeline.groovy: the previous version back, checked, and recorded everywhere.
+          roll_back() {
+            local started previous recovery check_notes
+            started=$(date +%s.%N)
+            previous=$(state deploys.production.previous_version)
+            python3 scripts/deploy.py "$SERVICE" production --back || return 1
+            if ! python3 scripts/check.py "$SERVICE" production --version "$previous" --url "$(state deploys.production.url)"; then
+              python3 scripts/notify.py line "The previous version, $previous, fails its check too. Look now."
+              stop_reason "Rolled back to $previous, but it fails its check too."
+              return 1
+            fi
+            recovery=$(python3 -c 'import sys, time; print(f"{time.time() - float(sys.argv[1]):.0f}")' "$started")
+            check_notes=$(state check.notes)
+            python3 scripts/events.py --stage Rollback --result rolled-back --environment production --recovery-seconds "$recovery"
+            python3 scripts/events.py annotate "$SERVICE rolled back to $previous" --tags "rollback,$SERVICE"
+            python3 scripts/notify.py finish rolled-back --previous "$previous"
+            python3 scripts/change.py close unsuccessful --notes "${check_notes:+$check_notes }Production check failed. The pipeline rolled back to $previous automatically in ${recovery}s and checked it. Total time: $(state total). Build: $RUN_URL"
+            python3 scripts/jira.py comment "Release of $SERVICE $(state version) failed its production check and was rolled back to $previous in ${recovery}s. Change: $(state change.number). Build: $RUN_URL"
+            stop_reason "Production check failed: rolled back to $previous."
+          }
+          stage "Check production" --environment production -- check_production
+      - name: Record
+        run: |
+          record() {
+            python3 scripts/publish.py "$SERVICE" --release &&
+              python3 scripts/notify.py finish live &&
+              python3 scripts/jira.py comment "Released $SERVICE $VERSION in $(state change.number). Live in $(state total). Build: $RUN_URL" &&
+              python3 scripts/jira.py release &&
+              python3 scripts/tag.py &&
+              python3 scripts/events.py annotate "$SERVICE $VERSION released ($JIRA_KEY)" --tags "release,$SERVICE" &&
+              python3 scripts/change.py close successful --notes "Released $SERVICE $VERSION. Total time: $(state total). Build: $RUN_URL"
+          }
+          stage Record -- record
+      - name: Run state for the next job
+        if: always() && steps.restore.outcome == 'success'
+        run: save_state
+      - uses: actions/upload-artifact@v7.0.2
+        if: always() && steps.restore.outcome == 'success'
+        with:
+          name: run-state
+          path: run-state.enc
+          overwrite: true
+          retention-days: 1
+
+  # stopped() in releasePipeline.groovy: Slack says where it stopped. Before
+  # production the open change is cancelled; after the production deploy it
+  # closes unsuccessful. After a rollback, which told everyone, it does nothing.
+  stopped:
+    name: Stopped
+    needs: [build, test, quality-gate, sbom-and-scan, publish, staging, change, production]
+    if: failure() || cancelled()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Tools for the stage scripts
+        run: python3 -m pip install --quiet --disable-pip-version-check -r requirements-dev.txt
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/release-demo-github-ci
+          aws-region: eu-west-1
+          mask-aws-account-id: true
+      # Nothing to stop before the run state exists: the release never started.
+      - uses: actions/download-artifact@v8.0.2
+        id: download
+        continue-on-error: true
+        with:
+          name: run-state
+      - name: Run state
+        if: steps.download.outcome == 'success'
+        run: restore_state
+      - name: Stopped
+        if: steps.download.outcome == 'success'
+        env:
+          CANCELLED: ${{ contains(needs.*.result, 'cancelled') }}
+        run: |
+          [[ -n $(state total) ]] && { echo "The rollback already told everyone."; exit 0; }
+          # A stage still running when its job ended failed there, as releaseStage records it.
+          while IFS= read -r name; do
+            started=""
+            [[ $name == Approval ]] && started=$(state approval_started_at)
+            if [[ -n $started ]]; then
+              seconds=$(python3 -c 'import sys, time; print(f"{time.time() - float(sys.argv[1]):.1f}")' "$started")
+              python3 scripts/notify.py stage "$name" failed --seconds "$seconds" || true
+              python3 scripts/events.py --stage "$name" --result failed --seconds "$seconds" || true
+              python3 scripts/change.py note "$name: failed in ${seconds}s" || true
+            else
+              python3 scripts/notify.py stage "$name" failed || true
+              python3 scripts/events.py --stage "$name" --result failed || true
+              python3 scripts/change.py note "$name: failed" || true
+            fi
+          done < <(jq -r '.stages | to_entries[] | select(.value.status == "running") | .key' .release/state.json)
+          failed=$(jq -r '[.stages | to_entries[] | select(.value.status == "failed") | .key] | first // ""' .release/state.json)
+          reason=$(state stop_reason)
+          if [[ -z $reason && $failed == Approval ]]; then
+            reason="production didn't get ServiceNow's approval"
+          fi
+          reason=${reason:-${failed:+$failed failed}}
+          reason=${reason:-the run stopped}
+          # The notes add their own full stop, so one the reason ends with goes.
+          reason=$(sed -E 's/\.+$//' <<<"$reason")
+          if [[ $CANCELLED == true ]]; then
+            python3 scripts/notify.py finish cancelled || true
+            reason="the run was cancelled in GitHub Actions"
+          else
+            python3 scripts/notify.py finish failed || true
+          fi
+          if [[ -n $(state change.closed) ]]; then
+            echo "The change is closed already: $(state change.closed)."
+          elif [[ -n $(state deploys.production.number) ]]; then
+            python3 scripts/change.py close unsuccessful --notes "The release stopped after the production deploy: $reason. Look at production now." || true
+          else
+            python3 scripts/change.py cancel --notes "The release stopped: $reason. Nothing changed in production." || true
+          fi

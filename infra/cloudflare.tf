@@ -32,6 +32,8 @@ locals {
     dc-agent      = { name = "release-demo dc-agent", apps = ["jenkins", "artifactory"] }
     mac-agent     = { name = "release-demo Mac agent", apps = ["jenkins"] }
     windows-agent = { name = "release-demo Windows agent", apps = ["jenkins"] }
+    # Demo 14: GitHub Actions' runners publish to and deploy from JCR, and reach nothing else.
+    github-actions = { name = "release-demo GitHub Actions", apps = ["artifactory"] }
   }
   agents_by_app = { for app in keys(local.tool_hostnames) : app => sort([for key, agent in local.remote_agents : key if contains(agent.apps, app)]) }
 }
