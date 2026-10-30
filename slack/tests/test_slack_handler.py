@@ -522,3 +522,99 @@ def test_gitlab_not_set_up_is_named_and_nothing_starts(aws, calls, gitlab):
     app.handler({"work": release_work()}, CONTEXT)
     assert calls.replies() == ["GitLab CI isn't set up yet: gitlab/trigger-token isn't in SSM."]
     assert gitlab.requests == []
+
+
+# Demo 22: /release on Azure Pipelines, queued as Release Bot
+
+AZURE_SSM = {"azure-devops/organization": "demo-org", "azure-devops/pipeline-id": "7",
+             "azure-devops/tenant-id": "00000000-0000-0000-0000-00000000aaaa",
+             "azure-devops/release-bot-client-id": "00000000-0000-0000-0000-00000000bbbb"}
+
+
+class AzureCalls:
+    """Entra's token endpoint and Azure DevOps' Runs API, faked."""
+
+    def __init__(self, entra=200, devops=200):
+        self.entra, self.devops, self.requests = entra, devops, []
+
+    def open(self, request, timeout):
+        self.requests.append(request)
+        status = self.entra if "login.microsoftonline.com" in request.full_url else self.devops
+        if status != 200:
+            raise urllib.error.HTTPError(request.full_url, status, "error", {}, io.BytesIO(b"{}"))
+        if "login.microsoftonline.com" in request.full_url:
+            return Response(status=200, read=lambda: b'{"access_token": "test-release-bot-token"}')
+        return Response(status=200, read=lambda: b'{"_links": {"web": {"href": "https://dev.azure.com/demo-org/run/1"}}}')
+
+
+class FakeSTS:
+    def __init__(self):
+        self.asked = []
+
+    def get_web_identity_token(self, **kwargs):
+        self.asked.append(kwargs)
+        return {"WebIdentityToken": "test-aws-signed-token"}
+
+
+@pytest.fixture
+def azure(aws, monkeypatch):
+    aws.ssm.values.update(AZURE_SSM)
+    aws.ssm.values["ci/orders-service"] = "azure-pipelines"
+    fakes = SimpleNamespace(calls=AzureCalls(), sts=FakeSTS())
+    original = app.aws
+    monkeypatch.setattr(app, "aws", lambda name: fakes.sts if name == "sts" else original(name))
+    monkeypatch.setattr(app, "AZURE_OPENER", fakes.calls)
+    return fakes
+
+
+def test_on_azure_the_message_says_so_and_release_bot_queues_the_run_from_main(aws, calls, azure):
+    app.handler({"work": release_work()}, CONTEXT)
+    (message, _), = calls.slack_calls("chat.postMessage")
+    assert message["text"].endswith(":hourglass_flowing_sand:  Starting on Azure Pipelines")
+    assert azure.sts.asked == [{"Audience": ["api://AzureADTokenExchange"], "SigningAlgorithm": "RS256",
+                                "DurationSeconds": 300}]
+    entra, run = azure.calls.requests
+    assert entra.full_url == "https://login.microsoftonline.com/00000000-0000-0000-0000-00000000aaaa/oauth2/v2.0/token"
+    form = dict(urllib.parse.parse_qsl(entra.data.decode()))
+    assert form == {"client_id": "00000000-0000-0000-0000-00000000bbbb",
+                    "scope": "499b84ac-1321-427f-aa17-267ca6975798/.default", "grant_type": "client_credentials",
+                    "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+                    "client_assertion": "test-aws-signed-token"}
+    assert run.full_url == "https://dev.azure.com/demo-org/release-demo/_apis/pipelines/7/runs?api-version=7.1"
+    assert run.get_header("Authorization") == "Bearer test-release-bot-token"
+    assert json.loads(run.data) == {
+        "resources": {"repositories": {"self": {"refName": "refs/heads/main"}}},
+        "templateParameters": {"service": "orders-service", "jiraKey": "ORD-12", "option": "", "requestedBy": SAM,
+                               "requestedAt": "1793000000", "slackChannel": "C0RELEASES", "slackTs": "1793000000.000100"}}
+    assert calls.jenkins == [] and calls.slack_calls("chat.update") == []
+
+
+@pytest.mark.parametrize("entra, devops, says", [
+    (200, 403, ":x:  Not started: Azure DevOps answered 403."),
+    (200, 400, ":x:  Not started: Azure DevOps answered 400."),
+    (401, 200, ":x:  Not started: Release Bot couldn't sign in to Azure DevOps (Entra answered 401)."),
+])
+def test_a_refusal_turns_the_message_into_who_refused(aws, calls, azure, entra, devops, says):
+    azure.calls.entra, azure.calls.devops = entra, devops
+    app.handler({"work": release_work()}, CONTEXT)
+    (update, _), = calls.slack_calls("chat.update")
+    assert update["text"].endswith(says)
+
+
+def test_rollback_still_goes_to_jenkins_with_the_switch_on_azure(aws, calls, azure):
+    work = {"job": "rollback", "channel": "C0RELEASES", "response_url": RESPONSE_URL,
+            "params": {"SERVICE": "orders-service", "REQUESTED_BY": SAM, "REQUESTED_AT": "1793000000"}}
+    app.handler({"work": work}, CONTEXT)
+    assert azure.calls.requests == [] and len(calls.jenkins) == 1
+
+
+def test_azure_not_set_up_is_named_and_nothing_starts(aws, calls, azure):
+    aws.ssm.values["azure-devops/pipeline-id"] = "unset"
+    app.handler({"work": release_work()}, CONTEXT)
+    assert calls.replies() == ["Azure Pipelines isn't set up yet: azure-devops/pipeline-id isn't in SSM."]
+    assert azure.calls.requests == []
+
+
+def test_the_parameters_are_azure_pipelines_ymls():
+    pipeline = yaml.safe_load((ROOT / "azure-pipelines.yml").read_text())
+    assert sorted(app.AZURE_INPUTS.values()) == sorted(p["name"] for p in pipeline["parameters"])
