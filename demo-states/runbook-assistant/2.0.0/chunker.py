@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 FIELDS = ["id", "title", "kind", "status", "updated", "replaced_by"]
+RELEASE = re.compile(r"Release (\S+) (\S+) \((\S+)\)$")
 
 
 def settings(path):
@@ -58,11 +59,22 @@ def pages(corpus):
         fields, body = front_matter(path.read_text())
         found.append({**fields, "body": body})
     for change in json.loads(Path(corpus, "changes.json").read_text()):
-        body = (f"{change['short_description']}. Closed {change['close_code'].lower()} on {change['closed']}.\n\n"
-                f"{change['close_notes']}")
+        body = f"{change_lead(change)}\n\n{change['close_notes']}"
         found.append({"id": change["number"], "title": change["short_description"], "kind": "change",
                       "status": "current", "updated": change["closed"][:10], "replaced_by": "", "body": body})
     return found
+
+
+def change_lead(change):
+    """A past change's first line, in the words a question about it uses: "The release of
+    orders-service 1.2.4, for the Jira issue ORD-5, closed unsuccessful on ...". Search by
+    meaning alone tells such near-twins apart only by their words."""
+    closed = change["close_code"].lower().replace("successful_issues", "successful with issues")
+    found = RELEASE.match(change["short_description"])
+    if found:
+        service, version, key = found.groups()
+        return f"The release of {service} {version}, for the Jira issue {key}, closed {closed} on {change['closed']}."
+    return f"{change['short_description']}. Closed {closed} on {change['closed']}."
 
 
 def tokens(text):

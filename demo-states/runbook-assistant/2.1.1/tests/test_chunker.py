@@ -58,3 +58,13 @@ def test_it_runs_as_databricks_runs_a_jobs_python_file_without_file():
     namespace = {"__name__": "chunker_as_a_job"}
     exec(compile(path.read_text(), str(path), "exec"), namespace)
     assert namespace["settings"](HERE / "chunking.yaml") == chunker.settings(HERE / "chunking.yaml")
+
+
+def test_a_release_changes_page_opens_the_way_questions_about_it_ask():
+    change = {"number": "CHG0030020", "short_description": "Release orders-service 1.2.4 (ORD-5)",
+              "close_code": "unsuccessful", "close_notes": "Production check failed.", "closed": "2026-10-27T20:53:10Z"}
+    assert chunker.change_lead(change) == ("The release of orders-service 1.2.4, for the Jira issue ORD-5, closed "
+                                           "unsuccessful on 2026-10-27T20:53:10Z.")
+    other = {**change, "short_description": "Rollback of catalog in production", "close_code": "successful_issues"}
+    assert chunker.change_lead(other) == ("Rollback of catalog in production. Closed successful with issues on "
+                                          "2026-10-27T20:53:10Z.")
