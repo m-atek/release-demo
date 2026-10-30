@@ -540,3 +540,16 @@ def test_the_check_reads_hashes_never_values():
     check = (inventory.ROOT / "scripts" / "demos" / "leaked-token" / "check.py").read_text()
     assert "MessageDigest" in check and "println c.secret" not in check
     assert "print(current" not in check and "print(old" not in check
+
+
+def test_the_reset_loads_the_shared_check_module_not_its_folder_s():
+    """Run as a script, the reset has its own folder first on its path, where check.py is
+    the acceptance checks; the main reset imports scripts/check.py as check."""
+    import sys
+
+    folder = inventory.ROOT / "scripts" / "demos" / "leaked-token"
+    code = (f"import sys; sys.path.insert(0, {str(folder)!r}); import reset; shared = reset.main_reset(); "
+            "import check; print(shared.wait_for_version.__module__, check.__file__)")
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=inventory.ROOT)
+    assert result.returncode == 0, result.stderr[-500:]
+    assert result.stdout.split() == ["check", str(inventory.ROOT / "scripts" / "check.py")]

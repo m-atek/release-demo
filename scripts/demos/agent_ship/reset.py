@@ -41,6 +41,11 @@ COMMENT = "Earlier take"
 def main_reset():
     import importlib.util
 
+    # This folder's check.py would shadow scripts/check.py, which the main reset and
+    # history.py import as check: Python puts a script's own folder first on its path.
+    check = importlib.util.spec_from_file_location("check", ROOT / "scripts" / "check.py")
+    sys.modules["check"] = importlib.util.module_from_spec(check)
+    check.loader.exec_module(sys.modules["check"])
     spec = importlib.util.spec_from_file_location("shared_reset", ROOT / "scripts" / "reset.py")
     shared = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(shared)

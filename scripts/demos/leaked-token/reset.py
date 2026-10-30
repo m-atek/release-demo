@@ -32,7 +32,17 @@ NOTE = "Resolved by reset.py before the next take."
 VERSION = "1.4.0"
 
 
+def shared_check():
+    """This folder's check.py would shadow scripts/check.py, which the main reset
+    imports as check: Python puts a script's own folder first on its path."""
+    spec = importlib.util.spec_from_file_location("check", ROOT / "scripts" / "check.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["check"] = module
+    spec.loader.exec_module(module)
+
+
 def main_reset():
+    shared_check()
     spec = importlib.util.spec_from_file_location("shared_reset", ROOT / "scripts" / "reset.py")
     shared = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(shared)

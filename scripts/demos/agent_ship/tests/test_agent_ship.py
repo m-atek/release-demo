@@ -481,3 +481,17 @@ def test_the_minute_timer_of_pull_requests_alone_doesn_t_keep_the_host_up(monkey
     assert idle.jenkins_busy(tmp_path) is True
     answers([], ["http://localhost:8080/job/agent-task/"])
     assert idle.jenkins_busy(tmp_path) is True
+
+
+def test_the_reset_loads_the_shared_check_module_not_this_folder_s():
+    """Run as a script, the reset has this folder first on its path, where check.py is
+    the acceptance checks; the main reset and history.py need scripts/check.py."""
+    import subprocess
+    import sys
+
+    folder = ROOT / "scripts" / "demos" / "agent_ship"
+    code = (f"import sys; sys.path.insert(0, {str(folder)!r}); import reset; shared = reset.main_reset(); "
+            "import check, history; print(shared.wait_for_version.__module__, check.__file__)")
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=ROOT)
+    assert result.returncode == 0, result.stderr[-500:]
+    assert result.stdout.split() == ["check", str(ROOT / "scripts" / "check.py")]
