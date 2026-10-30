@@ -69,15 +69,22 @@ data "aws_iam_policy_document" "bridge" {
     actions   = ["ssm:GetParameters"]
     resources = [for name in local.bridge_parameters : "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/${name}"]
   }
+  # Each read also names the application and the environment or profile:
+  # see version_arns and deployment_arns in iam.tf.
   statement {
-    sid       = "ReadTheDeploymentAndKeepItsRecordOnIt"
-    actions   = ["appconfig:GetDeployment", "appconfig:ListTagsForResource", "appconfig:TagResource"]
+    sid       = "ReadTheDeployment"
+    actions   = ["appconfig:GetDeployment"]
+    resources = local.deployment_arns.production
+  }
+  statement {
+    sid       = "KeepItsRecordOnIt"
+    actions   = ["appconfig:ListTagsForResource", "appconfig:TagResource"]
     resources = ["${local.environment_arns.production}/deployment/*"]
   }
   statement {
     sid       = "ReadTheFlagsItDeployed"
     actions   = ["appconfig:GetHostedConfigurationVersion"]
-    resources = ["${local.profile_arn}/hostedconfigurationversion/*"]
+    resources = local.version_arns
   }
   statement {
     sid       = "WhenTheAlarmFired"

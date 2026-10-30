@@ -28,6 +28,15 @@ locals {
   configuration_arns = {
     for name, arn in local.environment_arns : name => "${arn}/configuration/${aws_appconfig_configuration_profile.flags.configuration_profile_id}"
   }
+  # AWS AppConfig authorizes a call on every resource type the Service
+  # Authorization Reference marks required, not only on the one it reads: a
+  # profile version also on the application and the profile, a deployment
+  # also on the application and its environment. A grant on the version or
+  # the deployment alone is refused (AccessDenied on application/<id>).
+  version_arns = [local.appconfig_arn, local.profile_arn, "${local.profile_arn}/hostedconfigurationversion/*"]
+  deployment_arns = {
+    for name, arn in local.environment_arns : name => [local.appconfig_arn, arn, "${arn}/deployment/*"]
+  }
   strategy_arn       = "arn:aws:appconfig:${local.region}:${local.account_id}:deploymentstrategy/${aws_appconfig_deployment_strategy.flags.id}"
   reset_strategy_arn = "arn:aws:appconfig:${local.region}:${local.account_id}:deploymentstrategy/${aws_appconfig_deployment_strategy.reset.id}"
   ids_parameter      = "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/appconfig/orders-service"
@@ -58,7 +67,7 @@ data "aws_iam_policy_document" "slack_handler" {
   statement {
     sid       = "WriteAVersionOfTheFlags"
     actions   = local.version_actions
-    resources = [local.profile_arn, "${local.profile_arn}/hostedconfigurationversion/*"]
+    resources = local.version_arns
   }
   statement {
     sid       = "DeployItToProduction"
@@ -87,7 +96,7 @@ data "aws_iam_policy_document" "tools_host" {
   statement {
     sid       = "ReadAndWriteVersionsOfTheFlags"
     actions   = local.version_actions
-    resources = [local.profile_arn, "${local.profile_arn}/hostedconfigurationversion/*"]
+    resources = local.version_arns
   }
   statement {
     sid     = "DeployStopAndListInBothEnvironments"
@@ -97,7 +106,12 @@ data "aws_iam_policy_document" "tools_host" {
   }
   statement {
     sid       = "TheDeploymentsThemselves"
-    actions   = ["appconfig:GetDeployment", "appconfig:StopDeployment", "appconfig:TagResource"]
+    actions   = ["appconfig:GetDeployment", "appconfig:StopDeployment"]
+    resources = distinct(flatten(values(local.deployment_arns)))
+  }
+  statement {
+    sid       = "TagTheDeployments"
+    actions   = ["appconfig:TagResource"]
     resources = [for arn in values(local.environment_arns) : "${arn}/deployment/*"]
   }
 }
