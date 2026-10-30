@@ -10,9 +10,10 @@ on the REST API for users without snc_basic_auth_api_access. Then it creates:
 
 - the users Sam Developer and Alex Change Manager, with the passwords in SSM,
   and release.pipeline: web service access only, roles itil and
-  snc_basic_auth_api_access, and a generated password it stores in SSM;
+  snc_basic_auth_api_access, and a generated password it stores in SSM. All
+  three in Europe/Amsterdam time, as Slack and the terminal show it;
 - the groups Platform team (Sam, release.pipeline) and Change approvers (Alex);
-- a CMDB item per service in services.yaml;
+- a CMDB item per service in services.yaml, and jfrog-container-registry;
 - normal change approval by Change approvers only, once, at Assess. Out of the
   box the Normal Change Policy asks the assignment group at Assess, which
   would let Sam approve his own change, and a manager or the CAB at Authorize;
@@ -40,11 +41,11 @@ CANCELED = "4"
 
 PEOPLE = {
     "sam.developer": {"first_name": "Sam", "last_name": "Developer", "password": "servicenow/sam-password",
-                      "roles": ["itil"]},
+                      "roles": ["itil"], "time_zone": "Europe/Amsterdam"},
     "alex.change.manager": {"first_name": "Alex", "last_name": "Change Manager", "password": "servicenow/alex-password",
-                            "roles": ["itil", "approver_user"]},
+                            "roles": ["itil", "approver_user"], "time_zone": "Europe/Amsterdam"},
     "release.pipeline": {"first_name": "Release", "last_name": "Pipeline", "password": "servicenow/release-pipeline-password",
-                         "roles": ["itil", "snc_basic_auth_api_access"], "machine": True},
+                         "roles": ["itil", "snc_basic_auth_api_access"], "machine": True, "time_zone": "Europe/Amsterdam"},
 }
 GROUPS = {
     "Platform team": {"members": ["sam.developer", "release.pipeline"],
@@ -53,6 +54,11 @@ GROUPS = {
                          "description": "Approves normal changes. Nobody in it asks for releases."},
 }
 APPROVAL_DEFINITION = "Change approvers Approval"
+# CMDB items for the platform itself, beside one per service: video 10's
+# incident names the registry whose token leaked.
+PLATFORM_ITEMS = {
+    "jfrog-container-registry": "JFrog Container Registry on the tools host: the release pipeline's packages.",
+}
 
 
 class ServiceNow:
@@ -128,6 +134,9 @@ def setup_people(sn, ssm):
                   "email": f"{user_name}@example.invalid", "active": "true", "password_needs_reset": "false",
                   "web_service_access_only": "true" if person.get("machine") else "false",
                   "internal_integration_user": "false"}
+        # Video 10: the incident's times read like Slack's and the terminal's.
+        if person.get("time_zone"):
+            values["time_zone"] = person["time_zone"]
         user = sn.ensure("sys_user", f"user_name={user_name}", values, f"user {user_name}")
         # Passwords need display-value input. Kept in line with SSM on every run, quietly; a password the
         # instance's policy refuses is dropped without an error, so check it took.
@@ -173,6 +182,10 @@ def setup_cmdb(sn, groups):
                 "support_group": groups["Platform team"], "operational_status": "1"}, f"CMDB item {each}")
             if each == item:
                 items[name] = record["sys_id"]
+    for name, text in PLATFORM_ITEMS.items():
+        sn.ensure("cmdb_ci_appl", f"name={name}", {"name": name, "short_description": text,
+                                                   "support_group": groups["Platform team"], "operational_status": "1"},
+                  f"CMDB item {name}")
     return items
 
 

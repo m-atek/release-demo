@@ -31,6 +31,9 @@ oauth_config:
     bot:
       - commands
       - chat:write
+      # Video 10: scripts/rotate.py jcr looks for the leaked token in #releases' last 100 messages.
+      - channels:history
+      - groups:history
 
 settings:
   org_deploy_enabled: false

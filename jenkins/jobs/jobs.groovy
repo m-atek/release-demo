@@ -101,6 +101,18 @@ pipelineJob('stage') {
     definition fromRepository('jenkins/stage.Jenkinsfile')
 }
 
+// Video 10: rotate.py from the Jenkins UI, like history, reset and stage.
+pipelineJob('rotate') {
+    description('rotate.py: revokes one of the platform\'s secrets, gives the pipeline a new one, proves the old one dead and records an incident. Video 10.')
+    parameters {
+        choiceParam('SECRET', ['jcr', 'sonar'], 'jcr: the pipeline\'s JFrog token. sonar: the quality gate\'s SonarQube Cloud token.')
+        stringParam('REASON', '', 'Why, for the incident, such as: pasted in Slack.')
+    }
+    properties { disableConcurrentBuilds() }
+    logRotator { numToKeep(50) }
+    definition fromRepository('jenkins/rotate.Jenkinsfile')
+}
+
 // Demo 3: the data-center servers' part of an inventory rollout, on dc-agent.
 // The release on the tools host starts it as release-bot and waits for it.
 pipelineJob('inventory-dc-wave') {

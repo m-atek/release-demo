@@ -153,6 +153,15 @@ kube_token_helper() {
   visudo -cf /etc/sudoers.d/release-demo-kube-token >/dev/null || rm -f /etc/sudoers.d/release-demo-kube-token
 }
 
+# Video 10: the Jenkins job rotate rewrites the tmpfs after it stores a new
+# token. One sudo rule, for exactly that command, as for the kube token.
+rotate_sudo_rule() {
+  printf 'jenkins-agent ALL=(root) NOPASSWD: %s %s %s\n' "$VENV/bin/python" "$HERE/host_secrets.py" "$SECRETS" \
+    > /etc/sudoers.d/release-demo-rotate
+  chmod 0440 /etc/sudoers.d/release-demo-rotate
+  visudo -cf /etc/sudoers.d/release-demo-rotate >/dev/null || rm -f /etc/sudoers.d/release-demo-rotate
+}
+
 # Demo 5: the clouds trust Jenkins's ID tokens through the keys published in
 # the issuer bucket, and Jenkins makes new keys at every start and reload.
 publish_oidc_issuer() {
@@ -205,6 +214,7 @@ start_agent
 publish_oidc_issuer
 agent_secrets
 kube_token_helper
+rotate_sudo_rule
 release_bot_token
 arm_idle_stop
 echo "== boot done"

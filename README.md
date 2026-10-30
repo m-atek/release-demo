@@ -420,6 +420,20 @@ Before a call or take:
 
 After each take: `scripts/reset.py agent-access` checks that production's live alias is where the take found it and removes the take's workspace. `.venv/bin/python scripts/demos/agent-access/agent.py trail` lists the session's refused calls in CloudTrail's event history, some minutes after they happen. `scripts/demo.sh status agent-access` shows the role, the image's Claude Code version and production's live alias. Nothing to stop afterwards.
 
+## Demo on a call: a leaked token, revoked against the clock (demo 10)
+
+A JFrog token of the pipeline's user release-pipeline is pasted in `#releases`. `scripts/rotate.py jcr --reason "pasted in Slack"` finds the message that holds it, revokes every token of release-pipeline (the leaked one first), opens an incident in ServiceNow, issues a new token, stores it in SSM where the pipeline reads it, reloads Jenkins, and calls JFrog with the old token every half second until it answers 401. It resolves the incident with its timeline, replies in the message's thread, sends one Splunk event and a Grafana annotation tagged secret-rotation, and ends with "Leak to useless: Xm YYs", the first 401 minus the message's time. Nothing scans Slack: a person starts it. `scripts/rotate.py sonar` rotates the quality gate's SonarQube Cloud token the same way (`--old-name` with the name of the token you made by hand, the first time). The Jenkins job `rotate` runs either for admin.
+
+Once:
+
+1. In the Slack app: the manifest asks for `channels:history` and `groups:history` (paste it with `scripts/slack_manifest.py`), then Install App, Reinstall to Workspace, Allow.
+2. `scripts/demo.sh up leaked-token` applies `infra/demos/10-leaked-token`, which lets the tools host write `sonar/token` (Terraform shows its plan first).
+3. `.venv/bin/python scripts/servicenow_setup.py` adds the CMDB item jfrog-container-registry and puts Sam, Alex and release.pipeline in Europe/Amsterdam time.
+
+Before each take: `scripts/reset.py leaked-token` (it hands itself to the tools host): the main reset's steps with 1.4.0 staged instead of 1.3.0, production and staging on 1.3.0, a working token in SSM and nothing else of release-pipeline in JFrog, and no leak incident open. Then `.venv/bin/python scripts/demos/leaked-token/clipboard.py`: the tools host makes a second token of release-pipeline for the take, valid a day, with the pipeline's own rights, and hands it to your clipboard through Session Manager, so the pipeline's own token never goes into Slack (`--pipeline-token` copies that one instead). It prints its last four characters and clears the clipboard after 60 seconds.
+
+After the take: `.venv/bin/python scripts/demos/leaked-token/check.py` (the old token 401 on the host and through Access, the new one 200, SSM, the tmpfs and Jenkins holding the same token by hash, and no token in the log, the incident, the thread or Grafana), and `.venv/bin/python scripts/secrets.py inventory --html` for `dist/secrets-inventory.html`: each stored secret, where it lives, which files read it, and whether it rotates by script or by hand (`infra/secret-rotation.yaml`). `scripts/demo.sh status leaked-token` shows the token's id and age and any open leak incident. Nothing to stop.
+
 ## Layout
 
 ```
