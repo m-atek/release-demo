@@ -35,6 +35,7 @@ pipelineJob('release') {
         stringParam('SLACK_CHANNEL', '', 'Channel of the Slack status message.')
         stringParam('SLACK_TS', '', 'Timestamp of the Slack status message.')
         stringParam('REQUESTED_AT', '', 'Epoch seconds of the Slack command, where the total time starts.')
+        stringParam('ROWS', '', 'Demo 21: lines under the stages, as a JSON list, from the release train.')
     }
     properties { disableConcurrentBuilds() }
     logRotator { numToKeep(200) }
@@ -83,6 +84,7 @@ pipelineJob('reset') {
     description('reset.py: puts a demo back to its starting state before a take, keeping the past. main: orders-service 1.3.0 everywhere, earlier takes archived under takes/.')
     parameters {
         stringParam('DEMO', 'main', 'main, or a folder in scripts/demos/.')
+        stringParam('OPTIONS', '', "The demo's own options, such as --checks on --stage 1.7.0 for rollback-trap.")
         booleanParam('DRY_RUN', false, 'Print every action; change nothing.')
     }
     properties { disableConcurrentBuilds() }
@@ -127,6 +129,47 @@ pipelineJob('store-floor-build') {
     }
     logRotator { numToKeep(30) }
     definition fromRepository('scripts/demos/mobile/build.Jenkinsfile')
+}
+
+// Demo 15: orders-service's Build, Test, and SBOM and scan at a demo state,
+// with per-test results; flaky-night runs it 80 times the night before
+// recording. Only admin starts flaky-night, as history and reset.
+pipelineJob('orders-service-tests') {
+    description('Demo 15: Build, Test (one rerun in place, the quarantine) and SBOM and scan of orders-service at a demo state, staged in the workspace only. Unstable on a flaky run.')
+    parameters {
+        stringParam('VERSION', '1.5.0', 'A folder in demo-states/orders-service/.')
+        stringParam('COMMIT', '', 'The commit of main to test; empty for the newest. flaky-night sets it.')
+    }
+    logRotator { numToKeep(150) }
+    definition fromRepository('jenkins/jobs/orders-service-tests.Jenkinsfile')
+}
+
+pipelineJob('flaky-night') {
+    description('Demo 15: runs orders-service-tests RUNS times in a row, PAUSE_SECONDS apart, from one commit of main. 80 runs take about 4 hours.')
+    parameters {
+        stringParam('RUNS', '80', 'How many runs.')
+        stringParam('PAUSE_SECONDS', '60', 'Seconds between two runs.')
+        stringParam('VERSION', '1.5.0', 'The demo state each run tests.')
+    }
+    properties { disableConcurrentBuilds() }
+    logRotator { numToKeep(10) }
+    definition fromRepository('jenkins/jobs/flaky-night.Jenkinsfile')
+}
+
+// Demo 21: the release train. Its timer ticks every half hour on weekdays;
+// train.py leaves only at services.yaml's departures, and only while
+// scripts/demo.sh up release-train has the train switched on.
+pipelineJob('release-train') {
+    description('Demo 21: the release train, on its timer at the departures in services.yaml (14:00 by default), Europe/Amsterdam. By hand only as a rehearsal.')
+    parameters {
+        booleanParam('REHEARSAL', false, 'By hand: leave now, as a rehearsal. Slack says "requested by a release train rehearsal".')
+    }
+    properties {
+        disableConcurrentBuilds()
+        pipelineTriggers { triggers { cron { spec('TZ=Europe/Amsterdam\n0,30 7-19 * * 1-5') } } }
+    }
+    logRotator { numToKeep(60) }
+    definition fromRepository('jenkins/jobs/release-train.Jenkinsfile')
 }
 
 // Views next to All: a release dashboard with the latest builds and test

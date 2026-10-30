@@ -87,6 +87,32 @@
         }
       },
       {
+        "name": "orders-service flag changes",
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "target": {
+          "type": "tags",
+          "tags": [
+            "release-demo",
+            "flag",
+            "orders-service"
+          ],
+          "matchAny": false,
+          "limit": 100
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            5
+          ]
+        }
+      },
+      {
         "name": "quote-service releases",
         "enable": true,
         "hide": false,
@@ -463,7 +489,7 @@
       "id": 5,
       "type": "timeseries",
       "title": "Lambda errors",
-      "description": "Errors of each environment's function, per minute, from CloudWatch. Green marks are releases, red marks are rollbacks.",
+      "description": "Errors of each environment's function, per minute, from CloudWatch. Green marks are releases, red marks are rollbacks, orange marks are flag switches (demo 21). The dashed line is the alarm orders-service-production-errors, 5 a minute, which rolls a flag switch back.",
       "gridPos": {
         "x": 0,
         "y": 6,
@@ -514,6 +540,16 @@
           "id": "",
           "expression": "",
           "label": "staging"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "type": "math",
+          "expression": "$A * 0 + 5",
+          "hide": false
         }
       ],
       "fieldConfig": {
@@ -530,12 +566,28 @@
             "axisSoftMin": 0,
             "barAlignment": 0,
             "gradientMode": "none",
-            "lineInterpolation": "linear"
+            "lineInterpolation": "linear",
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
           },
           "color": {
             "mode": "palette-classic"
           },
-          "decimals": 0
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
         },
         "overrides": [
           {
@@ -564,6 +616,59 @@
                 "value": {
                   "mode": "fixed",
                   "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "C"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "alarm: 5 a minute"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "tooltip": true,
+                  "viz": false,
+                  "legend": false
                 }
               }
             ]
@@ -724,7 +829,7 @@
             "type": "loki",
             "uid": "grafanacloud-logs"
           },
-          "expr": "{source=\"release-demo\", service=\"orders-service\"} | json | stage=\"Record\" or stage=\"Rollback\" or result=\"failed\" | label_format outcome=`{{ if eq .stage \"Rollback\" }}Rolled back{{ else if eq .result \"ok\" }}Released{{ else }}Stopped at {{ .stage }}{{ end }}`",
+          "expr": "{source=\"release-demo\", service=\"orders-service\"} | json | job!=\"tests\" | stage=\"Record\" or stage=\"Rollback\" or result=\"failed\" | label_format outcome=`{{ if eq .stage \"Rollback\" }}Rolled back{{ else if eq .result \"ok\" }}Released{{ else }}Stopped at {{ .stage }}{{ end }}`",
           "queryType": "range",
           "maxLines": 1000,
           "editorMode": "code"

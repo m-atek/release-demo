@@ -49,6 +49,10 @@ Optional keys, each with its default where it is missing:
 | `servicenow.standard_options` | The Slack options that make a standard change; default `[standard]` (demo 7: `[stores]`). |
 | `servicenow.servers` | CI names, of any class, added to the change as affected items when it opens (demo 3). |
 | `servicenow.template_texts` | `{<template kind>: {field: text}}`, the texts `servicenow_setup.py` gives that template instead of the shared ones (demo 6). |
+| `tests` | With `scripts.test: scripts/tests_run.py`: `rerun_failed: 1` reruns a failed test once in place, and `quarantine: {file, after_flaky_runs, window_days, days}` names the quarantine file and when a release quarantines a flaky test. The per-test results go to Splunk and Grafana (`events.py tests`), and Slack gets the Test stage's lines (demo 15). |
+| `scripts.migration_check`, `scripts.rollback_check` | Stages only versions with `migrations/` in the service folder have (run_state.py's `VERSION_STAGES`): Migration check after SBOM and scan (after Contract check where there is one), Rollback check after Check staging (demo 20). |
+| `train` | `{departures: ["14:00"]}`: the release train job releases what is new on main at these times on weekdays, Europe/Amsterdam (demo 21). Its runs pass several Jira keys, comma-separated, and `ROWS`, the lines under the stages. |
+| `flags` | `{application, profile, strategy, environments, names}`: feature flags in AWS AppConfig that `/flag` may switch in production (demo 21). |
 
 ## 2. The stage scripts
 

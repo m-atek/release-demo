@@ -445,3 +445,47 @@ cloudflare/dc-agent-client-secret:
   source: terraform
   secure: true
   help: "Cloudflare Access service token for dc-agent, demo 3's data-center Jenkins agent: client secret."
+
+# Demo 20, the rollback trap (scripts/demos/rollback-trap). The database is a
+# Neon Free project; neon.py setup makes it and writes the connection strings,
+# so nobody types or sees them. The functions read their own database-url
+# (infra/demos/20-rollback-trap); the deploy role reads the migrate-urls.
+neon/api-key:
+  source: you
+  secure: true
+  help: "Demo 20. Neon console, the menu top right, Account settings (or Settings), API keys, Create new API key: a personal key named release-demo. Neon shows it once."
+neon/project:
+  source: script
+  secure: false
+  help: "Demo 20. The Neon project release-demo-orders and its branch ids, as JSON. Written by scripts/demos/rollback-trap/neon.py setup."
+orders-service/staging/database-url:
+  source: script
+  secure: true
+  help: "Demo 20. orders-service staging's database, pooled, as orders_app. Written by scripts/demos/rollback-trap/neon.py setup."
+orders-service/production/database-url:
+  source: script
+  secure: true
+  help: "Demo 20. orders-service production's database, pooled, as orders_app. Written by scripts/demos/rollback-trap/neon.py setup."
+orders-service/staging/migrate-url:
+  source: script
+  secure: true
+  help: "Demo 20. Staging's database, direct, as orders_owner, which runs the migrations. Written by scripts/demos/rollback-trap/neon.py setup."
+orders-service/production/migrate-url:
+  source: script
+  secure: true
+  help: "Demo 20. Production's database, direct, as orders_owner, which runs the migrations. Written by scripts/demos/rollback-trap/neon.py setup."
+orders-service/baseline-versions:
+  source: script
+  secure: false
+  help: "Demo 20. The Lambda versions of 1.6.0 in staging and production that reset.py rollback-trap moves the aliases back to, as JSON. Written by scripts/demos/rollback-trap/setup.py."
+
+# Demo 21, the release train and the feature flag (infra/demos/21-release-train-flags
+# makes these names).
+appconfig/orders-service:
+  source: terraform
+  secure: false
+  help: "Demo 21. orders-service's AWS AppConfig ids (application, environments, flags profile, deployment strategy), as JSON, for /flag and reset.py. Written by infra/demos/21-release-train-flags."
+release-train/enabled:
+  source: terraform
+  secure: false
+  help: "Demo 21. on or off: whether the release train leaves at its departures. scripts/demo.sh up release-train sets on, down sets off. infra/demos/21-release-train-flags makes it, off."

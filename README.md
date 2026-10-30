@@ -406,6 +406,43 @@ scripts/demo.sh status windows         # what each server runs, the drift, the c
 
 `scripts/demo.sh down windows` stops the fleet; only its disks cost, about USD 0.52 a day. `scripts/demos/windows/down.sh --destroy` removes it with Terraform.
 
+## Demo on a call: flaky tests, one rerun and a quarantine (demo 15)
+
+orders-service's Test stage reruns a failed test once, in place (`scripts/tests_run.py`), quarantines a test that keeps passing only on rerun, with a Jira issue and an end date, and still stops a release on a real failure. Every release and every run of the job `orders-service-tests` sends one event per test to Splunk and Grafana, and the dashboard "Flaky tests" counts the reruns and minutes that saved. No infrastructure of its own: it runs on the tools host.
+
+| State | Jira | What changes | What happens |
+| --- | --- | --- | --- |
+| 1.5.0 | ORD-[r] | A delivery estimate per region, and `test_delivery_estimate_timeout`, which renders the page for every region and asserts a time limit | About one first pass in ten misses the limit: the rerun passes, marked flaky. A release with 3 flaky runs in 14 days quarantines the test |
+| 1.5.1 | ORD-[r] | One region missing from the table | `test_delivery_estimate_per_region` fails twice; the release stops at Test |
+
+Once, after the merge: `scripts/demos/flaky/calibrate.py --write` times the test 200 times on the tools host, in the toolchain container with coverage, and sets the limit near the 90th percentile in both states (commit them); `.venv/bin/python scripts/demos/flaky/setup.py` makes ORD-[r] and the dashboard. Then one night: `scripts/tools.sh up` and the Jenkins job `flaky-night` as admin, 80 runs, about 4 hours. Record within 14 days, while Grafana keeps the results.
+
+Before each take: `scripts/reset.py flaky`: the main reset, the takes' quarantine entries ended with one `[skip ci]` commit and their issues done ("Earlier take"), ORD-[r] reopened, 1.5.0 staged. On the call: `/release orders-service ORD-[r] standard`, then `scripts/host.py stage orders-service 1.5.1` (a fresh clone: main has the quarantine commit) and the same command again.
+
+## Demo on a call: the rollback that couldn't roll back (demo 20)
+
+From 1.6.0, orders-service reads its orders from Postgres (Neon Free, `scripts/demos/rollback-trap/neon.py`). Its deploy applies the package's migrations first (`scripts/demos/rollback-trap/deploy.py`), and two checks run for versions with migrations only: Migration check (squawk over the migrations production hasn't run) and Rollback check (production's version invoked in staging, against staging's migrated database).
+
+| State | Jira | What changes | Where it stops |
+| --- | --- | --- | --- |
+| 1.6.0 | ORD-[s] | Orders from the database | Released once by setup.py: the baseline |
+| 1.6.1 | ORD-[t] | Renames `delivery_days`; the /api/orders query misses it | Checks off: Check production, and the rollback's check too. Checks on: Migration check |
+| 1.6.2 | ORD-[t] | 1.6.1 with `-- squawk-ignore renaming-column` | Rollback check |
+| 1.7.0 | ORD-[t] | Adds `delivery_estimate_days`, a trigger and a backfill | Live, with a tested backout plan |
+| 1.7.1 | ORD-[t] | Drops `delivery_days` | Live (acceptance checks only) |
+
+Once, after the merge: Mateusz makes a Neon Free account and its API key (`scripts/secrets.py set neon/api-key`) and applies `infra/demos/20-rollback-trap` (`scripts/demos/rollback-trap/tf.sh apply`); `scripts/tf.sh apply` sets the database settings on both functions; then `.venv/bin/python scripts/demos/rollback-trap/setup.py`.
+
+Before each take: `scripts/reset.py rollback-trap [--checks on|off] [--stage 1.6.1|1.6.2|1.7.0]` (defaults off and 1.6.1), or the reset job with DEMO=rollback-trap and OPTIONS. On the call: `/release orders-service ORD-[t] standard`. `scripts/demos/rollback-trap/neon.py status` shows the branches and the usage.
+
+## Demo on a call: a release train and a feature flag (demo 21)
+
+The job `release-train` leaves on its timer at the departures in services.yaml (14:00 on weekdays by default) with what is new on main: orders-service 1.8.0 and its three Jira issues, one unfinished behind the flag `delivery_estimate_v2`, off in AWS AppConfig. `/flag orders-service delivery_estimate_v2 on` switches it in production; the event bridge's AppConfig route (`bridge/appconfig.py`) records every switch as a standard change, in Slack and in Grafana, and AppConfig rolls a switch back when the alarm `orders-service-production-errors` fires.
+
+Once, after the merge: Mateusz applies `infra/demos/21-release-train-flags` (`scripts/demos/release-train/tf.sh apply`) and reinstalls the Slack app with `/flag`; `scripts/tf.sh apply` gives the functions their AppConfig settings and the Slack handler `/flag`; `.venv/bin/python scripts/servicenow_setup.py` adds the template "Feature flag change of orders-service"; `.venv/bin/python scripts/demos/release-train/setup.py` makes ORD-[u], ORD-[v] and ORD-[w].
+
+Before the train: `scripts/demo.sh up release-train` (the tools host starts 30 minutes before the departure), then `scripts/reset.py release-train`. A rehearsal: the job `release-train` by hand with REHEARSAL. Before the switch: `scripts/demo.sh traffic release-train`, about 2 requests a second to /api/estimate over the six stores. Afterwards: `scripts/demo.sh down release-train`.
+
 ## Layout
 
 ```
