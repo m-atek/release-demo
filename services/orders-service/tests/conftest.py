@@ -11,7 +11,6 @@ import handler as app  # noqa: E402
 @pytest.fixture(autouse=True)
 def env(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "staging")
-    monkeypatch.setenv("DELIVERY_ESTIMATE_DAYS", "2")
     monkeypatch.setenv("DEPLOYED_AT", "26 Oct 2026, 09:30 UTC")
     monkeypatch.setattr(app, "_deployed_at", None)
 
