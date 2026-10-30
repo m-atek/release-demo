@@ -328,12 +328,11 @@ def test_with_the_ruleset_off_no_pull_request_is_checked():
 
 
 def test_demo_2_s_job_leaves_other_pull_requests_alone():
-    github = FakePRs(ON, [], {}, {5: ["services/orders-service/handler.py"], 6: ["infra/demos/2-terraform/network/x.tf"]})
-    assert pull_requests.touches(github, 5, "infra/demos/2-terraform/network/") == 1
-    assert pull_requests.touches(github, 6, "infra/demos/2-terraform/network/") == 0
+    """scripts/pr_scope.py (demo 19's tests hold its rule) ends the coding agent's pull request
+    in demo 2's job before anything is posted."""
     guard = (ROOT / "infra" / "demos" / "2-terraform" / "Jenkinsfile").read_text()
-    assert "pull_requests.py touches \"$CHANGE_ID\" infra/demos/2-terraform/network/') == 1" in guard
-    assert guard.index("pull_requests.py touches") < guard.index("demo.started(")
+    assert "python3 scripts/pr_scope.py infra/demos/2-terraform')" in guard and "scope == 1" in guard
+    assert guard.index("pr_scope.py") < guard.index("demo.started(")
 
 
 def test_the_quality_gate_analyses_into_the_pull_requests_own_project_on_the_free_plan():

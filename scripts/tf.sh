@@ -46,6 +46,6 @@ fi
 # .terraform/terraform.tfstate records the backend; without it, init first.
 [[ -f $ROOT/infra/.terraform/terraform.tfstate ]] ||
   terraform -chdir="$ROOT/infra" init -input=false -backend-config="bucket=$(state_bucket)"
-# The approval bridge's package (demos 14 and 22), which infra/approval_bridge.tf zips.
+# The bridge's package (demos 14, 19 and 22), which infra/approval_bridge.tf zips.
 "$ROOT/bridge/build.sh"
 terraform -chdir="$ROOT/infra" "$@"

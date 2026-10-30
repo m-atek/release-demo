@@ -70,6 +70,14 @@ def call() {
                     withServiceCredentials(cfg) { sh "${serviceConfig.command(cfg, 'rollback_check')} ${service}" }
                 }
             }
+            if (cfg.scripts.evaluation) {
+                // Demo 23: fixed questions against what staging now runs, before any change exists.
+                // A failure leaves staging on this version, so the team can ask it what went wrong.
+                // After Cost check and Rollback check, as run_state.py lists them in Slack.
+                releaseStage('Evaluation', environment: 'staging') {
+                    sh "${serviceConfig.command(cfg, 'evaluation')} ${service}"
+                }
+            }
             if (cfg.scripts.plan) {
                 // What the change needs from the target before it opens (demo 1: the wave plan).
                 releaseStage('Plan') { sh "${serviceConfig.command(cfg, 'plan')} ${service}" }

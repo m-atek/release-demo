@@ -6,8 +6,9 @@ Idle means: no running or queued Jenkins build (a timer's own check for work,
 such as pull-requests, doesn't count), no job on the GitLab runner (demo 17),
 no job on the Azure Pipelines agent and no release run in progress (demo 22),
 and cloudflared's request counter unchanged, so nobody used Jenkins, JCR or
-Splunk through the tunnel. The host powers off; its shutdown behaviour is
-"stop", so the data stays.
+Splunk through the tunnel. Before it powers off, each demo's
+scripts/demos/<demo>/on_idle.sh runs. The host powers off; its shutdown
+behaviour is "stop", so the data stays.
 """
 
 import base64
@@ -107,7 +108,19 @@ def main():
     print(f"idle for {idle / 60:.0f} minutes")
     if idle >= IDLE_SECONDS:
         print("30 minutes idle: stopping the tools host")
+        before_poweroff()
         subprocess.run(["systemctl", "poweroff"], check=False)
+
+
+def before_poweroff():
+    """Each demo's on_idle.sh, if it has one: what must not run on once the host is off
+    (demo 23: its search endpoint, which bills by the hour). Never stops the power-off."""
+    for hook in sorted(Path(__file__).resolve().parents[1].glob("scripts/demos/*/on_idle.sh")):
+        try:
+            result = subprocess.run([str(hook)], capture_output=True, text=True, timeout=360)
+            print(f"{hook.parent.name}: {(result.stdout + result.stderr).strip()[-500:]}")
+        except (OSError, subprocess.TimeoutExpired) as error:
+            print(f"{hook.parent.name}: {error.__class__.__name__}")
 
 
 if __name__ == "__main__":

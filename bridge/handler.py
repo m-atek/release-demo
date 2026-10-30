@@ -1,9 +1,11 @@
-"""The approval bridge: production waits in GitHub Actions or Azure Pipelines
-until ServiceNow says the change is approved, and nobody in GitHub or Azure
-DevOps can approve it instead.
+"""The bridge, release-demo-bridge: one Lambda function behind a public
+function URL (infra/approval_bridge.tf), for calls from outside the tools host
+that wait on, or change, the platform's records. Each route checks its own
+caller, so the URL needs no AWS auth.
 
-One Lambda function behind a public function URL (infra/approval_bridge.tf),
-with three routes:
+The approval bridge: production waits in GitHub Actions or Azure Pipelines
+until ServiceNow says the change is approved, and nobody in GitHub or Azure
+DevOps can approve it instead. Three routes:
 
 - POST /github: GitHub's deployment_protection_rule webhook, sent to the
   release-demo GitHub App when a job of a run waits on an environment whose
@@ -40,6 +42,15 @@ of the check's log on the run page. The texts below are the ones the
 video scripts quote. The app's JWT is signed with PyJWT and cryptography, which
 bridge/build.sh installs for Lambda's platform; the rest is the standard
 library and boto3. Secrets come from SSM and are never logged.
+
+The event bridge (demo 19), a fourth route:
+
+- POST /events: an event from one of the platform's own machines, with the
+  bearer token bridge/events-token, recorded in ServiceNow, Slack and Grafana
+  (bridge/events.py). Demo 19's drift recorder sends kind "drift".
+
+AWS AppConfig's deployment events (demo 21) have a function of their own,
+bridge/appconfig.py, in that demo's root.
 """
 
 import base64
@@ -58,7 +69,7 @@ import boto3
 
 SSM_PREFIX = "/release-demo/"
 CACHE_SECONDS = 5 * 60
-USER_AGENT = "release-demo-approval-bridge/1.0 (+https://github.com/m-atek/release-demo)"
+USER_AGENT = "release-demo-bridge/1.0 (+https://github.com/m-atek/release-demo)"
 GITHUB_API = "https://api.github.com"
 # The environments whose jobs wait for the bridge: production, and bridge-test
 # for the first check of the setup (scripts/demos/github_actions/bridge_test.py).
@@ -110,6 +121,10 @@ def handler(event, context):
         return from_servicenow(headers, body, context)
     if path == "/azure-devops/check":
         return from_azure(headers, context)
+    if path == "/events":
+        import events  # beside this file in the package; only this route needs it
+
+        return events.handle(event)
     return http(404)
 
 

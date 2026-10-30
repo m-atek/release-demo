@@ -1,0 +1,33 @@
+# Break-glass access to production on the cluster host: whoever holds a
+# client certificate in the group release-demo:break-glass, which
+# scripts/demos/argocd/break_glass.py has the cluster sign for an hour. They
+# may read the catalog's pods, replica sets and deployments in production,
+# and patch a deployment or its scale. Nothing in any other namespace, no
+# secrets anywhere. Argo CD puts back whatever they change.
+apiVersion: v1
+kind: Namespace
+metadata: { name: production }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: { name: break-glass, namespace: production }
+rules:
+  - apiGroups: [apps]
+    resources: [deployments, replicasets]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [patch, update]
+  - apiGroups: [apps]
+    resources: [deployments/scale]
+    verbs: [get, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: { name: break-glass, namespace: production }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: break-glass }
+subjects:
+  - { kind: Group, name: "release-demo:break-glass", apiGroup: rbac.authorization.k8s.io }

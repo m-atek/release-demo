@@ -125,3 +125,42 @@ def test_an_unset_key_is_a_reason_not_a_crash():
             return {"Parameter": {"Value": "unset"}}
     with pytest.raises(llm.LLMError, match="isn't set"):
         llm.api_key(Ssm())
+
+
+# Demo 23's entry point, complete(), on the same module and the same SDK.
+
+def test_complete_reaches_the_real_sdk_with_fallbacks_only_where_the_model_has_them(monkeypatch):
+    monkeypatch.setattr(llm, "redact", lambda text, scan=None: (text, 0))
+    reply = {"answer": "Type /rollback orders-service.", "sources": ["RB-07"]}
+    haiku = Recorder(sdk_response(reply, model="claude-haiku-5-5"))
+    result = llm.complete("answer", "system", "Question: how?", SCHEMA, "runbook-assistant", "claude-haiku-5-5",
+                          "low", record=False, sdk=haiku.client())
+    assert result.data == reply and result.model == "claude-haiku-5-5" and result.tokens["input"] == 11800
+    body = haiku.requests[0]["body"]
+    assert haiku.requests[0]["url"].split("?")[0].endswith("/v1/messages")
+    assert body["model"] == "claude-haiku-5-5" and "fallbacks" not in body
+    assert body["output_config"] == {"effort": "low", "format": {"type": "json_schema", "schema": SCHEMA}}
+    sonnet = Recorder(sdk_response(reply, model="claude-sonnet-5-5"))
+    llm.complete("judge", "system", {"question": "q"}, SCHEMA, "runbook-assistant", "claude-sonnet-5-5", "low",
+                 record=False, sdk=sonnet.client())
+    assert sonnet.requests[0]["body"]["fallbacks"] == "default"
+    assert sonnet.requests[0]["headers"]["anthropic-beta"] == llm.FALLBACK_BETA
+
+
+def test_one_price_file_prices_both_entry_points():
+    assert llm.cost_of("claude-opus-5-5", {"input": 12000, "output": 4000, "cache_read": 0, "cache_write": 0}) \
+        == pytest.approx(llm.cost("claude-opus-5-5", {"input_tokens": 12000, "output_tokens": 4000}))
+    assert llm.cost_of("claude-unknown-1", {"input": 1, "output": 1, "cache_read": 0, "cache_write": 0}) == 0.0
+    assert llm.Refused is llm.LLMError
+
+
+def test_one_anthropic_pin_for_every_caller():
+    """requirements-dev.txt (the tools host, the toolchain image, the Mac) and the
+    RAG evaluation's own environment pin the same release of the SDK."""
+    root = Path(__file__).resolve().parents[2]
+
+    def pins(path):
+        return [line.strip() for line in path.read_text().splitlines() if line.startswith("anthropic")]
+
+    dev, rag = pins(root / "requirements-dev.txt"), pins(root / "scripts" / "demos" / "rag" / "requirements.txt")
+    assert len(dev) == 1 and dev == rag, (dev, rag)

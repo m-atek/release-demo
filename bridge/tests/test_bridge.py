@@ -22,7 +22,7 @@ SECRET = "test-webhook-secret, not a real one"
 TOKEN = "test-servicenow-token, not a real one"
 REPOSITORY = "m-atek/release-demo"
 RUN = "18300000001"
-CONTEXT = SimpleNamespace(invoked_function_arn="arn:aws:lambda:eu-west-1:123456789012:function:release-demo-approval-bridge")
+CONTEXT = SimpleNamespace(invoked_function_arn="arn:aws:lambda:eu-west-1:123456789012:function:release-demo-bridge")
 SAM, ALEX = "a" * 32, "b" * 32
 CHANGE_ID = "c" * 32
 SSM_VALUES = {

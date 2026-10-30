@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "answer": {"type": "string", "description": "At most three sentences, from the passages only."},
+    "sources": {"type": "array", "items": {"type": "string"}, "description": "The page id of every passage used."}
+  },
+  "required": ["answer", "sources"],
+  "additionalProperties": false
+}

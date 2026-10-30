@@ -1,5 +1,5 @@
 # The prices the platform puts on its own work: scripts/llm.py costs each
-# Claude call with them (videos 12 and 13), and the cost check prices a
+# Claude call with them (videos 12, 13 and 23), and the cost check prices a
 # release's measured page views (video 18, scripts/demos/cost_gate).
 #
 # Read from the pages below on the date in "read". Re-read every page, and
@@ -15,9 +15,10 @@ claude:
   per_million_tokens:
     claude-opus-5-5: {input: 4.00, output: 20.00, cache_read: 0.20, cache_write: 5.00}
     claude-sonnet-5-5: {input: 2.00, output: 10.00, cache_read: 0.10, cache_write: 2.50}
-    # For prompts up to 100,000 tokens, which every call here is. Above that
-    # Haiku 5.5 costs 0.50 in, 2.50 out, 0.05 cache reads and 0.625 cache writes.
-    claude-haiku-5-5: {input: 0.10, output: 0.50, cache_read: 0.01, cache_write: 0.125}
+    # For prompts up to 100,000 tokens; a longer prompt pays long_prompt's prices.
+    claude-haiku-5-5:
+      {input: 0.10, output: 0.50, cache_read: 0.01, cache_write: 0.125,
+       long_prompt: {over: 100000, input: 0.50, output: 2.50, cache_read: 0.05, cache_write: 0.625}}
     # Where the server-side fallback ("default") may send a declined request.
     claude-opus-5: {input: 5.00, output: 25.00, cache_read: 0.50, cache_write: 6.25}
     claude-opus-4-8: {input: 5.00, output: 25.00, cache_read: 0.50, cache_write: 6.25}

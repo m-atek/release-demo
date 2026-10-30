@@ -1,0 +1,7 @@
+# How the corpus becomes the search index's chunks (chunker.py). The chunk
+# hash covers this file, chunker.py, the corpus and the embedding model, so a
+# release that changes any of them gets a table and an index of its own.
+split: heading
+max_tokens: 400
+prefix: "{id} {title}"
+embedding_model: databricks-gte-large-en

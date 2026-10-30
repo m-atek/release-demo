@@ -31,6 +31,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 import run_state
 from common import ROOT, fail, get_parameter, people, service, ssm_client
@@ -147,10 +148,11 @@ def refuse_unreviewed(state, lines):
 def open_change(sn, ssm, state):
     """The change, plus what a deploy script may have put in the run state:
     change_extras (fields for the change, and affected_cis, the sys_ids of the
-    CMDB items it touches) and change_details (lines added to the description,
-    so the approver sees them), and change_work_notes (lines for one work note
-    once it exists). The servers a service lists in services.yaml
-    (servicenow.servers, CI names of any class) are affected items too."""
+    CMDB items it touches), change_details (lines added to the description,
+    so the approver sees them), change_work_notes (lines for one work note
+    once it exists) and change_attachments (more files to attach). The servers
+    a service lists in services.yaml (servicenow.servers, CI names of any
+    class) are affected items too."""
     config = service(state["service"])
     code = code_review(state)
     if code and code["refused"]:
@@ -216,6 +218,10 @@ def open_change(sn, ssm, state):
             path = ROOT / "dist" / state["service"] / name
         if path.exists():
             attach(sn, change_id, path)
+    # A stage's own evidence, such as demo 23's evaluation.json: optional, paths in the run state.
+    for name in state.get("change_attachments") or []:
+        if Path(name).exists():
+            attach(sn, change_id, Path(name))
     note(sn, state, "Evidence:\n" + "\n".join(f"{k}: {v}" for k, v in links(state, ssm).items()))
     note(sn, state, "Stages so far:\n" + stage_summary(state))
     if state.get("change_work_notes"):

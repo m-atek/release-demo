@@ -5,7 +5,6 @@
     python3 scripts/demos/agent_ship/pull_requests.py check <name> <state>  in_progress, success, failure or cancelled
     python3 scripts/demos/agent_ship/pull_requests.py skip <n> <sha>        all four completed as skipped
     python3 scripts/demos/agent_ship/pull_requests.py sonar-args <service> <version> <n>   the scanner's arguments
-    python3 scripts/demos/agent_ship/pull_requests.py touches <n> <path>    exit 0 if the pull request changes path
 
 The Jenkins job pull-requests runs every minute. While video 16's ruleset
 "main: pull request and checks" is on, it takes the newest open pull
@@ -21,7 +20,6 @@ checks nothing, so videos 2 and 14 see their pull requests as before.
 import argparse
 import json
 import sys
-import urllib.error
 from pathlib import Path
 
 import agent  # noqa: F401  (puts scripts/ on the path)
@@ -178,15 +176,6 @@ def sonar_args(service_name, version, number, organization):
     return " ".join(f"-D{key}={value}" for key, value in args.items())
 
 
-def touches(github, number, path):
-    """0 when the pull request changes something under path, 1 when it changes nothing there.
-    When GitHub doesn't answer: 0, so a job that asks runs as it always did."""
-    try:
-        return 0 if any(p.startswith(path) for p in files(github, number)) else 1
-    except (urllib.error.URLError, OSError, SystemExit):
-        return 0
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -205,9 +194,6 @@ def main():
     sonar.add_argument("service")
     sonar.add_argument("version")
     sonar.add_argument("number", type=int)
-    toucher = sub.add_parser("touches")
-    toucher.add_argument("number", type=int)
-    toucher.add_argument("path")
     args = parser.parse_args()
 
     if args.command == "sonar-args":
@@ -221,10 +207,8 @@ def main():
         start(github, args.number, args.sha)
     elif args.command == "skip":
         start(github, args.number, args.sha, conclusion="skipped", summary=SKIPPED)
-    elif args.command == "check":
-        check(github, args.name, args.state, args.service)
     else:
-        return touches(github, args.number, args.path)
+        check(github, args.name, args.state, args.service)
     return 0
 
 

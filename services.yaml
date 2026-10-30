@@ -275,6 +275,24 @@ catalog:
     templates:
       standard: Routine release of catalog
       rollback: Rollback of catalog
+      # Demo 19: scripts/demos/argocd/reset.py puts production on the cluster
+      # host back to Git's baseline under this pre-approved change.
+      reset: Reset of catalog production
+    template_texts:
+      reset:
+        short_description: Reset of catalog production
+        description: >-
+          Puts catalog in production on the cluster host back to its baseline before a take: 1.9.1 with
+          3 replicas, as deploy/production/catalog/values.yaml says. reset.py commits the values to main
+          and Argo CD syncs them, so even a reset changes production through Git and on the record.
+        implementation_plan: >-
+          scripts/demos/argocd/reset.py commits deploy/production/catalog/values.yaml to main through the
+          GitHub App, asks Argo CD to refresh catalog-production, and waits until it is Synced at that
+          commit and Healthy.
+        backout_plan: Revert the reset's commit on main; Argo CD syncs the previous values from Git.
+        test_plan: Argo CD reports catalog-production Synced at the reset's commit and Healthy within 3 minutes.
+        justification: A take starts from the same production every time.
+        risk_impact_analysis: "Low: the demo's own production, back to the values it ran before the take."
     backout_plan: >-
       Automatic: Helm releases with --rollback-on-failure and waits up to 3 minutes for the new pods
       to be ready. If they aren't, Helm rolls back to the previous revision by itself, the old pods
@@ -291,6 +309,23 @@ catalog:
     chart: helm-local/catalog
     registry: http://127.0.0.1:8082
     release: catalog
+
+  # Demo 19: production on the cluster host, from Git through Argo CD. Its
+  # desired state is deploy/production/catalog/; a hand edit is put back and
+  # recorded, a change goes through a pull request. scripts/demos/argocd/.
+  # /release catalog still deploys to demo 8's cluster with Helm.
+  gitops:
+    path: deploy/production/catalog
+    application: catalog-production
+    project: production
+    namespace: production
+    deployment: catalog
+    version: "1.9.1"            # whose chart and image the folder holds
+    replicas: 3                 # what reset.py puts back
+    kubernetes_version: 1.37.1  # the cluster host's k3s, for kubeconform
+    sync_timeout_seconds: 180
+    job: catalog-production     # the multibranch job for pull requests to the folder
+    branch_prefix: oncall/      # the on-call engineer's branches, which reset.py closes
 
   environments:
     staging:
@@ -803,3 +838,84 @@ store-assistant:
         timeout_seconds: 900
         report_groups: [Pilot]
         show_groups: [All managed Macs]
+
+runbook-assistant:
+  # Demo 23: a RAG assistant over the store company's runbooks and past
+  # changes. Pages and index in Databricks, answers from Claude through
+  # scripts/llm.py, 40 fixed questions before every change. scripts/demos/rag/.
+  platform: databricks-rag
+  path: services/runbook-assistant
+  runtime: python3.13
+  jcr: { shared: true }
+  jira: { project: ORD }
+  slack: { options: [] }
+  scripts:
+    build: scripts/demos/rag/build.py
+    publish: scripts/publish.py
+    deploy: scripts/demos/rag/deploy.py
+    check: scripts/demos/rag/check.py
+    evaluation: scripts/demos/rag/evaluate.py   # after Check staging, before Change
+  servicenow:
+    cmdb_item: runbook-assistant
+    assignment_group: Platform team
+    approvers: Change approvers
+    change: standard          # only a release that passed the evaluation reaches Change
+    templates:
+      standard: Routine release of runbook-assistant
+      rollback: Rollback of runbook-assistant
+    template_texts:
+      standard:
+        description: >-
+          A release of the runbook assistant that passed the evaluation gate: at least 36 of 40 fixed
+          questions answered correctly and grounded in the passages, none from a retired page.
+        implementation_plan: >-
+          The pipeline points the environment at the package stored in JFrog Container Registry, verified
+          by its SHA-256, and at its search index in Databricks, in staging first: the smoke check, then the
+          forty questions of the evaluation. Then the same package in production, and its smoke check.
+        backout_plan: >-
+          Point production back at the previous package and index (/rollback runbook-assistant), a pointer
+          move that takes seconds.
+        test_plan: >-
+          Unit tests, the SonarQube quality gate, an SBOM scan with no critical findings, the staging smoke
+          check, the evaluation of 40 fixed questions against the gate in services.yaml, and the production
+          smoke check.
+        justification: The evaluation gate decides; a release that passes it follows the same tested path every time.
+        risk_impact_analysis: "Low: the version answered the same forty questions in staging first, and the rollback is a pointer move."
+      rollback:
+        description: >-
+          Points production's runbook assistant back at the previous version's package and index, recorded
+          as a pre-approved change. Started with /rollback in Slack, or by the pipeline after a failed
+          production check.
+        implementation_plan: Write production's pointer back to the previous version, from its SSM history, and run the smoke check.
+        backout_plan: Point production forward again at the version that was rolled back.
+        test_plan: Production's smoke check answers all 5 smoke questions, each with a page.
+        justification: Restores the assistant quickly after a release that answers worse.
+        risk_impact_analysis: "Low: production returns to the version that answered before."
+  sonarqube:
+    project_key: m-atek_release-demo_runbook-assistant
+  databricks:
+    schema: runbook_assistant # in the catalog named by SSM databricks/catalog
+    pages_table: pages
+    volume: packages
+    endpoint: runbook-assistant
+    embedding_model: databricks-gte-large-en
+    experiment: /Shared/runbook-assistant
+    warehouse: runbook-assistant
+    serverless_environment: "4"   # the chunker job's serverless environment version
+    deploy_role: release-demo-deploy-runbook-assistant
+    # Decision 45: the tools host's idle stop also runs scripts/demo.sh down rag,
+    # so a forgotten search endpoint can't bill all night. false leaves it to down.
+    down_on_idle: true
+  evaluation:
+    questions: scripts/demos/rag/questions.yaml
+    judge: { model: claude-sonnet-5-5, effort: low, prompt: scripts/demos/rag/judge.md }
+    answer_models: [claude-haiku-5-5, claude-sonnet-5-5, claude-opus-5-5]
+    gate: { retired_page_max: 0, correct_min: 36, grounded_min: 36 }
+    workers: 8
+  environments:
+    staging:
+      pointer: runbook-assistant/staging
+      check: { timeout_seconds: 180, questions: 3 }
+    production:
+      pointer: runbook-assistant/production
+      check: { timeout_seconds: 240, questions: 5 }

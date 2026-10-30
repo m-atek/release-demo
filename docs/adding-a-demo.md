@@ -112,7 +112,9 @@ once.
   nothing overnight (stop, don't destroy, where the data matters).
 - Secrets go to SSM through `infra/parameters.yaml` and `scripts/secrets.py`,
   never into the repository.
-- Cloudflare stays as it is: demos add no DNS records or Access apps.
+- Cloudflare stays as it is: demos add no DNS records or Access apps. One
+  exception: demo 19's Argo CD UI, argocd-demo.es.nl, on the existing tunnel
+  with its own Access application (infra/argocd.tf).
 
 ## 4. Its demo states and reset
 

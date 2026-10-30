@@ -1,0 +1,8 @@
+apiVersion: v2
+name: catalog
+description: The catalog service of the release demo, in production on the cluster host.
+type: application
+# 1.9.1's chart, vendored from its package in JFrog Container Registry, so
+# Argo CD needs nothing but Git. The templates are the package's, unchanged.
+version: 1.9.1
+appVersion: "1.9.1"

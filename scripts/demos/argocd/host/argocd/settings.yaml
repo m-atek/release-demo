@@ -1,0 +1,63 @@
+# Read-only for everyone who gets past Cloudflare Access: anonymous users get
+# the default role, readonly, so the UI shows everything and changes nothing.
+# Production changes only through Git. The local account release-pipeline,
+# whose API token the fix pipeline and reset.py hold, may also ask for a sync
+# of catalog-production, and nothing else. The admin account is off; setup
+# switches it on only for the minute it takes to make that token.
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: argocd-cm }
+data:
+  url: https://argocd-demo.es.nl
+  users.anonymous.enabled: "true"
+  admin.enabled: "false"
+  accounts.release-pipeline: apiKey
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: argocd-rbac-cm }
+data:
+  policy.default: role:readonly
+  policy.csv: |
+    p, release-pipeline, applications, get, production/catalog-production, allow
+    p, release-pipeline, applications, sync, production/catalog-production, allow
+---
+# Cloudflare ends TLS; the tools host reaches the server in plain HTTP inside the VPC.
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: argocd-cmd-params-cm }
+data:
+  server.insecure: "true"
+---
+# on-automated-sync: every automated sync that succeeded goes once, as JSON,
+# to the drift recorder on the node, which keeps those that put back a hand
+# edit: it reads the audit log for writes since the sync before. A rule of
+# "same Git revision as the sync before" would miss a self-heal after any
+# unrelated commit to main, which moves the application's revision without a
+# sync, so the next one is at a new revision. Git-driven syncs, by the fix
+# pipeline or reset.py, find no hand edit and send nothing on.
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: argocd-notifications-cm }
+data:
+  service.webhook.drift-recorder: |
+    url: http://drift-recorder.argocd.svc:9095/
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: Authorization
+        value: Bearer $drift-recorder-token
+  template.automated-sync: |
+    webhook:
+      drift-recorder:
+        method: POST
+        body: |
+          {"application": "{{.app.metadata.name}}", "revision": "{{.app.status.operationState.syncResult.revision}}", "finished_at": "{{.app.status.operationState.finishedAt}}"}
+  trigger.on-automated-sync: |
+    - description: An automated sync succeeded; the drift recorder checks whether it put back a hand edit.
+      oncePer: app.status.operationState.finishedAt
+      send: [automated-sync]
+      when: >-
+        app.status.operationState != nil
+        && app.status.operationState.phase == 'Succeeded'
+        && app.status.operationState.operation.initiatedBy.automated == true

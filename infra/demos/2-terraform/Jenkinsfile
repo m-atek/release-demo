@@ -15,13 +15,18 @@ properties([disableConcurrentBuilds(abortPrevious: true)])
 
 node('tools-host') {
     checkout scm
-    // Video 16: a pull request that changes nothing in the network stack, such as
-    // the coding agent's, isn't this job's. It ends here, before anything is posted.
-    if (env.CHANGE_ID && sh(returnStatus: true,
-            script: 'python3 scripts/demos/agent_ship/pull_requests.py touches "$CHANGE_ID" infra/demos/2-terraform/network/') == 1) {
+    // This job discovers every pull request in the repository. Those that
+    // change nothing in demo 2's folder (video 16's coding agent's, demo 19's
+    // to deploy/production) are another job's: they end here, with nothing in
+    // Slack or on GitHub.
+    int scope = sh(returnStatus: true, script: 'python3 scripts/pr_scope.py infra/demos/2-terraform')
+    if (scope == 1) {
         currentBuild.result = 'NOT_BUILT'
-        currentBuild.description = 'Not a network stack change: nothing under infra/demos/2-terraform/network/.'
+        currentBuild.description = 'Not for this pipeline.'
         return
+    }
+    if (scope != 0) {
+        error "Couldn't read the pull request's files from GitHub."
     }
     def demo = load 'infra/demos/2-terraform/pipeline.groovy'
     String pr = 'python3 scripts/demos/terraform/pr.py'

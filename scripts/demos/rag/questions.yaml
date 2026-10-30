@@ -1,0 +1,195 @@
+# The forty questions every runbook-assistant version answers against staging
+# before its change opens (scripts/demos/rag/evaluate.py). They live on the
+# platform's side, not in the package, so a release can't change its own test.
+# Every run records this file's SHA-256: change it only in a platform commit
+# of its own, never in a release.
+#
+#   expected_facts     one to three short facts a correct answer states
+#   expected_sources   page ids, or {change: <short description>} for a past
+#                      change, found in the package's corpus/changes.json
+#   smoke              the five the smoke checks ask: staging the first three,
+#                      production all five. None has a retired twin.
+#   twin               the retired page on the same topic, for reading only
+questions:
+  # Twelve on topics with a retired twin.
+  - id: Q01
+    question: How do I roll back orders-service?
+    expected_facts: ["Type /rollback orders-service in #releases", "The rollback is recorded as a pre-approved change"]
+    expected_sources: [RB-07]
+    twin: RB-02
+  - id: Q02
+    question: Who deploys orders-service to production?
+    expected_facts: ["The release pipeline deploys it after the change is approved", "Nobody deploys by hand"]
+    expected_sources: [RB-01]
+    twin: RB-02
+  - id: Q03
+    question: How do I release orders-service?
+    expected_facts: ["Type /release orders-service with a Jira key in #releases"]
+    expected_sources: [RB-01]
+    twin: RB-02
+  - id: Q04
+    question: Who approves a normal change, and when?
+    expected_facts: ["Alex Change Manager, in Change approvers, approves it in ServiceNow", "The pipeline waits up to 30 minutes"]
+    expected_sources: [RB-03, RB-33]
+    twin: RB-04
+  - id: Q05
+    question: Which releases need no approval?
+    expected_facts: ["Standard changes from a pre-approved template", "Rollbacks are standard changes too"]
+    expected_sources: [RB-03]
+    twin: RB-04
+  - id: Q06
+    question: How do I upgrade store-sync on the store servers?
+    expected_facts: ["Release it with /release store-sync", "It goes in waves through AWS Systems Manager Run Command"]
+    expected_sources: [RB-11]
+    twin: RB-12
+  - id: Q07
+    question: How do inventory releases reach the servers in the data center?
+    expected_facts: ["Through dc-agent, which connects out to Jenkins over WebSocket", "No firewall rule or inbound connection is needed"]
+    expected_sources: [RB-13]
+    twin: RB-14
+  - id: Q08
+    question: Where are the cloud keys for quote-service's deploys kept?
+    expected_facts: ["No cloud keys are stored", "Each build's ID token from Jenkins is trusted by each cloud"]
+    expected_sources: [RB-15]
+    twin: RB-16
+  - id: Q09
+    question: How do I deploy catalog to Kubernetes?
+    expected_facts: ["Release it with /release catalog", "Helm upgrades it and rolls back by itself if the pods aren't ready in 3 minutes"]
+    expected_sources: [RB-17]
+    twin: RB-18
+  - id: Q10
+    question: What do I do if the pipeline's JFrog token leaks?
+    expected_facts: ["Run rotate.py", "It revokes the token, issues a new one and proves the old one dead"]
+    expected_sources: [RB-19]
+    twin: RB-20
+  - id: Q11
+    question: On call, how do I make a change to catalog in production that lasts?
+    expected_facts: ["Open a pull request to deploy/production/catalog", "A hand edit is put back by Argo CD"]
+    expected_sources: [RB-21]
+    twin: RB-22
+  - id: Q12
+    question: Who has production access for orders-service releases?
+    expected_facts: ["Nobody deploys by hand: the pipeline deploys after approval"]
+    expected_sources: [RB-01, RB-33]
+    twin: RB-02
+
+  # Twenty on current runbooks without a twin.
+  - id: Q13
+    question: What does the quality gate check?
+    expected_facts: ["SonarQube Cloud's Sonar way gate", "A failed gate stops the run"]
+    expected_sources: [RB-06]
+    smoke: true
+  - id: Q14
+    question: What stops a release with a critical vulnerability?
+    expected_facts: ["Grype scans the SBOM with fail-on critical", "It stops before the package is published"]
+    expected_sources: [RB-06]
+  - id: Q15
+    question: How does production know it got the package that was tested?
+    expected_facts: ["Each deploy downloads it from JFrog and verifies its SHA-256", "A changed package fails its checksum and the deploy stops"]
+    expected_sources: [RB-08]
+    smoke: true
+  - id: Q16
+    question: What happens when a release fails its production check?
+    expected_facts: ["The pipeline rolls back to the previous version by itself", "The change closes as unsuccessful"]
+    expected_sources: [RB-09, RB-07]
+  - id: Q17
+    question: What does pricing-api's contract check compare?
+    expected_facts: ["The package's openapi.yaml with production's, as JFrog keeps it", "A breaking change stops the run"]
+    expected_sources: [RB-23]
+  - id: Q18
+    question: How much traffic does a pricing-api canary get, and for how long?
+    expected_facts: ["10% of the traffic", "For 5 minutes, or 3 on calls"]
+    expected_sources: [RB-23]
+  - id: Q19
+    question: How do I change the network stack?
+    expected_facts: ["Through a pull request", "Jenkins applies the saved plan after Change approvers approve"]
+    expected_sources: [RB-24]
+  - id: Q20
+    question: What happens when someone changes the network stack's security group in the AWS console?
+    expected_facts: ["The drift check starts by itself within a minute or two", "Slack reports the drift and ServiceNow gets an incident"]
+    expected_sources: [RB-25]
+  - id: Q21
+    question: In what order does quote-service reach the clouds in production?
+    expected_facts: ["Google Cloud, then Azure, then AWS", "Each is checked before the next"]
+    expected_sources: [RB-26]
+  - id: Q22
+    question: How does a new Store Assistant reach the store Macs?
+    expected_facts: ["Jamf gives it to the Pilot group first", "All managed Macs get it after Alex approves the rollout"]
+    expected_sources: [RB-27]
+  - id: Q23
+    question: How is Store Floor rolled back on iPhones?
+    expected_facts: ["/rollback store-floor rebuilds the previous release with a higher build number"]
+    expected_sources: [RB-28]
+  - id: Q24
+    question: When does the tools host stop by itself?
+    expected_facts: ["After 30 idle minutes", "No running or queued build and no request through the tunnel"]
+    expected_sources: [RB-29]
+    smoke: true
+  - id: Q25
+    question: Which delivery metrics does the Releases dashboard show?
+    expected_facts: ["Deployment frequency, lead time for changes, change failure rate and failed deployment recovery time", "Over the last 14 days"]
+    expected_sources: [RB-30]
+  - id: Q26
+    question: How do I find every event of one release in Splunk?
+    expected_facts: ["Use the change's Splunk link, or search sourcetype release:event with the change number"]
+    expected_sources: [RB-31]
+  - id: Q27
+    question: Where are a release's notes?
+    expected_facts: ["In the GitHub release on the tag <service>-v<version>"]
+    expected_sources: [RB-32]
+  - id: Q28
+    question: Can the person who asked for a release approve its change?
+    expected_facts: ["No: the pipeline refuses that approval and cancels the change"]
+    expected_sources: [RB-33]
+  - id: Q29
+    question: What does a runbook-assistant release have to pass before production?
+    expected_facts: ["Forty fixed questions in staging", "None may cite a retired page, and at least 36 must be correct and grounded"]
+    expected_sources: [RB-34]
+  - id: Q30
+    question: How do I get to Jenkins from outside the office?
+    expected_facts: ["Through Cloudflare Access at jenkins-demo.es.nl, with an allowed email address"]
+    expected_sources: [RB-35]
+    smoke: true
+  - id: Q31
+    question: Which setting does production use for orders-service's delivery estimate?
+    expected_facts: ["DELIVERY_DAYS, the old name", "Staging uses DELIVERY_ESTIMATE_DAYS"]
+    expected_sources: [RB-36]
+  - id: Q32
+    question: What are the stages of a release?
+    expected_facts: ["Build, Test, Quality gate, SBOM and scan, Publish, Staging, Check staging, Change, Approval, Production, Check production and Record"]
+    expected_sources: [RB-05]
+    smoke: true
+
+  # Eight on past changes, their facts from the closed changes in changes.json.
+  - id: Q33
+    question: How did the release of orders-service 1.2.4 end?
+    expected_facts: ["It failed its production check", "It was rolled back to 1.2.3"]
+    expected_sources: [{change: Release orders-service 1.2.4 (ORD-5)}]
+  - id: Q34
+    question: How did the release of orders-service 1.2.8 end?
+    expected_facts: ["It failed its production check", "It was rolled back to 1.2.7"]
+    expected_sources: [{change: Release orders-service 1.2.8 (ORD-9)}]
+  - id: Q35
+    question: Was the release of orders-service 1.3.0 successful?
+    expected_facts: ["Yes, its change closed as successful"]
+    expected_sources: [{change: Release orders-service 1.3.0 (ORD-11)}]
+  - id: Q36
+    question: Which Jira issue was orders-service 1.2.5 released for?
+    expected_facts: ["ORD-6"]
+    expected_sources: [{change: Release orders-service 1.2.5 (ORD-6)}]
+  - id: Q37
+    question: How did the release of orders-service 1.4.1 end?
+    expected_facts: ["It failed its production check", "It was rolled back to 1.4.0"]
+    expected_sources: [{change: Release orders-service 1.4.1 (ORD-13)}]
+  - id: Q38
+    question: What happened to catalog 1.9.0 in production?
+    expected_facts: ["Helm rolled it back to 1.8.2", "Its change closed as unsuccessful"]
+    expected_sources: [{change: Release catalog 1.9.0 (ORD-90)}]
+  - id: Q39
+    question: Which store server stopped the store-sync 3.3.0 wave?
+    expected_facts: ["STORE-004"]
+    expected_sources: [{change: Release store-sync 3.3.0 (ORD-31)}]
+  - id: Q40
+    question: Why did pricing-api 2.1.1 not take all the traffic?
+    expected_facts: ["Its canary's alarm fired", "Its change closed as unsuccessful"]
+    expected_sources: [{change: Release pricing-api 2.1.1 (ORD-52)}]

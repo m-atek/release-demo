@@ -593,6 +593,39 @@ The reset runs on the tools host, where Release Bot can sign in: from the Mac it
 
 After the call: `scripts/demo.sh down azure-devops` puts /release back on Jenkins, then stops the agent. One self-hosted parallel job is free, Basic access is free for the first five users, and the pending-checks table costs cents a month.
 
+## Demo on a call: Argo CD puts production back (demo 19)
+
+catalog's production on a cluster host of its own, a t3.large in the tools host's subnet running k3s 1.37 and Argo CD 3.5, comes only from Git: `deploy/production/catalog/` on main, 1.9.1's chart with production's values, the image pinned by digest. Argo CD syncs it, prunes, and puts back any change made to the cluster by hand. The drift recorder on the host reads who made the edit, what and when from the cluster's audit log, and the event bridge (`bridge/`, a Lambda function) opens a ServiceNow incident, posts to `#releases` and adds a Grafana annotation. The fix that lasts is a pull request to that folder: the multibranch job `catalog-production` checks it (helm template, kubeconform, the image in JFrog, nothing outside the folder), opens an emergency change linked to the incident, merges it after Alex approves, and waits until Argo CD is Synced at the merge commit. `/release catalog` still deploys to demo 8's cluster; one catalog production runs at a time.
+
+Once, after the merge:
+
+1. `scripts/tf.sh apply` for the main root: the event bridge, the cluster host's address, and `argocd-demo.es.nl` on the tunnel with its Access application (the plan shows only these additions in Cloudflare).
+2. `.venv/bin/python scripts/servicenow_setup.py`: Pieter On Call (no password, Platform team), the emergency approval by Change approvers at Authorize, and the template "Reset of catalog production".
+3. `scripts/demo.sh up argocd`: applies `infra/demos/19-argocd-hand-edit` the first time (plan shown first), starts the host, waits for k3s and Argo CD, and generates Argo CD's pipeline token into SSM. It refuses while demo 8's k3s runs on the tools host.
+4. `.venv/bin/python scripts/reset.py argocd` (or the reset job, DEMO=argocd): pins 1.9.1's image digest from its release copy in JFrog, under a standard change.
+
+Before each call or take: `scripts/tools.sh up`, `scripts/demo.sh up argocd`, then `.venv/bin/python scripts/reset.py argocd`: 3 replicas, Synced, no open drift incident, emergency change or fix pull request. On the Mac, `.venv/bin/python scripts/demos/argocd/break_glass.py pieter` in a terminal of its own: an hour's certificate for pieter-oncall, the key on the Mac only, and the SSM tunnel to the API on 127.0.0.1:26443.
+
+On the call: as Pieter, `kubectl -n production scale deploy/catalog --replicas=5`. Argo CD puts 3 back within seconds; Slack says "Production drifted from Git" with the edit, its author and both times, and the incident holds the timeline. Then the change in Git: a branch under `oncall/`, `replicas: 5`, a commit titled with the incident number, `gh pr create --fill`. Approve the emergency change as Alex; Slack ends "Live in ...".
+
+After the call: `scripts/demo.sh down argocd` stops the host (USD 0.096 an hour while it runs; its disk about USD 1.76 a month). It also stops itself after 30 idle minutes. `scripts/demo.sh status argocd` shows the host, the application, open drift incidents and the certificate's expiry.
+
+## Demo on a call: a RAG assistant with an evaluation before production (demo 23)
+
+runbook-assistant answers on-call questions from the store company's runbooks and past changes. Its pages, chunk tables and search index live in Databricks; retired pages stay in the table, marked retired, and keeping them out of answers is the retriever's job. Answers come from Claude through `scripts/llm.py`. Every version answers the same forty questions (`scripts/demos/rag/questions.yaml`) against staging in the Evaluation stage, after Check staging: a judge model scores each answer as correct and grounded, code checks every page it cites, and the gate in services.yaml decides. Nothing a model writes approves a release.
+
+| Version | Jira | What changes | What happens |
+| --- | --- | --- | --- |
+| 2.0.0 | ORD-[m] | Search with the filter `{"status": "current"}` | Production before the take |
+| 2.1.0 | ORD-[n] | Hybrid search; the filter is lost | Tests and the smoke check pass; the evaluation stops it: answers from retired pages |
+| 2.1.1 | ORD-[n] | The filter back, with a test | Passes, and ships as a standard change with its scores and evaluation.json |
+
+Once, after the merge: the Databricks trial with express setup, `brew install databricks/tap/databricks`, `databricks auth login --host <workspace URL> --profile release-demo`, `scripts/secrets.py set databricks/host`; then `scripts/demos/rag/bootstrap.sh` (the catalog into SSM, and `infra/demos/23-databricks-rag` applied, plan shown first); the service principal's secret, `scripts/secrets.py set databricks/client-secret`; `scripts/demo.sh up rag`; and `.venv/bin/python scripts/demos/rag/setup.py` (the SonarQube project, ServiceNow, two Jira issues, the past changes, a real release of 2.0.0, and 2.1.0 staged). Reinstall the Slack app once for `/ask`.
+
+Before a call: `scripts/demo.sh up rag` (about 20 minutes: the endpoint and its index), then `.venv/bin/python scripts/reset.py rag`. On the call: `/release runbook-assistant ORD-[n]` with 2.1.0 staged stops at Evaluation; `scripts/stage.py runbook-assistant 2.1.1` and release again; then `/ask How do I roll back orders-service?`. MLflow's experiment `/Shared/runbook-assistant` compares the runs question by question.
+
+After the call: `scripts/demo.sh down rag` deletes the endpoint and its indexes, which bill by the hour (about USD 0.28 an hour at the US East rate); the tables, the volume, the experiment and the warehouse stay. The tools host's idle stop also runs it. `scripts/demo.sh status rag` shows what exists.
+
 ## Layout
 
 ```

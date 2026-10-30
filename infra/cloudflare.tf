@@ -55,6 +55,8 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "tools_host" {
   config = {
     ingress = concat(
       [for tool in local.tool_hostnames : { hostname = tool.hostname, service = tool.service }],
+      # Demo 19: Argo CD on the cluster host's private address (infra/argocd.tf).
+      [local.argocd_ingress],
       [{ service = "http_status:404" }],
     )
   }

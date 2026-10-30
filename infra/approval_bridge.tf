@@ -1,14 +1,25 @@
-# The approval bridge (bridge/handler.py): one Lambda function behind a public
-# function URL. GitHub sends it the GitHub App's deployment_protection_rule
-# webhook when production waits, and ServiceNow's business rule calls it when
-# a change's approval is decided. It checks GitHub's signature and ServiceNow's
-# token itself, so the URL needs no AWS auth. It reads only its own SSM
-# parameters and invokes itself for the slow part, as the Slack handler does.
-# bridge/build.sh packages it with PyJWT and cryptography for Lambda's
-# platform; scripts/tf.sh runs it first.
+# The bridge (bridge/), release-demo-bridge: one Lambda function behind a
+# public function URL, for calls from outside the tools host that wait on, or
+# change, the platform's records. Each route checks its own caller, so the URL
+# needs no AWS auth:
+#
+# - the approval bridge (demos 14 and 22): GitHub sends the GitHub App's
+#   deployment_protection_rule webhook to /github when production waits,
+#   Azure DevOps its Invoke REST API check to /azure-devops/check, and
+#   ServiceNow's business rule calls /servicenow when a change's approval is
+#   decided;
+# - the event bridge (demo 19): POST /events, with a bearer token, from the
+#   platform's own machines, such as the drift recorder on the cluster host,
+#   recorded in ServiceNow, Slack and Grafana (bridge/events.py).
+#
+# It reads only its own SSM parameters, never the tools host's, and invokes
+# itself for the slow part, as the Slack handler does. bridge/build.sh
+# packages it with PyJWT and cryptography for Lambda's platform; scripts/tf.sh
+# runs it first. AWS AppConfig's events (demo 21) have a function of their
+# own, in infra/demos/21-release-train-flags.
 
 locals {
-  bridge_name = "release-demo-approval-bridge"
+  bridge_name = "release-demo-bridge"
   bridge_arn  = "arn:aws:lambda:${local.region}:${local.account_id}:function:${local.bridge_name}"
   bridge_parameters = [
     "bridge/github-webhook-secret",
@@ -21,30 +32,53 @@ locals {
     # Demo 22: the organization's checks come only from this organization and pipeline.
     "azure-devops/organization",
     "azure-devops/pipeline-id",
+    # Demo 19: the events route's token, and where it records an event.
+    "bridge/events-token",
+    "slack/bot-token",
+    "slack/channel-id",
+    "grafana/stack-url",
+    "grafana/service-account-token",
+    "grafana/logs-url",
+    "grafana/logs-user",
+    "grafana/logs-token",
   ]
 }
 
-data "archive_file" "approval_bridge" {
+data "archive_file" "bridge" {
   type        = "zip"
-  source_dir  = "${path.module}/.build/approval-bridge"
-  output_path = "${path.module}/.build/approval-bridge.zip"
+  source_dir  = "${path.module}/.build/bridge"
+  output_path = "${path.module}/.build/bridge.zip"
 }
 
-resource "aws_iam_role" "approval_bridge" {
+# The drift recorder's bearer token for POST /events, generated here like the
+# platform's other machine tokens.
+resource "random_password" "bridge_events_token" {
+  length  = 40
+  special = false
+}
+
+resource "aws_ssm_parameter" "bridge_events_token" {
+  name        = "/release-demo/bridge/events-token"
+  type        = "SecureString"
+  value       = random_password.bridge_events_token.result
+  description = substr(local.parameters["bridge/events-token"].help, 0, 1024)
+}
+
+resource "aws_iam_role" "bridge" {
   name               = local.bridge_name
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
 }
 
-resource "aws_cloudwatch_log_group" "approval_bridge" {
+resource "aws_cloudwatch_log_group" "bridge" {
   name              = "/aws/lambda/${local.bridge_name}"
   retention_in_days = 14
 }
 
-data "aws_iam_policy_document" "approval_bridge" {
+data "aws_iam_policy_document" "bridge" {
   statement {
     sid       = "Logs"
     actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
-    resources = ["${aws_cloudwatch_log_group.approval_bridge.arn}:*"]
+    resources = ["${aws_cloudwatch_log_group.bridge.arn}:*"]
   }
   statement {
     sid       = "ReadOwnParameters"
@@ -63,65 +97,67 @@ data "aws_iam_policy_document" "approval_bridge" {
   }
 }
 
-resource "aws_iam_role_policy" "approval_bridge" {
+resource "aws_iam_role_policy" "bridge" {
   name   = "own-parameters-and-itself"
-  role   = aws_iam_role.approval_bridge.id
-  policy = data.aws_iam_policy_document.approval_bridge.json
+  role   = aws_iam_role.bridge.id
+  policy = data.aws_iam_policy_document.bridge.json
 }
 
-resource "aws_lambda_function" "approval_bridge" {
+resource "aws_lambda_function" "bridge" {
   function_name = local.bridge_name
-  description   = "Production waits for ServiceNow: answers the GitHub App's protection rule from the change's approval."
-  role          = aws_iam_role.approval_bridge.arn
+  description   = "Production waits for ServiceNow (GitHub Actions, Azure Pipelines); the platform's events into ServiceNow, Slack and Grafana."
+  role          = aws_iam_role.bridge.arn
   runtime       = "python3.13"
   handler       = "handler.handler"
   # CPU scales with memory: a cold start must still answer GitHub within its 10 seconds.
-  memory_size      = 1024
-  timeout          = 30
-  filename         = data.archive_file.approval_bridge.output_path
-  source_code_hash = data.archive_file.approval_bridge.output_base64sha256
+  memory_size = 1024
+  # An event's incident, Slack message and annotation, or a sleeping ServiceNow, take their time.
+  timeout          = 60
+  filename         = data.archive_file.bridge.output_path
+  source_code_hash = data.archive_file.bridge.output_base64sha256
 
   environment {
     variables = { CHECKS_TABLE = aws_dynamodb_table.bridge_checks.name }
   }
 
-  depends_on = [aws_cloudwatch_log_group.approval_bridge, aws_iam_role_policy.approval_bridge]
+  depends_on = [aws_cloudwatch_log_group.bridge, aws_iam_role_policy.bridge]
 }
 
 # The asynchronous call runs once: a retry could answer a run twice.
-resource "aws_lambda_function_event_invoke_config" "approval_bridge" {
-  function_name                = aws_lambda_function.approval_bridge.function_name
+resource "aws_lambda_function_event_invoke_config" "bridge" {
+  function_name                = aws_lambda_function.bridge.function_name
   maximum_retry_attempts       = 0
   maximum_event_age_in_seconds = 300
 }
 
-resource "aws_lambda_function_url" "approval_bridge" {
-  function_name      = aws_lambda_function.approval_bridge.function_name
+resource "aws_lambda_function_url" "bridge" {
+  function_name      = aws_lambda_function.bridge.function_name
   authorization_type = "NONE"
 }
 
 # As for the Slack handler: lambda:InvokeFunctionUrl here, and
 # aws_lambda_function_url adds the lambda:InvokeFunction statement limited to
 # calls through the URL (FunctionURLAllowInvokeAction) itself.
-resource "aws_lambda_permission" "approval_bridge_url" {
+resource "aws_lambda_permission" "bridge_url" {
   statement_id           = "FunctionURLAllowPublicAccess"
   action                 = "lambda:InvokeFunctionUrl"
-  function_name          = aws_lambda_function.approval_bridge.function_name
+  function_name          = aws_lambda_function.bridge.function_name
   principal              = "*"
   function_url_auth_type = "NONE"
 }
 
-# servicenow_setup.py and scripts/demos/github_actions/app_hook.py read it.
+# servicenow_setup.py, scripts/demos/github_actions/app_hook.py and demo 19's
+# cluster host read it.
 resource "aws_ssm_parameter" "bridge_url" {
   name        = "/release-demo/bridge/url"
   type        = "String"
-  value       = aws_lambda_function_url.approval_bridge.function_url
+  value       = aws_lambda_function_url.bridge.function_url
   description = substr(local.parameters["bridge/url"].help, 0, 1024)
 }
 
-output "approval_bridge_url" {
-  description = "Where GitHub's webhook and ServiceNow's business rule call the approval bridge: <url>github and <url>servicenow."
-  value       = aws_lambda_function_url.approval_bridge.function_url
+output "bridge_url" {
+  description = "Where the bridge answers: <url>github and <url>servicenow (demo 14), <url>azure-devops/check (demo 22), <url>events (demo 19)."
+  value       = aws_lambda_function_url.bridge.function_url
 }
 
 # Demo 22: Azure DevOps' checks that wait for ServiceNow, by the change's
@@ -163,7 +199,7 @@ data "aws_iam_policy_document" "bridge_checks" {
     condition {
       test     = "ArnNotEquals"
       variable = "aws:PrincipalArn"
-      values   = [aws_iam_role.approval_bridge.arn]
+      values   = [aws_iam_role.bridge.arn]
     }
   }
 }

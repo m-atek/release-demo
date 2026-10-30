@@ -1,0 +1,4 @@
+# Argo CD's own namespace: its install manifest expects it to exist.
+apiVersion: v1
+kind: Namespace
+metadata: { name: argocd }

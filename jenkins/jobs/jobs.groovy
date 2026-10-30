@@ -365,3 +365,59 @@ pipelineJob('network-drift') {
     logRotator { numToKeep(60) }
     definition fromRepository('infra/demos/2-terraform/drift.Jenkinsfile')
 }
+
+// Demo 19: every pull request to catalog's production on the cluster host,
+// deploy/production/catalog. Like network-stack it scans GitHub every minute
+// and builds pull requests from this repository's own branches only, never
+// from forks, and publishes each check as its own GitHub check run. A pull
+// request that changes nothing in that folder ends at once, unbuilt.
+multibranchPipelineJob('catalog-production') {
+    displayName('catalog-production pull requests')
+    description('Demo 19: for every pull request to deploy/production/catalog, the checks, an emergency change linked to the incident it names, and after approval the merge and Argo CD\'s sync. Scans GitHub every minute; never builds forks.')
+    branchSources {
+        branchSource {
+            source {
+                github {
+                    id('catalog-production')
+                    repoOwner(repositoryOwner)
+                    delegate.repository(repositoryName)
+                    delegate.repositoryUrl("https://github.com/${repository}")
+                    configuredByUrl(false)
+                    credentialsId('github-app')
+                    traits {
+                        gitHubPullRequestDiscovery { strategyId(1) }
+                        gitHubStatusChecks {
+                            skip(true)
+                            skipNotifications(true)
+                            suppressLogs(true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    factory {
+        workflowBranchProjectFactory { scriptPath('deploy/production/Jenkinsfile') }
+    }
+    triggers {
+        periodicFolderTrigger { interval('1m') }
+    }
+    orphanedItemStrategy {
+        discardOldItems { numToKeep(20) }
+    }
+}
+
+// Demo 23: /ask in Slack. The Slack handler starts it as release-bot with the
+// question as a parameter; production's runbook assistant answers in the
+// message the handler posted. Several may run at once, each at most 3 minutes.
+pipelineJob('runbook-assistant-ask') {
+    description('Demo 23: answers /ask in Slack from production\'s runbook assistant, in the message the Slack handler posted. Started by the Slack handler as release-bot.')
+    parameters {
+        stringParam('QUESTION', '', 'The question, 3 to 300 characters.')
+        stringParam('SLACK_CHANNEL', '', 'Channel of the message to answer in.')
+        stringParam('SLACK_TS', '', 'Timestamp of the message to answer in.')
+        stringParam('ASKED_BY', '', 'Slack user id of who asked.')
+    }
+    logRotator { numToKeep(200) }
+    definition fromRepository('jenkins/runbook-assistant-ask.Jenkinsfile')
+}
