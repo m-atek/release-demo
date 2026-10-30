@@ -25,7 +25,6 @@ import html
 import re
 import subprocess
 import sys
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import yaml

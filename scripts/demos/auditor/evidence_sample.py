@@ -37,7 +37,7 @@ import records  # noqa: E402
 import report  # noqa: E402
 import sample  # noqa: E402
 from common import ROOT, aws_session, get_parameter, service, ssm_client  # noqa: E402
-from records import display, utc, value  # noqa: E402
+from records import display, value  # noqa: E402
 
 SERVICE = "orders-service"
 AMSTERDAM = ZoneInfo("Europe/Amsterdam")
