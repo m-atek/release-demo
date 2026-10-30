@@ -45,8 +45,9 @@ TOOLCHAIN = {
 # Stages Jenkins runs only when something orders-service's release from
 # another CI never has: a contract (demo 4), a plan (demo 1), migrations in the
 # version (demo 20's Migration check and Rollback check), the cost check's
-# switch (video 18). The other CIs release 1.4.0, which has none of them.
-NOT_ON_OTHER_CIS = ("Contract check", "Plan", "Migration check", "Rollback check", "Cost check")
+# switch (video 18), an evaluation script (demo 23's runbook-assistant). The
+# other CIs release 1.4.0, which has none of them.
+NOT_ON_OTHER_CIS = ("Contract check", "Plan", "Migration check", "Rollback check", "Cost check", "Evaluation")
 # The calls a stage wrapper makes, compared on their own.
 WRAPPER = ("notify.py stage", "change.py note")
 

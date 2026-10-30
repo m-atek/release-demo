@@ -42,4 +42,4 @@ def test_the_manifest_has_ask():
     commands = {c["command"]: c for c in manifest["features"]["slash_commands"]}
     assert commands["/ask"]["description"] == "Ask the runbook assistant"
     assert commands["/ask"]["usage_hint"] == "<question>"
-    assert json.dumps(sorted(commands)) == json.dumps(["/ask", "/release", "/rollback"])
+    assert json.dumps(sorted(commands)) == json.dumps(["/agent", "/ask", "/flag", "/release", "/rollback"])
