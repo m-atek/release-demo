@@ -65,6 +65,11 @@ data "aws_instance" "tools_host" {
     name   = "tag:Name"
     values = ["release-demo-tools-host"]
   }
+  # A replaced tools host stays listed as terminated for about an hour.
+  filter {
+    name   = "instance-state-name"
+    values = ["pending", "running", "stopping", "stopped"]
+  }
 }
 
 data "aws_ssm_parameter" "ubuntu_ami" {
