@@ -140,7 +140,7 @@ def build_row(change, moves, context):
         third.links = [link for link in [(report.jfrog_link(path), f"JFrog: {path}") if path else None,
                                          ((info or {}).get("build_url"), f"Jenkins build #{(info or {}).get('build')}")
                                          if (info or {}).get("build_url") else None] if link]
-        fourth, fifth = sample.answer_tests(files), sample.answer_scan(files)
+        fourth, fifth = sample.answer_tests(files), sample.answer_scan(files, SERVICE)
     if (info or {}).get("build_url"):
         links.append((info["build_url"], f"Jenkins build #{info.get('build')}"))
     return {"number": number, "version": version, "jira_key": release.group("key") if release else "",

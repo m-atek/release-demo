@@ -94,11 +94,19 @@ def junit(failures=0):
             '</testsuite></testsuites>').encode()
 
 
+def sbom(components=0, subject="orders-service", form="CycloneDX"):
+    """Shaped like syft's SBOM of an orders-service package: no third-party packages, so 0 components."""
+    return json.dumps({"bomFormat": form, "specVersion": "1.7", "version": 1,
+                       "metadata": {"component": {"type": "file", "name": subject},
+                                    "tools": {"components": [{"type": "application", "name": "syft"}]}},
+                       **({"components": [{"name": "boto3"}] * components} if components else {})}).encode()
+
+
 def attachments_for(number, version, build):
     info = {"service": "orders-service", "version": version, "commit": "c0ffee", "package": f"orders-service-{version}.zip",
             "sha256": package_sha(number), "jira_key": "ORD-12", "build": build,
             "build_url": f"https://jenkins-demo.es.nl/job/release/{build}/"}
-    return {"junit.xml": junit(), "sbom.cdx.json": json.dumps({"components": [{"name": "boto3"}] * 7}).encode(),
+    return {"junit.xml": junit(), "sbom.cdx.json": sbom(),
             "grype.json": json.dumps({"matches": [{"vulnerability": {"severity": "Medium"}}]}).encode(),
             "build-info.json": json.dumps(info).encode()}
 

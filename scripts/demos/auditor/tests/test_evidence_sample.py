@@ -139,8 +139,17 @@ def test_tests_and_scan_answers_read_the_attachments():
     assert sample.answer_tests({}).lines == ["No junit.xml attached."]
     critical = json.dumps({"matches": [{"vulnerability": {"severity": "Critical"}}]}).encode()
     assert sample.answer_scan({**files, "grype.json": critical}).text == "no"
-    assert sample.answer_scan(files).lines == ["sbom.cdx.json: 7 components",
+    assert sample.answer_scan(files).text == "yes"
+    assert sample.answer_scan(files).lines == ["sbom.cdx.json: a CycloneDX SBOM of orders-service, 0 components",
                                                "grype.json: critical 0, high 0, medium 1, low 0"]
+    with_packages = {**files, "sbom.cdx.json": fixtures.sbom(components=7)}
+    assert sample.answer_scan(with_packages).lines[0] == "sbom.cdx.json: a CycloneDX SBOM of orders-service, 7 components"
+    other = sample.answer_scan({**files, "sbom.cdx.json": fixtures.sbom(subject="pricing-api")})
+    assert other.text == "no"
+    assert other.lines[0] == "sbom.cdx.json: not a CycloneDX SBOM of orders-service (CycloneDX, of pricing-api)"
+    assert sample.answer_scan({**files, "sbom.cdx.json": b"{}"}).text == "no"
+    assert sample.answer_scan({**files, "sbom.cdx.json": b"not json"}).text == "no"
+    assert sample.answer_scan({"grype.json": files["grype.json"]}).lines == ["Not attached: sbom.cdx.json."]
 
 
 def test_cloudtrail_is_read_in_one_paged_lookup(run):

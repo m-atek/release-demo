@@ -17,6 +17,7 @@ each answer its own fixture: yes, no, pre-approved, by design and
 """
 
 import datetime
+import json
 import re
 import tempfile
 from pathlib import Path
@@ -157,16 +158,33 @@ def answer_tests(files):
     return Answer(YES if ok else NO, [line])
 
 
-def answer_scan(files):
+def sbom_subject(data):
+    """An SBOM's format and the name of what it describes (CycloneDX's metadata.component)."""
+    try:
+        bom = json.loads(data)
+    except ValueError:
+        return None, None
+    if not isinstance(bom, dict):
+        return None, None
+    return bom.get("bomFormat"), ((bom.get("metadata") or {}).get("component") or {}).get("name")
+
+
+def answer_scan(files, service="orders-service"):
+    """Both attached, the SBOM a CycloneDX SBOM of this service, the scan without a critical finding.
+    A service without third-party packages has a true SBOM with 0 components, as orders-service's
+    are: so the count is shown, and the subject is what is checked."""
     missing = [name for name in ("sbom.cdx.json", "grype.json") if name not in files]
     if missing:
         return Answer(NO, [f"Not attached: {', '.join(missing)}."])
-    components = read_json_file(files["sbom.cdx.json"], evidence.sbom_components)
+    form, subject = sbom_subject(files["sbom.cdx.json"])
+    of_service = form == "CycloneDX" and subject == service
+    components = read_json_file(files["sbom.cdx.json"], evidence.sbom_components) if of_service else 0
     counts = read_json_file(files["grype.json"], evidence.grype_counts)
-    lines = [f"sbom.cdx.json: {components} components",
+    lines = [f"sbom.cdx.json: a CycloneDX SBOM of {subject}, {components} components" if of_service else
+             f"sbom.cdx.json: not a CycloneDX SBOM of {service} ({form or 'no format'}, of {subject or 'nothing named'})",
              f"grype.json: critical {counts['critical']}, high {counts['high']}, medium {counts['medium']}, "
              f"low {counts['low']}"]
-    return Answer(YES if components > 0 and counts["critical"] == 0 else NO, lines)
+    return Answer(YES if of_service and counts["critical"] == 0 else NO, lines)
 
 
 def result(change, kind_, moves, versions):
