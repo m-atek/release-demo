@@ -68,6 +68,15 @@ def release_evidence(old="1.4.0", new="1.4.1"):
     }
 
 
+def settings_line(environment, old="1.4.0", new="1.4.1"):
+    """The settings source's line for an environment, from services.yaml, as
+    the take's evidence has it: "production: DELIVERY_DAYS, ENVIRONMENT", plus
+    whatever settings other demos give the function (demos 20 and 21 add
+    theirs to both environments)."""
+    names = evidence.between_states("orders-service", old, new)["settings"]["defined"][environment]
+    return f"{environment}: {', '.join(names)}"
+
+
 @pytest.fixture
 def take_evidence():
     return release_evidence()

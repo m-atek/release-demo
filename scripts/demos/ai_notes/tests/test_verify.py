@@ -4,6 +4,7 @@ through, and what it withholds or drops, on a real evidence.json."""
 import copy
 
 import verify
+from conftest import settings_line
 
 REAL_SUMMARY = {
     "what_changes": {
@@ -98,7 +99,7 @@ LOGS = ["LAMBDA_WARNING: Unhandled exception. The most likely cause is an issue 
         '    return int(os.environ["DELIVERY_ESTIMATE_DAYS"])']
 QUOTES = [{"source": "cloudwatch", "quote": "[ERROR] KeyError: 'DELIVERY_ESTIMATE_DAYS'"},
           {"source": "diff", "quote": '+    return int(os.environ["DELIVERY_ESTIMATE_DAYS"])'},
-          {"source": "settings", "quote": "production: DELIVERY_DAYS, ENVIRONMENT"}]
+          {"source": "settings", "quote": settings_line("production")}]
 
 
 def sources(evidence):
@@ -110,7 +111,7 @@ def test_every_real_quote_is_found_word_for_word(take_evidence):
     kept, dropped = verify.check_quotes({"evidence": QUOTES}, sources(take_evidence))
     assert [item["quote"] for item in kept] == ["[ERROR] KeyError: 'DELIVERY_ESTIMATE_DAYS'",
                                                 'return int(os.environ["DELIVERY_ESTIMATE_DAYS"])',
-                                                "production: DELIVERY_DAYS, ENVIRONMENT"]
+                                                settings_line("production")]
     assert dropped == []
 
 

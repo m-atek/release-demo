@@ -9,7 +9,7 @@ import pytest
 import explain
 import llm
 import notes
-from conftest import Recorder, no_findings, sdk_response
+from conftest import Recorder, no_findings, sdk_response, settings_line
 from test_verify import CHECK, QUOTES
 
 FAILED = {"function": "orders-service-production", "lambda_version": "58", "rolled_back_to": "1.4.0"}
@@ -24,7 +24,8 @@ EVENTS = [
 ]
 CAUSE = {"cause": "1.4.1 reads DELIVERY_ESTIMATE_DAYS, which production doesn't define: production has DELIVERY_DAYS.",
          "evidence": QUOTES, "not_checked": ["whether other settings were renamed", "staging's logs"]}
-REPLY = """*Likely cause of the failed production check*
+PRODUCTION = settings_line("production").removeprefix("production: ")
+REPLY = f"""*Likely cause of the failed production check*
 Written by claude-opus-5-5 from this run's logs, diff and settings. Each quote checked word for word by script.
 
 1.4.1 reads DELIVERY_ESTIMATE_DAYS, which production doesn't define: production has DELIVERY_DAYS.
@@ -32,7 +33,7 @@ Written by claude-opus-5-5 from this run's logs, diff and settings. Each quote c
 *Evidence*
 • CloudWatch, orders-service-production version 58: `[ERROR] KeyError: 'DELIVERY_ESTIMATE_DAYS'`
 • Diff 1.4.0 to 1.4.1, handler.py: `return int(os.environ["DELIVERY_ESTIMATE_DAYS"])`
-• Settings, production: `DELIVERY_DAYS, ENVIRONMENT`
+• Settings, production: `{PRODUCTION}`
 Quotes found in their sources: 3 of 3.
 
 *Not checked:* whether other settings were renamed; staging's logs."""
@@ -104,12 +105,13 @@ def test_the_reply_in_its_fixed_form(take_evidence):
     assert body["output_config"]["format"]["schema"] == explain.SCHEMA
     assert "fix" not in json.dumps(explain.SCHEMA)
     sent = json.loads(body["messages"][0]["content"])
-    assert sent["settings"] == ["staging: DELIVERY_ESTIMATE_DAYS, ENVIRONMENT", "production: DELIVERY_DAYS, ENVIRONMENT"]
+    assert sent["settings"] == [settings_line("staging"), settings_line("production")]
+    assert "DELIVERY_ESTIMATE_DAYS" in sent["settings"][0] and "DELIVERY_ESTIMATE_DAYS" not in sent["settings"][1]
 
 
 def test_the_same_words_go_to_the_change_and_jira():
     assert notes.plain(REPLY).splitlines()[:1] == ["Likely cause of the failed production check"]
-    assert "- Settings, production: DELIVERY_DAYS, ENVIRONMENT" in notes.plain(REPLY)
+    assert f"- Settings, production: {PRODUCTION}" in notes.plain(REPLY)
     assert "Not checked: whether other settings were renamed; staging's logs." in notes.plain(REPLY)
 
 
