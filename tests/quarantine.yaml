@@ -1,0 +1,10 @@
+# Tests whose failures don't stop a release, each until its end date.
+#
+# The release pipeline adds an entry, with a Jira issue due on the until date,
+# when a test of the version it releases failed and then passed on rerun often
+# enough (services.yaml, tests.quarantine): scripts/flaky.py decide. The test
+# still runs and its result is recorded, but its failure doesn't fail the Test
+# stage, and it isn't rerun. From the day after until, the entry fails the Test
+# stage at its start: fix the test and remove the entry, or extend it.
+
+quarantine: []

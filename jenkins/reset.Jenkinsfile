@@ -25,7 +25,9 @@ pipeline {
             agent { label 'tools-host' }
             steps {
                 script {
-                    String reset = "python3 scripts/reset.py \"\$DEMO\" --here${params.DRY_RUN ? ' --dry-run' : ''}"
+                    // OPTIONS, the demo's own (demo 20: --checks on --stage 1.7.0), splits into
+                    // words unquoted; set -f keeps the shell from expanding any of them.
+                    String reset = "set -f; python3 scripts/reset.py \"\$DEMO\" --here${params.DRY_RUN ? ' --dry-run' : ''} \$OPTIONS"
                     if (params.DEMO == 'clouds') {
                         withServiceCredentials(serviceConfig('quote-service')) { sh reset }
                     } else {

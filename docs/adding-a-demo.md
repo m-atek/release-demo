@@ -51,6 +51,10 @@ Optional keys, each with its default where it is missing:
 | `servicenow.template_texts` | `{<template kind>: {field: text}}`, the texts `servicenow_setup.py` gives that template instead of the shared ones (demo 6). |
 | `ai_notes` | Claude's change summary and likely cause for this service while `scripts/demos/ai_notes/switch.py` is on (videos 12 and 13): `change_summary`, `likely_cause`, `model`, `effort` per task and `log_lines`. |
 | `scripts.cost_check` with `cost_check` | The stage Cost check after Check staging while `scripts/demos/cost_gate/switch.py` is on (video 18): its limit, approvers, sample and expected month. |
+| `tests` | With `scripts.test: scripts/tests_run.py`: `rerun_failed: 1` reruns a failed test once in place, and `quarantine: {file, after_flaky_runs, window_days, days}` names the quarantine file and when a release quarantines a flaky test. The per-test results go to Splunk and Grafana (`events.py tests`), and Slack gets the Test stage's lines (demo 15). |
+| `scripts.migration_check`, `scripts.rollback_check` | Stages only versions with `migrations/` in the service folder have (run_state.py's `VERSION_STAGES`): Migration check after SBOM and scan (after Contract check where there is one), Rollback check after Check staging (demo 20). |
+| `train` | `{departures: ["14:00"]}`: the release train job releases what is new on main at these times on weekdays, Europe/Amsterdam (demo 21). Its runs pass several Jira keys, comma-separated, and `ROWS`, the lines under the stages. |
+| `flags` | `{application, profile, strategy, environments, names}`: feature flags in AWS AppConfig that `/flag` may switch in production (demo 21). |
 
 ## 2. The stage scripts
 

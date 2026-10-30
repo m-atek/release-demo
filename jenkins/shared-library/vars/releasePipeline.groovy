@@ -2,7 +2,8 @@
 // record. Each demo adds only its own deploy, check and rollback steps; the
 // stage logic lives in scripts/. Started by the Slack handler or history.py,
 // as the Jenkins user release-bot, with these parameters:
-// SERVICE, JIRA_KEY, OPTION, REQUESTED_BY, SLACK_CHANNEL, SLACK_TS, REQUESTED_AT.
+// SERVICE, JIRA_KEY, OPTION, REQUESTED_BY, SLACK_CHANNEL, SLACK_TS, REQUESTED_AT,
+// and ROWS, the lines under the stages a release train passes (demo 21).
 //
 // Values from outside the pipeline (parameters, versions, names, error
 // messages) reach the shell as environment variables, never quoted into the
@@ -17,7 +18,8 @@ def call() {
             rm -rf .release dist
             python3 scripts/run_state.py init --service "$SERVICE" --jira-key "$JIRA_KEY" \\
                 --option "$OPTION" --requested-by "$REQUESTED_BY" \\
-                --slack-channel "$SLACK_CHANNEL" --slack-ts "$SLACK_TS" --requested-at "${REQUESTED_AT:-}"
+                --slack-channel "$SLACK_CHANNEL" --slack-ts "$SLACK_TS" --requested-at "${REQUESTED_AT:-}" \\
+                --rows "${ROWS:-}"
         '''
         String version = state('version')
         Map cfg = serviceConfig(service)
@@ -32,11 +34,15 @@ def call() {
 
         try {
             releaseStage('Build') { toolchain.build(service, params.JIRA_KEY, cfg) }
-            releaseStage('Test') { toolchain.test(service, cfg) }
+            releaseStage('Test') { toolchain.test(service, cfg, 'release') }
             releaseStage('Quality gate') { toolchain.qualityGate(service, version, cfg) }
             releaseStage('SBOM and scan') { toolchain.sbomAndScan(service) }
             if (cfg.scripts.contract) {
                 releaseStage('Contract check') { sh "${serviceConfig.command(cfg, 'contract')} ${service}" }
+            }
+            if (planned('Migration check')) {
+                // Demo 20: squawk over the migrations production hasn't run, before anything is published.
+                releaseStage('Migration check') { sh "${serviceConfig.command(cfg, 'migration_check')} ${service}" }
             }
             archiveArtifacts artifacts: '.release/reports/*, dist/**/build-info.json', allowEmptyArchive: true
             releaseStage('Publish') { sh "${publish} ${service}" }
@@ -57,6 +63,12 @@ def call() {
                 // Production only (demos 1 and 3): the deploy script is never called for staging.
                 releaseStage.skip('Staging', "${service} has no staging environment.")
                 releaseStage.skip('Check staging', "${service} has no staging environment.")
+            }
+            if (planned('Rollback check')) {
+                // Demo 20: production's version, run against staging's migrated database.
+                releaseStage('Rollback check', environment: 'staging') {
+                    withServiceCredentials(cfg) { sh "${serviceConfig.command(cfg, 'rollback_check')} ${service}" }
+                }
             }
             if (cfg.scripts.plan) {
                 // What the change needs from the target before it opens (demo 1: the wave plan).
@@ -180,6 +192,11 @@ void stopped(error) {
             sh(returnStatus: true, script: 'python3 scripts/change.py cancel --notes "The release stopped: $REASON. Nothing changed in production."')
         }
     }
+}
+
+// A stage only some versions have (run_state.VERSION_STAGES): the run state lists it when it applies.
+boolean planned(String stage) {
+    return sh(returnStatus: true, script: "python3 scripts/run_state.py has '${stage}'") == 0
 }
 
 String state(String key) {

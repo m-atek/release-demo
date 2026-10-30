@@ -16,8 +16,12 @@ orders-service:
 
   scripts:
     build: scripts/build.py
+    # Demo 15: one rerun in place of a failed test, and the quarantine (tests below).
+    test: scripts/tests_run.py
     publish: scripts/publish.py
-    deploy: scripts/deploy.py
+    # Demo 20: a version with migrations/ applies them first; any other goes
+    # straight to scripts/deploy.py, line for line as before.
+    deploy: scripts/demos/rollback-trap/deploy.py
     check: scripts/check.py
     change: scripts/change.py
     notify: scripts/notify.py
@@ -25,18 +29,72 @@ orders-service:
     # Video 18: the stage Cost check after Check staging, while
     # scripts/demos/cost_gate/switch.py is on.
     cost_check: scripts/demos/cost_gate/cost_check.py
+    # Demo 20's two checks, for versions with migrations only (run_state.VERSION_STAGES).
+    # scripts/demos/rollback-trap/checks.py on|off adds or removes these two lines.
+    migration_check: scripts/demos/rollback-trap/migration_check.py
+    rollback_check: scripts/demos/rollback-trap/rollback_check.py
+
+  # Demo 15: a failed test is rerun once, in place; a test that keeps failing
+  # and then passing on rerun is quarantined for a while (scripts/flaky.py).
+  tests:
+    rerun_failed: 1
+    quarantine: { file: tests/quarantine.yaml, after_flaky_runs: 3, window_days: 14, days: 14 }
+
+  # Demo 21: the release train (scripts/demos/release-train/train.py). It leaves
+  # at these times on weekdays, Europe/Amsterdam, while scripts/demo.sh up
+  # release-train has it switched on. Set them to suit a recording day.
+  train:
+    departures: ["14:00"]
+
+  # Demo 21: feature flags in AWS AppConfig (infra/demos/21-release-train-flags),
+  # read from 1.8.0 on and named, with the issue each hides, in the version's
+  # flags.yaml. /flag in Slack switches one of these, in production only.
+  flags:
+    application: orders-service
+    profile: flags
+    strategy: release-demo-flags
+    environments: [production]
+    names: [delivery_estimate_v2]
 
   servicenow:
     cmdb_item: orders-service
     assignment_group: Platform team
     approvers: Change approvers
+    # The release train's runs are pre-approved standard changes too (demo 21).
+    standard_options: [standard, train]
     templates:
       standard: Routine release of orders-service
       rollback: Rollback of orders-service
+      # Demo 21: a flag switched in production, recorded by the event bridge (bridge/appconfig.py).
+      flag: Feature flag change of orders-service
+    template_texts:
+      flag:
+        short_description: Feature flag change of orders-service
+        description: >-
+          Switches a feature flag of orders-service in production through an AWS AppConfig
+          deployment, started from Slack with /flag, or by AWS AppConfig itself when it rolls a
+          deployment back on an alarm. The code doesn't change: no build and no deploy.
+        implementation_plan: >-
+          AWS AppConfig deploys a new version of the flags profile to production with the strategy
+          release-demo-flags: all at once, then 10 minutes of bake time while it watches the alarm
+          orders-service-production-errors. The function reads its flags at most every 15 seconds.
+        backout_plan: >-
+          Automatic: if the alarm goes into ALARM during the deployment or its bake time, AWS
+          AppConfig rolls the flags back to the version before, and the platform records that as a
+          change of its own.
+        test_plan: >-
+          The alarm orders-service-production-errors watches the function's errors in production
+          for 10 minutes after the switch.
+        justification: Turning finished work on, or unfinished work off, without a deploy.
+        risk_impact_analysis: >-
+          Low: one flag changes, the alarm watches it, and AWS AppConfig switches it back by itself.
 
   sonarqube:
     # A monorepo project in the organization m-atek: one project per service.
     project_key: m-atek_release-demo_orders-service
+    # Demo 20's migrations are SQL for Postgres, outside the Python analysis.
+    properties:
+      sonar.exclusions: services/orders-service/tests/**,services/orders-service/migrations/**
 
   # Videos 12 and 13: Claude's notes, checked by script, while
   # scripts/demos/ai_notes/switch.py is on. A model change is a commit and a
@@ -78,6 +136,12 @@ orders-service:
       local_port: 8001
       settings:
         DELIVERY_ESTIMATE_DAYS: "2"
+        # Demo 20: where 1.6.0 and later read the database's connection string (SSM, never the value).
+        DATABASE_URL_PARAMETER: orders-service/staging/database-url
+        # Demo 21: where 1.8.0 and later read their flags (AWS AppConfig, by name).
+        APPCONFIG_APPLICATION: orders-service
+        APPCONFIG_ENVIRONMENT: staging
+        APPCONFIG_PROFILE: flags
       check:
         timeout_seconds: 30
         paths: []
@@ -90,6 +154,10 @@ orders-service:
         # Production still carries the setting under its old name. 1.4.1 reads
         # the new name only, passes staging and fails here: configuration drift.
         DELIVERY_DAYS: "2"
+        DATABASE_URL_PARAMETER: orders-service/production/database-url
+        APPCONFIG_APPLICATION: orders-service
+        APPCONFIG_ENVIRONMENT: production
+        APPCONFIG_PROFILE: flags
       check:
         timeout_seconds: 60
         paths: [/, /api/orders]

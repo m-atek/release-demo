@@ -37,7 +37,10 @@ from common import ROOT, fail, get_parameter, people, service, ssm_client
 from servicenow_setup import ServiceNow
 
 ASSESS, SCHEDULED, IMPLEMENT, REVIEW, CLOSED, CANCELED = "-4", "-2", "-1", "0", "3", "4"
-EVIDENCE = ["junit.xml", "sbom.cdx.json", "grype.json", "build-info.json", "cost.json"]
+# junit-attempts.xml exists only when a failed test was rerun (demo 15), and
+# cost.json only after a cost check (video 18), so a clean release still has
+# its four attachments.
+EVIDENCE = ["junit.xml", "sbom.cdx.json", "grype.json", "build-info.json", "junit-attempts.xml", "cost.json"]
 # Users that may write to a change but never approve one (videos 11, 12 and 13).
 MACHINE_USERS = ["release.pipeline", "ai.notes", "evidence.reader"]
 # u_cost_review's values (servicenow_setup.py), by whether a standard change was asked for.
@@ -67,13 +70,35 @@ def links(state, ssm):
     search = urllib.parse.quote(f'search sourcetype="release:event" change="{change}" '
                                 '| table _time stage result seconds environment | sort _time')
     return {
-        "Jira": f"{jira}/browse/{state['jira_key']}",
+        "Jira": issue_link(jira, keys_of(state)),
         "Jenkins build": state["build"].get("url", ""),
         "Package": f"https://artifactory-demo.es.nl/artifactory/{state['package']['path']} (SHA-256 {state['package']['sha256']})",
         "SonarQube": f"https://sonarcloud.io/dashboard?id={config['sonarqube']['project_key']}&organization={org}",
         "Splunk": f"https://splunk-demo.es.nl/en-US/app/search/search?q={search}",
         "Grafana": get_parameter(ssm, "grafana/stack-url").rstrip("/") + "/d/release-demo",
     }
+
+
+def keys_of(state):
+    """The run's Jira keys: one, or a release train's several (demo 21)."""
+    return state.get("jira_keys") or [state["jira_key"]]
+
+
+def issue_link(jira, keys):
+    if len(keys) == 1:
+        return f"{jira}/browse/{keys[0]}"
+    return f"{jira}/issues/?jql=" + urllib.parse.quote(f"key in ({', '.join(keys)})")
+
+
+def what_for(state):
+    """What the short description names after the version: the Jira key, or for a
+    release train (demo 21) the train, "release train 14:00", from who asked."""
+    if state.get("option") == "train":
+        asked = state.get("requested_by") or ""
+        departure = re.search(r"\b(\d{1,2}:\d{2}) release train\b", asked)
+        return f"release train {departure.group(1)}" if departure else (
+            "release train rehearsal" if "rehearsal" in asked else "release train")
+    return state["jira_key"]
 
 
 def stage_summary(state):
@@ -136,13 +161,15 @@ def open_change(sn, ssm, state):
     ci = sn.find("cmdb_ci_appl", f"name={config['servicenow']['cmdb_item']}", "sys_id")["sys_id"]
     asked_by = requester_user(sn, state.get("requested_by"))
     started = run_state.now()
+    jira = get_parameter(ssm, "jira/site-url").rstrip("/")
     fields = {
-        "short_description": f"Release {state['service']} {state['version']} ({state['jira_key']})",
-        "description": f"Release of {state['service']} {state['version']} for {state['jira_key']}, started from Slack "
+        "short_description": f"Release {state['service']} {state['version']} ({what_for(state)})",
+        "description": f"Release of {state['service']} {state['version']} for {', '.join(keys_of(state))}, "
+                       f"{'started by the release train' if state.get('option') == 'train' else 'started from Slack'} "
                        f"and run by the release pipeline.",
         "cmdb_ci": ci, "assignment_group": groups["Platform team"], "requested_by": asked_by["sys_id"],
         "category": "Software",
-        "justification": f"{state['jira_key']}: {links(state, ssm)['Jira']}",
+        "justification": "\n".join(f"{key}: {issue_link(jira, [key])}" for key in keys_of(state)),
         "implementation_plan": "The release pipeline runs: build, tests, quality gate, SBOM and scan, publish to "
                                "JFrog Container Registry, staging and its check, this change, production with the "
                                f"same package verified by its SHA-256, and the production check.\nBuild: {state['build'].get('url', '')}",

@@ -43,7 +43,9 @@ def requester(slack_id):
 
 
 def render(state):
-    head = (f"*Release {state['service']} {state['version']}* · {state['jira_key']} · "
+    # One Jira key, or the release train's several (demo 21), comma-separated.
+    keys = ", ".join(state.get("jira_keys") or [state["jira_key"]])
+    head = (f"*Release {state['service']} {state['version']}* · {keys} · "
             f"requested by {requester(state.get('requested_by'))}")
     rows = []
     for name, stage in state["stages"].items():

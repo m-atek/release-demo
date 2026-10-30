@@ -30,8 +30,11 @@ locals {
         options      = try(s.slack.options, [])
         # Video 16: /agent works on the services that name a coding agent.
         coding_agent = try(s.coding_agent, null) != null
+        flags        = try(s.flags.names, []) # demo 21: the flags /flag may switch in production
       } if try(s.pipeline, "release") != "pull-request"
     }
+    # Demo 21: the name /flag gives the person who switched a flag, for the change.
+    people = { for name in local.releasers : name => local.people[name].display_name }
   }
 }
 

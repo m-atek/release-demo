@@ -1,4 +1,4 @@
-"""The Slack handler: /release, /rollback and /agent, from Slack to Jenkins.
+"""The Slack handler: /release, /rollback and /agent, from Slack to Jenkins, and /flag, to AWS AppConfig.
 
 Slack posts each slash command to this function's URL and wants an answer
 within 3 seconds. So the first call only checks the request (Slack's
@@ -7,6 +7,12 @@ command (against services.yaml), answers at once, and invokes this function
 again, asynchronously, for the slow part: is the tools host running, post the
 status message the pipeline keeps up to date, and start the Jenkins job as
 release-bot through Cloudflare Access.
+
+/flag <service> <flag> on|off (demo 21) switches one feature flag in
+production: a new version of the service's AppConfig flags profile with that
+flag changed, deployed with the strategy services.yaml names. It answers at
+once and needs neither Jenkins nor the tools host; the event bridge records
+the switch as a change (bridge/appconfig.py).
 
 Standard library and boto3 only, both in Lambda's Python runtime, so the
 package is this file plus config.json, which Terraform writes from
@@ -85,6 +91,10 @@ def from_slack(event, context):
         log(f"{user} {command}: {refusal}")
         return reply(str(refusal))
 
+    if job == "flag":
+        # Demo 21: who asked, by the name people.yaml gives them, for the deployment and the change.
+        name = next((n for n in releasers() if values[f"slack/member-id/{n}"] == user), "")
+        params["PERSON"] = config().get("people", {}).get(name, name)
     # REQUESTED_AT, the verified time of the command, is where the run's total
     # time starts: the video's clock starts when Sam presses Enter.
     work = {"job": job,
@@ -93,6 +103,8 @@ def from_slack(event, context):
     aws("lambda").invoke(FunctionName=context.invoked_function_arn, InvocationType="Event",
                          Payload=json.dumps({"work": work}).encode())
     log(f"{user} {command} {form.get('text', '')}: handed over")
+    if job == "flag":
+        return reply(f"Switching {params['FLAG']} {params['STATE']} in {params['SERVICE']} production.")
     return http(200)
 
 
@@ -137,7 +149,9 @@ def parse(command, text, services):
         return "rollback", {"SERVICE": name}
     if command == "/agent":
         return parse_agent(words, text, services)
-    raise Refusal(f"This app knows /release, /rollback and /agent, not {command or 'that'}.")
+    if command == "/flag":
+        return "flag", flag_request(words, services)
+    raise Refusal(f"This app knows /release, /rollback, /agent and /flag, not {command or 'that'}.")
 
 
 # Video 16: /agent <service> <Jira key> <note> hands a Jira issue to the coding agent.
@@ -161,6 +175,25 @@ def parse_agent(words, text, services):
     return "agent-task", {"SERVICE": name, "JIRA_KEY": key, "NOTE": note}
 
 
+def flag_request(words, services):
+    """/flag <service> <flag> on|off, in production only (demo 21)."""
+    usage = "Usage: /flag <service> <flag> on|off, for example /flag orders-service delivery_estimate_v2 on"
+    if len(words) < 3:
+        raise Refusal(usage)
+    name, flag, state = words[0].lower(), words[1], words[2].lower()
+    settings = known(name, services)
+    flags = settings.get("flags") or []
+    if not flags:
+        raise Refusal(f"{name} has no feature flags.")
+    if flag not in flags:
+        raise Refusal(f"{name} has no flag {flag}. Its flags: {', '.join(flags)}.")
+    if state not in ("on", "off"):
+        raise Refusal(usage)
+    if len(words) > 3:
+        raise Refusal(f"/flag switches flags in production only: /flag {name} {flag} {state}")
+    return {"SERVICE": name, "FLAG": flag, "STATE": state}
+
+
 def known(name, services):
     if name not in services:
         raise Refusal(f"There's no service {name}. Services: {', '.join(sorted(services))}.")
@@ -171,6 +204,9 @@ def known(name, services):
 
 def run(work):
     """Never raises: Lambda would retry the event, and a retry could start a second run."""
+    if work["job"] == "flag":
+        switch_flag(work)
+        return
     try:
         state = tools_host_state()
         if state != "running":
@@ -208,6 +244,42 @@ def run(work):
         log(f"failed: {error.__class__.__name__}: {error}")
         say(work.get("response_url", ""), f"The release didn't start ({error.__class__.__name__}). "
                                           "The Slack handler's log in CloudWatch says why.")
+
+
+def switch_flag(work):
+    """A new version of the flags profile with one flag changed, deployed to
+    production. Its description names who asked, and its tags what changed,
+    for the event bridge's record. Never raises, as run() doesn't."""
+    p = work["params"]
+    try:
+        ids = json.loads(parameters(f"appconfig/{p['SERVICE']}")[f"appconfig/{p['SERVICE']}"] or "{}")
+        if not ids:
+            say(work["response_url"], f"{p['SERVICE']}'s flags aren't set up: appconfig/{p['SERVICE']} isn't in SSM.")
+            return
+        client = aws("appconfig")
+        versions = client.list_hosted_configuration_versions(ApplicationId=ids["application"],
+                                                             ConfigurationProfileId=ids["profile"])["Items"]
+        latest = max(v["VersionNumber"] for v in versions)
+        content = json.loads(client.get_hosted_configuration_version(
+            ApplicationId=ids["application"], ConfigurationProfileId=ids["profile"], VersionNumber=latest)["Content"].read())
+        content.setdefault("values", {})[p["FLAG"]] = {**content["values"].get(p["FLAG"], {}), "enabled": p["STATE"] == "on"}
+        made = client.create_hosted_configuration_version(
+            ApplicationId=ids["application"], ConfigurationProfileId=ids["profile"], Content=json.dumps(content).encode(),
+            ContentType="application/json", LatestVersionNumber=latest,
+            Description=f"{p['FLAG']} {p['STATE']}, by {p.get('PERSON') or p['REQUESTED_BY']} in Slack")
+        deployment = client.start_deployment(
+            ApplicationId=ids["application"], EnvironmentId=ids["environments"]["production"],
+            DeploymentStrategyId=ids["strategy"], ConfigurationProfileId=ids["profile"],
+            ConfigurationVersion=str(made["VersionNumber"]), Description=f"{p.get('PERSON') or 'Slack'} in Slack",
+            Tags={"requested_by": p["REQUESTED_BY"], "flag": p["FLAG"], "state": p["STATE"]})
+        log(f"flag {p['FLAG']} {p['STATE']}: version {made['VersionNumber']}, deployment {deployment['DeploymentNumber']}")
+    except Exception as error:
+        busy = error.__class__.__name__ == "ConflictException"
+        log(f"flag {p['FLAG']} {p['STATE']}: {error.__class__.__name__}: {error}")
+        say(work.get("response_url", ""), (
+            f"{p['FLAG']} can't switch now: an AWS AppConfig deployment still runs in {p['SERVICE']} production. "
+            "It ends when its 10 minutes of bake time are over.") if busy else (
+            f"{p['FLAG']} didn't switch ({error.__class__.__name__}). The Slack handler's log in CloudWatch says why."))
 
 
 def tools_host_state():

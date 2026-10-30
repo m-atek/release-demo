@@ -1,0 +1,10 @@
+# orders-service's feature flags, in AWS AppConfig: the application
+# orders-service, its configuration profile flags, one environment each for
+# staging and production (infra/demos/21-release-train-flags). A flag hides
+# work that isn't finished, so a release can ship it switched off: the release
+# train leaves with an issue that isn't done only if a flag here names it and
+# that flag is off in production. /flag in Slack switches it in production.
+delivery_estimate_v2:
+  issue: null  # scripts/demos/release-train/setup.py writes ORD-[w] here
+  default: off
+  description: Delivery estimate per carrier, on the page and at /api/estimate.

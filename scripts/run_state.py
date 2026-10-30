@@ -3,6 +3,7 @@
     python scripts/run_state.py init --service orders-service --jira-key ORD-12 ...
     python scripts/run_state.py get change.number
     python scripts/run_state.py set approval=standard
+    python scripts/run_state.py has "Migration check"     exit 0 when this run has the stage
 
 Kept in .release/state.json in the Jenkins workspace (or the repository when
 run by hand), so every stage script reads the same version, commit, change,
@@ -26,6 +27,10 @@ PATH = Path(os.environ.get("WORKSPACE", ROOT)) / ".release" / "state.json"
 REPORTS = PATH.parent / "reports"
 # Stages only some services have, from services.yaml: (script key, stage, after which stage).
 OPTIONAL_STAGES = [("contract", "Contract check", "SBOM and scan"), ("plan", "Plan", "Check staging")]
+# Stages only some versions have (demo 20): (script key, stage, after the last of these stages
+# the run has, folder the staged version must have). Only versions with migrations see them.
+VERSION_STAGES = [("migration_check", "Migration check", ("SBOM and scan", "Contract check"), "migrations"),
+                  ("rollback_check", "Rollback check", ("Check staging",), "migrations")]
 
 
 def stages_for(config):
@@ -34,7 +39,15 @@ def stages_for(config):
     for key, name, after in OPTIONAL_STAGES:
         if config.get("scripts", {}).get(key):
             stages.insert(stages.index(after) + 1, name)
+    for key, name, after, folder in VERSION_STAGES:
+        if config.get("scripts", {}).get(key) and config.get("dir") and (Path(config["dir"]) / folder).is_dir():
+            stages.insert(max(stages.index(stage) for stage in after if stage in stages) + 1, name)
     return stages
+
+
+def jira_keys(value):
+    """The Jira keys of a run: one, or several comma-separated (demo 21's release train)."""
+    return [key.strip() for key in (value or "").split(",") if key.strip()]
 
 
 def load():
@@ -94,6 +107,7 @@ def init(args):
         "commit": commit,
         "commit_time": int(commit_time) if commit_time.isdigit() else None,
         "jira_key": args.jira_key,
+        "jira_keys": jira_keys(args.jira_key),
         "option": args.option or "",
         "requested_by": args.requested_by or "",
         "slack": {"channel": args.slack_channel or "", "ts": args.slack_ts or ""},
@@ -103,6 +117,12 @@ def init(args):
         "started_at": requested_at(args.requested_at),
         "stages": {name: {"status": "waiting"} for name in stages_for(config)},
     }
+    # Lines under the stages from whoever started the run (demo 21's release
+    # train: one row per issue), shown in Slack and added to the change.
+    rows = json.loads(args.rows) if args.rows else []
+    if rows:
+        state["rows"] = list(rows)
+        state["change_details"] = ["Issues in this release:", *rows]
     save(state)
     REPORTS.mkdir(parents=True, exist_ok=True)
     print(f"Release {args.service} {state['version']} for {args.jira_key}, commit {commit[:7]}")
@@ -119,14 +139,19 @@ def main():
     start.add_argument("--requested-at", default="", help="epoch seconds of the Slack command")
     start.add_argument("--slack-channel", default="")
     start.add_argument("--slack-ts", default="")
+    start.add_argument("--rows", default="", help="lines under the stages, as a JSON list (the release train)")
     getter = sub.add_parser("get")
     getter.add_argument("key")
     setter = sub.add_parser("set")
     setter.add_argument("pairs", nargs="+", help="key=value, dotted keys allowed")
+    has = sub.add_parser("has")
+    has.add_argument("stage")
     args = parser.parse_args()
 
     if args.command == "init":
         init(args)
+    elif args.command == "has":
+        return 0 if args.stage in load().get("stages", {}) else 1
     elif args.command == "get":
         value = lookup(load(), args.key)
         print("" if value is None else value)
