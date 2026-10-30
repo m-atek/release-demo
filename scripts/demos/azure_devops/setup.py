@@ -20,15 +20,18 @@ the review step. And infra/demos/22-azure-devops-approval applied: Release Bot.
 - the pipeline release from azure-pipelines.yml on GitHub, the only pipeline
   that may use the environments and the pool;
 - Release Bot in the organization (Basic access) and in the project group
-  Release bots, which may queue the release pipeline and read and cancel its
+  Release bots, which may see the project (View project-level information:
+  without it Azure DevOps hides the project from Release Bot, and every call
+  into it answers 404), queue the release pipeline and read and cancel its
   runs, and nothing else.
 It writes the organization's name and the project's and pipeline's ids to SSM.
+Safe to run again: it changes only what is missing.
 
 --check prints what the acceptance checks need: the approvals and checks on
 both environments, who may use production, who has its Administrator role
 (the role that may bypass a check), the free self-hosted parallel job, the
-agent, and that the project holds no variable groups, secure files or secret
-variables.
+agent, Release bots' rights, and that the project holds no variable groups,
+secure files or secret variables.
 """
 
 import argparse
@@ -56,6 +59,10 @@ HEADERS = {"Content-Type": "application/json", "PlanUrl": "$(system.CollectionUr
 BUILD_NAMESPACE = "33344d9c-fc72-4d6f-aba5-fa317101a7e9"
 # View builds, queue builds, stop builds, view the pipeline: queue it, read and cancel its runs.
 RELEASE_BOT_RIGHTS = 1 | 128 | 512 | 1024
+PROJECT_NAMESPACE = "52d39943-cb85-4d7f-8fa8-c6baac873819"
+# View project-level information (GENERIC_READ): a member of a new project group doesn't have it, and Azure
+# DevOps answers 404 for a project its caller can't see. Readers and Contributors have it, with much more.
+VIEW_PROJECT = 1
 RELEASE_BOT = "release-demo Release Bot"
 GROUP = "Release bots"
 
@@ -181,27 +188,102 @@ def release_bot_object_id():
     return result.stdout.strip()
 
 
-def ensure_release_bot(devops, project, pipeline):
-    vsaex = f"https://vsaex.dev.azure.com/{devops.organization}"
-    vssps = f"https://vssps.dev.azure.com/{devops.organization}"
+def project_token(project_id):
+    """The Project security namespace's token for one project."""
+    return f"$PROJECT:vstfs:///Classification/TeamProject/{project_id}"
+
+
+def graph_urls(devops):
+    return f"https://vsaex.dev.azure.com/{devops.organization}", f"https://vssps.dev.azure.com/{devops.organization}"
+
+
+def release_bot_in_organization(devops):
+    """Release Bot's graph entry: the one already in the organization, or added now with Basic access. Adding
+    it again isn't asked of Azure DevOps, so --apply can run twice."""
+    vsaex, vssps = graph_urls(devops)
+    object_id = release_bot_object_id()
+    known = devops.call("GET", f"{vssps}/_apis/graph/serviceprincipals?{PREVIEW}")["value"]
+    bot = next((s for s in known if s.get("originId") == object_id), None)
+    if bot:
+        print(f"{RELEASE_BOT}: in the organization")
+        return bot
     reply = devops.call("POST", f"{vsaex}/_apis/serviceprincipalentitlements?{PREVIEW}", {
         "accessLevel": {"accountLicenseType": "express"},
-        "servicePrincipal": {"origin": "aad", "originId": release_bot_object_id(), "subjectKind": "servicePrincipal"}})
+        "servicePrincipal": {"origin": "aad", "originId": object_id, "subjectKind": "servicePrincipal"}})
     bot = (reply.get("operationResult") or {}).get("result", reply).get("servicePrincipal", {})
     if not bot.get("descriptor"):
         fail(f"Azure DevOps didn't add {RELEASE_BOT}: {json.dumps(reply)[:300]}")
     print(f"{RELEASE_BOT}: in the organization, Basic access")
+    return bot
+
+
+def release_bots_group(devops, project, create=False):
+    """The project group Release bots and the identity descriptor its permissions name, or (None, None)."""
+    _, vssps = graph_urls(devops)
     scope = devops.call("GET", f"{vssps}/_apis/graph/descriptors/{project['id']}?{PREVIEW}")["value"]
     groups = devops.call("GET", f"{vssps}/_apis/graph/groups?scopeDescriptor={scope}&{PREVIEW}")["value"]
-    group = next((g for g in groups if g["displayName"] == GROUP), None) or devops.call(
-        "POST", f"{vssps}/_apis/graph/groups?scopeDescriptor={scope}&{PREVIEW}",
-        {"displayName": GROUP, "description": "Release Bot: queues the release pipeline, reads and cancels its runs."})
-    devops.call("PUT", f"{vssps}/_apis/graph/memberships/{bot['descriptor']}/{group['descriptor']}?{PREVIEW}")
+    group = next((g for g in groups if g["displayName"] == GROUP), None)
+    if group is None and create:
+        group = devops.call("POST", f"{vssps}/_apis/graph/groups?scopeDescriptor={scope}&{PREVIEW}", {
+            "displayName": GROUP,
+            "description": "Release Bot: sees the project, queues the release pipeline, reads and cancels its runs."})
+    if group is None:
+        return None, None
     identity = devops.call("GET", f"{vssps}/_apis/identities?subjectDescriptors={group['descriptor']}&{API}")["value"][0]
-    devops.call("POST", f"/_apis/accesscontrolentries/{BUILD_NAMESPACE}?{API}", {
-        "token": f"{project['id']}/{pipeline['id']}", "merge": True,
-        "accessControlEntries": [{"descriptor": identity["descriptor"], "allow": RELEASE_BOT_RIGHTS, "deny": 0}]})
-    print(f"{RELEASE_BOT}: in {GROUP}, which may queue {pipeline['name']}, read and cancel its runs")
+    return group, identity["descriptor"]
+
+
+def release_bot_grants(project, pipeline_id):
+    """Release bots' rights, as (security namespace, token, bits): see the project, and queue, read and
+    cancel the release pipeline's runs."""
+    return [(PROJECT_NAMESPACE, project_token(project["id"]), VIEW_PROJECT),
+            (BUILD_NAMESPACE, f"{project['id']}/{pipeline_id}", RELEASE_BOT_RIGHTS)]
+
+
+def allowed(devops, namespace, token, descriptor):
+    """The bits allowed to one identity on one token, as set there."""
+    reply = devops.call("GET", f"/_apis/accesscontrollists/{namespace}?token={urllib.parse.quote(token, safe='')}"
+                               f"&descriptors={urllib.parse.quote(descriptor, safe='')}&{API}")
+    bits = 0
+    for acl in reply.get("value", []):
+        for ace in (acl.get("acesDictionary") or {}).values():
+            bits |= ace.get("allow", 0)
+    return bits
+
+
+def ensure_release_bot(devops, project, pipeline):
+    _, vssps = graph_urls(devops)
+    bot = release_bot_in_organization(devops)
+    group, descriptor = release_bots_group(devops, project, create=True)
+    devops.call("PUT", f"{vssps}/_apis/graph/memberships/{bot['descriptor']}/{group['descriptor']}?{PREVIEW}")
+    for namespace, token, bits in release_bot_grants(project, pipeline["id"]):
+        devops.call("POST", f"/_apis/accesscontrolentries/{namespace}?{API}", {
+            "token": token, "merge": True,
+            "accessControlEntries": [{"descriptor": descriptor, "allow": bits, "deny": 0}]})
+    print(f"{RELEASE_BOT}: in {GROUP}, which may see the project, queue {pipeline['name']}, read and cancel its runs")
+
+
+def release_bot_problems(devops, project, pipeline_id):
+    """--check's lines for Release bots: the group, Release Bot in it, and both rights."""
+    group, descriptor = release_bots_group(devops, project)
+    if group is None:
+        print(f"{GROUP}: missing")
+        return [f"no project group {GROUP}: run --apply"]
+    _, vssps = graph_urls(devops)
+    members = devops.call("GET", f"{vssps}/_apis/graph/memberships/{group['descriptor']}?direction=down&{PREVIEW}")["value"]
+    bots = [s["descriptor"] for s in devops.call("GET", f"{vssps}/_apis/graph/serviceprincipals?{PREVIEW}")["value"]
+            if s.get("displayName") == RELEASE_BOT]
+    member = any(m.get("memberDescriptor") in bots for m in members)
+    (project_ns, project_tok, view), (build_ns, build_tok, rights) = release_bot_grants(project, pipeline_id)
+    sees = (allowed(devops, project_ns, project_tok, descriptor) & view) == view
+    runs = (allowed(devops, build_ns, build_tok, descriptor) & rights) == rights
+    print(f"{GROUP}: Release Bot {'in it' if member else 'not in it'}, "
+          f"{'sees' if sees else 'does not see'} the project, "
+          f"{'may' if runs else 'may not'} queue, read and cancel the release pipeline's runs")
+    problems = [] if member else [f"{RELEASE_BOT} isn't in {GROUP}: run --apply"]
+    problems += [] if sees else [f"{GROUP} can't see the project, so Azure DevOps answers Release Bot 404: run --apply"]
+    problems += [] if runs else [f"{GROUP} may not queue, read and cancel the release pipeline: run --apply"]
+    return problems
 
 
 def apply(devops, bridge_test):
@@ -280,6 +362,7 @@ def check(devops):
     print(f"variable groups {len(groups)}, secure files {len(files)}, secret variables {len(secret)}")
     if groups or files or secret:
         problems.append("the project holds variable groups, secure files or secret variables")
+    problems += release_bot_problems(devops, project, pipeline_id)
     pools = devops.call("GET", f"/_apis/distributedtask/pools?poolName={POOL}&{API}")["value"]
     agents = devops.call("GET", f"/_apis/distributedtask/pools/{pools[0]['id']}/agents?{API}")["value"] if pools else []
     print(f"pool {POOL}: agents {', '.join(a['name'] + ' ' + a['status'] for a in agents) or 'none'}")

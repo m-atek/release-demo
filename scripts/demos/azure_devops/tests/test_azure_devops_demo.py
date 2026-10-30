@@ -143,3 +143,65 @@ def test_clean_needs_mateusz_s_yes(monkeypatch):
 
 def test_azure_devops_times_read_as_utc():
     assert day_one.utc("2026-11-02T10:00:05.1234567Z") == day_one.utc("2026-11-02 10:00:05") == 1793613605
+
+
+class FakeOrganization:
+    """Azure DevOps for ensure_release_bot and --check's Release bots lines: answers the reads, records the writes."""
+
+    def __init__(self, bot_known=True, member=True, project_bits=0, build_bits=0):
+        self.organization = "demo-org"
+        self.writes = []
+        self.bot_known, self.member = bot_known, member
+        self.bits = {setup.PROJECT_NAMESPACE: project_bits, setup.BUILD_NAMESPACE: build_bits}
+
+    def call(self, method, url, body=None, missing_ok=False):
+        if method != "GET":
+            self.writes.append((method, url.split("?")[0], body))
+            if "serviceprincipalentitlements" in url:
+                return {"operationResult": {"result": {"servicePrincipal": {"descriptor": "aad.bot"}}}}
+            return None
+        if "/graph/serviceprincipals" in url:
+            known = [{"originId": "object-1", "descriptor": "aad.bot", "displayName": setup.RELEASE_BOT}]
+            return {"value": known if self.bot_known else []}
+        if "/graph/descriptors/" in url:
+            return {"value": "scp.project"}
+        if "/graph/groups" in url:
+            return {"value": [{"displayName": setup.GROUP, "descriptor": "vssgp.bots"}]}
+        if "/_apis/identities" in url:
+            return {"value": [{"descriptor": "Microsoft.TeamFoundation.Identity;S-1-9-bots"}]}
+        if "/graph/memberships/vssgp.bots" in url:
+            return {"value": [{"memberDescriptor": "aad.bot"}] if self.member else []}
+        if "/_apis/accesscontrollists/" in url:
+            namespace = url.split("/_apis/accesscontrollists/")[1].split("?")[0]
+            return {"value": [{"acesDictionary": {"bots": {"allow": self.bits[namespace], "deny": 0}}}]}
+        raise AssertionError(f"unexpected call {method} {url}")
+
+
+def test_release_bots_see_the_project_and_queue_read_and_cancel_the_pipeline(monkeypatch):
+    monkeypatch.setattr(setup, "release_bot_object_id", lambda: "object-1")
+    organization = FakeOrganization()
+    setup.ensure_release_bot(organization, {"id": "p-1"}, {"id": 7, "name": "release"})
+    aces = {url.rsplit("/", 1)[1]: body for method, url, body in organization.writes if "accesscontrolentries" in url}
+    project, build = aces[setup.PROJECT_NAMESPACE], aces[setup.BUILD_NAMESPACE]
+    assert project["token"] == "$PROJECT:vstfs:///Classification/TeamProject/p-1" and project["merge"] is True
+    assert project["accessControlEntries"] == [{"descriptor": "Microsoft.TeamFoundation.Identity;S-1-9-bots",
+                                                "allow": 1, "deny": 0}]  # View project-level information only
+    assert build["token"] == "p-1/7" and build["accessControlEntries"][0]["allow"] == setup.RELEASE_BOT_RIGHTS
+    assert not any("serviceprincipalentitlements" in url for _, url, _ in organization.writes)  # added once, earlier
+
+
+def test_release_bot_is_added_to_the_organization_only_when_it_is_missing(monkeypatch):
+    monkeypatch.setattr(setup, "release_bot_object_id", lambda: "object-1")
+    organization = FakeOrganization(bot_known=False)
+    setup.ensure_release_bot(organization, {"id": "p-1"}, {"id": 7, "name": "release"})
+    (_, _, body), = [w for w in organization.writes if "serviceprincipalentitlements" in w[1]]
+    assert body["servicePrincipal"]["originId"] == "object-1" and body["accessLevel"] == {"accountLicenseType": "express"}
+
+
+def test_the_check_fails_while_release_bots_cant_see_the_project():
+    rights = setup.RELEASE_BOT_RIGHTS
+    blind = setup.release_bot_problems(FakeOrganization(project_bits=0, build_bits=rights), {"id": "p-1"}, "7")
+    assert blind == ["Release bots can't see the project, so Azure DevOps answers Release Bot 404: run --apply"]
+    assert setup.release_bot_problems(FakeOrganization(project_bits=1, build_bits=rights), {"id": "p-1"}, "7") == []
+    outside = setup.release_bot_problems(FakeOrganization(member=False, project_bits=1, build_bits=rights), {"id": "p-1"}, "7")
+    assert outside == ["release-demo Release Bot isn't in Release bots: run --apply"]
