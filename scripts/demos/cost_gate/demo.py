@@ -7,7 +7,7 @@
 
 None of them calls Claude. up applies infra/demos/18-cost-gate (the two
 tables and each function's policy) and, if a function still has its old
-10-second timeout, infra/ (the timeout of 30 seconds 1.7.0 needs). Both
+10-second timeout, infra/ (the timeout of 30 seconds 1.10.0 needs). Both
 are IAM or Lambda changes: you run up, and each apply shows its plan first.
 """
 
@@ -49,7 +49,7 @@ def checks():
         except iam.exceptions.NoSuchEntityException:
             found.append((False, f"policy {POLICY} on {role}: not there (demo.sh up cost-gate)"))
         timeout = lam.get_function_configuration(FunctionName=function(name))["Timeout"]
-        found.append((timeout >= TIMEOUT, f"{function(name)} timeout {timeout} s (1.7.0 needs {TIMEOUT})"))
+        found.append((timeout >= TIMEOUT, f"{function(name)} timeout {timeout} s (1.10.0 needs {TIMEOUT})"))
     switch = load_switch().value()
     found.append((switch in ("on", "off"), f"switch cost-check/enabled: {switch or 'not readable'}"))
     read = datetime.date.fromisoformat(str(prices()["read"]))

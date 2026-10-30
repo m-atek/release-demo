@@ -30,20 +30,20 @@ def fetcher(ids=IDS, statuses=None):
     return lambda url: next(answers)
 
 
-def logs_170():
+def logs_1_10_0():
     return [line for n, request_id in enumerate(IDS)
-            for line in (claude_line(request_id, "1.7.0", "page_view"), report(request_id, 6800 + n))]
+            for line in (claude_line(request_id, "1.10.0", "page_view"), report(request_id, 6800 + n))]
 
 
-def logs_171(first_call=True):
+def logs_1_10_1(first_call=True):
     lines = []
     for n, request_id in enumerate(IDS):
         if n == 0 and first_call:
-            lines.append(claude_line(request_id, "1.7.1", "order", model="claude-haiku-5-5", tokens_in=1050,
+            lines.append(claude_line(request_id, "1.10.1", "order", model="claude-haiku-5-5", tokens_in=1050,
                                      tokens_out=400))
-            lines.append(store_line(request_id, "1.7.1", 1.5, 5.0))
+            lines.append(store_line(request_id, "1.10.1", 1.5, 5.0))
         else:
-            lines.append(store_line(request_id, "1.7.1", 1.5, 0.0))
+            lines.append(store_line(request_id, "1.10.1", 1.5, 0.0))
         lines.append(report(request_id, 40 + n % 3))
     return lines
 
@@ -70,7 +70,7 @@ def run(version, messages, production_lambda=None, **kwargs):
 
 
 def test_one_seven_zero_is_measured_from_lambdas_own_lines_and_priced_to_the_cent(production):
-    record = run("1.7.0", logs_170())
+    record = run("1.10.0", logs_1_10_0())
     page = record["per_page_view"]
     # Lambda's REPORT lines and the function's own lines, request by request.
     assert {row["request_id"]: row["billed_ms"] for row in record["requests"]} == {
@@ -87,8 +87,8 @@ def test_one_seven_zero_is_measured_from_lambdas_own_lines_and_priced_to_the_cen
 
 
 def test_the_change_s_five_lines(production):
-    record = run("1.7.0", logs_170())
-    lines = cost_check.change_lines(record, state("1.7.0"))
+    record = run("1.10.0", logs_1_10_0())
+    lines = cost_check.change_lines(record, state("1.10.0"))
     assert lines[0] == (f"Cost check (staging, 50 page views): +USD {record['delta_usd']:,} a month at the expected "
                         "volume. Limit: USD 100 a month. Cost approvers decide.")
     assert lines[1] == ("Measured per page view in staging (50 page views): 1 Claude call, 1,512 tokens in and 398 out "
@@ -97,14 +97,14 @@ def test_the_change_s_five_lines(production):
                         "per GB-second (prices.yaml, read 30 October 2026).")
     assert lines[3] == "Expected volume (services.yaml): 3,000,000 page views and 60,000 new orders a month."
     assert lines[4] == "Production 1.4.0: USD 3 a month at the same volume."
-    assert cost_check.change_lines(record, state("1.7.0", option=""))[0].endswith("Cost and change approvers decide.")
+    assert cost_check.change_lines(record, state("1.10.0", option=""))[0].endswith("Cost and change approvers decide.")
 
 
 def test_a_volume_change_changes_the_projection_and_the_line(production):
-    first = run("1.7.0", logs_170())
+    first = run("1.10.0", logs_1_10_0())
     SETTINGS["expected_month"]["page_views"] = 1_500_000
     try:
-        second = run("1.7.0", logs_170())
+        second = run("1.10.0", logs_1_10_0())
     finally:
         SETTINGS["expected_month"]["page_views"] = 3_000_000
     assert second["monthly_usd"] == pytest.approx(first["monthly_usd"] / 2, abs=1)
@@ -112,7 +112,7 @@ def test_a_volume_change_changes_the_projection_and_the_line(production):
 
 
 def test_one_seven_one_prices_its_per_order_call_per_new_order(production):
-    record = run("1.7.1", logs_171())
+    record = run("1.10.1", logs_1_10_1())
     page, order = record["per_page_view"], record["per_new_order"]
     assert page["claude_calls"] == 0 and page["read_units"] == 1.5
     assert (order["claude_calls"], order["orders"], order["input_tokens"], order["output_tokens"]) == (1, 5, 210, 80)
@@ -127,20 +127,20 @@ def test_one_seven_one_prices_its_per_order_call_per_new_order(production):
 
 
 def test_with_the_messages_stored_already_it_prices_the_last_seven_days_call(production):
-    earlier = [claude_line("old-request", "1.7.1", "order", model="claude-haiku-5-5", tokens_in=1050, tokens_out=400),
-               store_line("old-request", "1.7.1", 1.5, 5.0)]
-    record = run("1.7.1", logs_171(first_call=False), earlier=earlier)
+    earlier = [claude_line("old-request", "1.10.1", "order", model="claude-haiku-5-5", tokens_in=1050, tokens_out=400),
+               store_line("old-request", "1.10.1", 1.5, 5.0)]
+    record = run("1.10.1", logs_1_10_1(first_call=False), earlier=earlier)
     assert record["result"] == "within" and record["driver"]["from_lookback"] is True
     assert "(from the last 7 days)" in cost_check.measured_line(record)
-    nothing = run("1.7.1", logs_171(first_call=False))
+    nothing = run("1.10.1", logs_1_10_1(first_call=False))
     assert nothing["result"] == "no-measurement"
     assert nothing["reason"] == "no per-order call to price, in the sample or the last 7 days"
 
 
 def test_two_calls_for_one_order_mean_the_store_isn_t_working(production):
-    lines = logs_171()
-    lines[3:3] = [claude_line(IDS[1], "1.7.1", "order", model="claude-haiku-5-5", tokens_in=1050, tokens_out=400)]
-    record = run("1.7.1", lines)
+    lines = logs_1_10_1()
+    lines[3:3] = [claude_line(IDS[1], "1.10.1", "order", model="claude-haiku-5-5", tokens_in=1050, tokens_out=400)]
+    record = run("1.10.1", lines)
     assert record["driver"]["used"] == "page_view" and "store isn't working" in record["driver"]["note"]
     assert record["per_new_order"]["total_usd"] == 0 and record["per_page_view"]["claude_calls"] == 0.04
 
@@ -151,9 +151,9 @@ def test_two_calls_for_one_order_mean_the_store_isn_t_working(production):
     ("late logs", "the logs didn't arrive: 0 of 50 REPORT lines in 0 seconds"),
 ])
 def test_without_a_measurement_a_cost_approver_decides(production, case, reason):
-    reader = None if case == "no reader" else FakeReader(FakeLogs(logs_170(), arrive_after=1000))
+    reader = None if case == "no reader" else FakeReader(FakeLogs(logs_1_10_0(), arrive_after=1000))
     statuses = [502] * 6 + [200] * 44 if case == "errors" else None
-    record = cost_check.check(state("1.7.0"), SETTINGS, reader, fetch=fetcher(statuses=statuses), logs_wait=0,
+    record = cost_check.check(state("1.10.0"), SETTINGS, reader, fetch=fetcher(statuses=statuses), logs_wait=0,
                               jcr_token="token", sleep=lambda s: None)
     assert record["result"] == "no-measurement" and record["reason"] == reason
     assert cost_check.slack_line(record) == f"Cost check: no measurement ({reason}). A cost approver decides."
@@ -177,12 +177,12 @@ def test_the_run_state_routes_the_change_and_slack_gets_its_line(production, mon
     monkeypatch.setattr(notify, "post", lambda s: posted.append(s["lines"][-1]))
     monkeypatch.setattr(cost_check, "upload", lambda s, path: None)
     monkeypatch.setattr(cost_check, "send_event", lambda body: posted.append(body["monthly_usd"]))
-    above, within = run("1.7.0", logs_170()), run("1.7.1", logs_171())
-    run_state_ = state("1.7.0")
+    above, within = run("1.10.0", logs_1_10_0()), run("1.10.1", logs_1_10_1())
+    run_state_ = state("1.10.0")
     cost_check.record_run(run_state_, above)
     assert run_state_["cost_review"] is True and len(run_state_["change_details"]) == 5
     assert (cost_check.run_state.REPORTS / "cost.json").exists()
-    calm = state("1.7.1")
+    calm = state("1.10.1")
     cost_check.record_run(calm, within)
     assert "cost_review" not in calm and len(calm["change_work_notes"]) == 5
     assert posted[0].startswith("Cost check: +USD") and posted[1] == above["monthly_usd"]
@@ -200,7 +200,7 @@ def test_report_lines_in_text_and_json_and_the_function_s_own_lines():
     platform = json.dumps({"time": "2026-10-30T10:00:00Z", "type": "platform.report", "record": {
         "requestId": "abc-2", "metrics": {"billedDurationMs": 51, "memorySizeMB": 1024}}})
     assert costs.report_of(platform) == {"request_id": "abc-2", "billed_ms": 51, "memory_mb": 1024}
-    assert costs.function_line(claude_line("abc-3", "1.7.0", "page_view"))["orders"] == ORDERS
+    assert costs.function_line(claude_line("abc-3", "1.10.0", "page_view"))["orders"] == ORDERS
     assert costs.function_line("[ERROR] KeyError: 'X'") is None
 
 
@@ -212,8 +212,8 @@ def test_amounts_are_whole_dollars_with_separators():
 
 
 def test_the_event_carries_each_part_and_never_a_key_or_a_message(production):
-    record = run("1.7.1", logs_171())
-    body = cost_check.event_body(record, state("1.7.1"))
+    record = run("1.10.1", logs_1_10_1())
+    body = cost_check.event_body(record, state("1.10.1"))
     assert body["event"] == "cost_check" and body["sample_size"] == 50 and body["limit_usd"] == 100
     assert body["per_new_order_claude_usd"] > 0 and body["per_page_view_lambda_usd"] > 0
     assert body["monthly_usd"] == record["monthly_usd"] and body["delta_usd"] == record["delta_usd"]

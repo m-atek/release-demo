@@ -421,11 +421,11 @@ After it: `scripts/demos/ai_notes/switch.py off` (the main reset does it too). O
 
 ## Demo on a call: a cost check in staging (video 18)
 
-orders-service 1.7.0 asks Claude for a delivery message per order on every page view; 1.7.1 asks once per order with a smaller model and keeps the messages in DynamoDB. With the cost check on, the stage Cost check after Check staging sends 50 page views to staging, reads what each used from Lambda's REPORT lines and the function's own lines, prices it with `prices.yaml` and projects the month at the expected volume in `services.yaml`. Above the limit, the change becomes a normal one that only Cost approvers decide: Fiona Finance. It uses no model, and never stops or approves a release itself.
+orders-service 1.10.0 asks Claude for a delivery message per order on every page view; 1.10.1 asks once per order with a smaller model and keeps the messages in DynamoDB. With the cost check on, the stage Cost check after Check staging sends 50 page views to staging, reads what each used from Lambda's REPORT lines and the function's own lines, prices it with `prices.yaml` and projects the month at the expected volume in `services.yaml`. Above the limit, the change becomes a normal one that only Cost approvers decide: Fiona Finance. It uses no model, and never stops or approves a release itself.
 
 Once, after the merge: `scripts/demo.sh up cost-gate` (the tables, each function's policy and the 30-second timeout; you apply, plans shown first), `scripts/secrets.py set servicenow/fiona-password`, then `.venv/bin/python scripts/demos/cost_gate/setup.py`, which makes the Jira issue and versions and runs `servicenow_setup.py --test`, and `.venv/bin/python scripts/grafana_setup.py` for the row "orders-service cost".
 
-Before each call or take: re-read the pricing pages and update `prices.yaml`'s date, `scripts/demo.sh check cost-gate`, then `scripts/reset.py cost-gate`: production on 1.4.0 from a real release with its cost check, 1.7.0 staged, the switch on. A 1.7.0 take costs about USD 1 in Claude calls.
+Before each call or take: re-read the pricing pages and update `prices.yaml`'s date, `scripts/demo.sh check cost-gate`, then `scripts/reset.py cost-gate`: production on 1.4.0 from a real release with its cost check, 1.10.0 staged, the switch on. A 1.10.0 take costs about USD 1 in Claude calls.
 
 After it: `scripts/demo.sh down cost-gate` turns the switch off; the tables stay, at cents a month.
 

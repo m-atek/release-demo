@@ -1,5 +1,5 @@
 """reset.py cost-gate: where video 18 starts. Production on 1.4.0 from a real
-release whose cost check measured it, 1.7.0 staged on main, the switch on.
+release whose cost check measured it, 1.10.0 staged on main, the switch on.
 
     python scripts/reset.py cost-gate              from the Mac it runs itself on the tools host
     python scripts/reset.py cost-gate --dry-run    every action it would take, and nothing else
@@ -12,9 +12,9 @@ versions after 1.4.0 archived and un-released, ORD-[m] reopened, both
 aliases on 1.4.0). Otherwise the main reset, the cost check switched on, a
 real release of 1.4.0 under ORD-12 as a standard change, whose cost check
 gives 1.4.0's measurement, its cost.json in JFrog and its bar in Grafana,
-then ORD-[m] reopened. Either way 1.7.0 goes on main and the cost check's
+then ORD-[m] reopened. Either way 1.10.0 goes on main and the cost check's
 switch stays on, the AI notes' off. Stored delivery messages stay: they are
-1.7.1's store. About 8 minutes the first time, 2 the second.
+1.10.1's store. About 8 minutes the first time, 2 the second.
 """
 
 import importlib.util
@@ -29,7 +29,7 @@ ai_notes = importlib.util.module_from_spec(_spec)
 sys.path.insert(1, str(HERE.parent / "ai_notes"))
 _spec.loader.exec_module(ai_notes)
 
-STAGED = "1.7.0"
+STAGED = "1.10.0"
 
 
 def issue_key():

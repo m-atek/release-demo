@@ -1,11 +1,11 @@
-# Demo 18, the cost check: the store orders-service 1.7.1 keeps each order's
+# Demo 18, the cost check: the store orders-service 1.10.1 keeps each order's
 # delivery message in, one table per environment, and what the functions may
-# read and write for 1.7.0 and 1.7.1. Its own root and state; run it through
+# read and write for 1.10.0 and 1.10.1. Its own root and state; run it through
 # scripts/demos/cost_gate/tf.sh, which signs in with your short-lived
 # credentials and points the backend at the state bucket of infra/.
 #
 # The functions and their roles are infra/'s (orders_service.tf). Versions
-# before 1.7.0 neither read the key nor touch the tables.
+# before 1.10.0 neither read the key nor touch the tables.
 
 terraform {
   required_version = ">= 1.10"
@@ -35,11 +35,11 @@ locals {
   account_id   = data.aws_caller_identity.current.account_id
   region       = data.aws_region.current.region
   environments = yamldecode(file("${path.module}/../../../services.yaml"))["orders-service"].environments
-  # 1.7.0 and 1.7.1 read the key from here, once per cold start.
+  # 1.10.0 and 1.10.1 read the key from here, once per cold start.
   key_parameter = "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/anthropic/api-key"
 }
 
-# One message per order, written once and kept 30 days (1.7.1). On demand:
+# One message per order, written once and kept 30 days (1.10.1). On demand:
 # idle, the tables cost only their few kilobytes of storage.
 resource "aws_dynamodb_table" "messages" {
   for_each     = local.environments

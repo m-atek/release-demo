@@ -84,7 +84,7 @@ resource "aws_lambda_function" "orders" {
   # CPU scales with memory: at 128 MB the page's first request, which imports
   # boto3 to read the deploy time, took over 6 seconds.
   memory_size      = 1024
-  timeout          = 30 # 1.7.0 (video 18) waits for Claude on every page view, its client up to 20 seconds
+  timeout          = 30 # 1.10.0 (video 18) waits for Claude on every page view, its client up to 20 seconds
   filename         = data.archive_file.orders_initial.output_path
   source_code_hash = data.archive_file.orders_initial.output_base64sha256
   publish          = true

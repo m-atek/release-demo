@@ -5,9 +5,10 @@
 
 The issue: a Story, "Show the order count per store", labelled
 orders-service, with the Jira version "orders-service 1.9.0" (unreleased) as
-its fix version. The spec named 1.6.0, but videos 20 (1.6.x and 1.7.x), 18
-(1.7.x) and 21 (1.8.0) release those, so it takes the next free minor
-version; it also skips any version a demo state or another Jira issue holds.
+its fix version. The spec named 1.6.0, but videos 20 (1.6.x and 1.7.x)
+and 21 (1.8.0) release those, and video 18 releases 1.10.x, so it takes the
+next free minor version; it also skips any version a demo state or another
+Jira issue holds.
 It prints the issue's key, which the video's script names ORD-[a]. Safe to
 run twice: it finds the issue it made.
 """
@@ -25,8 +26,8 @@ DESCRIPTION = ("On the order page, under today's orders, show how many orders ea
 LABEL = "orders-service"
 SERVICE = "orders-service"
 FIRST_CHOICE = (1, 9, 0)
-# Minor versions other videos release: 15 (1.5), 20 (1.6, 1.7), 18 (1.7), 21 (1.8).
-CLAIMED = {(1, 5), (1, 6), (1, 7), (1, 8)}
+# Minor versions other videos release: 15 (1.5), 20 (1.6, 1.7), 21 (1.8), 18 (1.10).
+CLAIMED = {(1, 5), (1, 6), (1, 7), (1, 8), (1, 10)}
 
 
 def free_version(jira, ours=None):

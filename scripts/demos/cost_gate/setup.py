@@ -5,7 +5,7 @@
 
 - Jira, as Release Pipeline: the issue "Show a delivery message for each
   order" in ORD, the next free key, which it prints for the video script's
-  ORD-[m]; and the versions "orders-service 1.7.0" and "orders-service 1.7.1"
+  ORD-[m]; and the versions "orders-service 1.10.0" and "orders-service 1.10.1"
   on it. Found again by its summary, so a second run makes nothing.
 - ServiceNow: servicenow_setup.py --test, which adds Fiona Finance, Cost
   approvers, the field Cost review and the decision at Assess, and proves the
@@ -21,7 +21,7 @@ import costs
 from common import ROOT
 
 SUMMARY = "Show a delivery message for each order"
-VERSIONS = ["1.7.0", "1.7.1"]
+VERSIONS = ["1.10.0", "1.10.1"]
 
 
 def find_issue(jira):

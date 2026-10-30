@@ -56,12 +56,12 @@ def test_the_issue_is_found_again_by_its_exact_summary():
 def test_up_applies_only_what_is_missing(monkeypatch, capsys):
     applied = []
     found = [(True, "table orders-service-messages-staging, TTL on ttl"), (False, "policy x on y: not there"),
-             (True, "orders-service-staging timeout 30 s (1.7.0 needs 30)"), (True, "switch cost-check/enabled: off")]
+             (True, "orders-service-staging timeout 30 s (1.10.0 needs 30)"), (True, "switch cost-check/enabled: off")]
     monkeypatch.setattr(demo, "checks", lambda: found)
     monkeypatch.setattr(demo.subprocess, "run", lambda command, check: applied.append(command[0]))
     demo.up()
     assert applied == [str(costs.HERE / "tf.sh")]
-    found[2] = (False, "orders-service-staging timeout 10 s (1.7.0 needs 30)")
+    found[2] = (False, "orders-service-staging timeout 10 s (1.10.0 needs 30)")
     applied.clear()
     demo.up()
     assert applied == [str(costs.HERE / "tf.sh"), str(demo.ROOT / "scripts" / "tf.sh")]

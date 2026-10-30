@@ -448,7 +448,7 @@ cloudflare/dc-agent-client-secret:
 
 # Videos 12 and 13, the AI notes (scripts/demos/ai_notes), and video 18, the
 # cost check (scripts/demos/cost_gate). Both use anthropic/api-key above: the
-# AI notes in Jenkins, and orders-service 1.7.0 and 1.7.1 in Lambda.
+# AI notes in Jenkins, and orders-service 1.10.0 and 1.10.1 in Lambda.
 ai-notes/enabled:
   source: script
   secure: false

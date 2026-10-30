@@ -144,9 +144,9 @@ def opening(monkeypatch, tmp_path):
 
 
 def open_state(option, **extra):
-    return {"service": "orders-service", "version": "1.7.0", "jira_key": "ORD-55", "option": option,
+    return {"service": "orders-service", "version": "1.10.0", "jira_key": "ORD-55", "option": option,
             "requested_by": "U0SAM000001", "build": {"number": "70", "url": "https://jenkins-demo.es.nl/job/release/70/"},
-            "package": {"path": "orders-service-candidates/1.7.0/70/orders-service-1.7.0.zip", "sha256": "ab" * 32},
+            "package": {"path": "orders-service-candidates/1.10.0/70/orders-service-1.10.0.zip", "sha256": "ab" * 32},
             "started_at": 1793000000.0, "slack": {"channel": "C0RELEASES", "ts": "1793.0001"},
             "stages": {name: {"status": "ok"} for name in run_state.stages_for({"scripts": {}})}, **extra}
 
@@ -185,10 +185,10 @@ def test_a_release_copy_keeps_the_candidate_s_cost_json(tmp_path, monkeypatch):
     package = b"the package of build 70"
     out = tmp_path / "dist" / "orders-service"
     out.mkdir(parents=True)
-    (out / "build-info.json").write_text(json_module.dumps({"version": "1.7.0", "package": "orders-service-1.7.0.zip",
+    (out / "build-info.json").write_text(json_module.dumps({"version": "1.10.0", "package": "orders-service-1.10.0.zip",
                                                             "sha256": hashlib.sha256(package).hexdigest()}))
-    files = {"orders-service-candidates/1.7.0/70/orders-service-1.7.0.zip": package,
-             "orders-service-candidates/1.7.0/70/cost.json": b'{"result": "above"}'}
+    files = {"orders-service-candidates/1.10.0/70/orders-service-1.10.0.zip": package,
+             "orders-service-candidates/1.10.0/70/cost.json": b'{"result": "above"}'}
 
     def request(method, path, token, data=None, headers=None):
         if method == "GET" and path.startswith("api/storage/"):
@@ -204,8 +204,8 @@ def test_a_release_copy_keeps_the_candidate_s_cost_json(tmp_path, monkeypatch):
     monkeypatch.setattr(publish, "ssm_client", lambda: None)
     monkeypatch.setattr(publish, "request", request)
     monkeypatch.setattr(sys, "argv", ["publish.py", "orders-service", "--release"])
-    run_state.save({"service": "orders-service", "version": "1.7.0", "build": {"number": "70"}, "jira_key": "ORD-55",
-                    "package": {"path": "orders-service-candidates/1.7.0/70/orders-service-1.7.0.zip",
-                                "sha256": hashlib.sha256(package).hexdigest(), "name": "orders-service-1.7.0.zip"}})
+    run_state.save({"service": "orders-service", "version": "1.10.0", "build": {"number": "70"}, "jira_key": "ORD-55",
+                    "package": {"path": "orders-service-candidates/1.10.0/70/orders-service-1.10.0.zip",
+                                "sha256": hashlib.sha256(package).hexdigest(), "name": "orders-service-1.10.0.zip"}})
     publish.main()
-    assert files["orders-service-releases/1.7.0/cost.json"] == b'{"result": "above"}'
+    assert files["orders-service-releases/1.10.0/cost.json"] == b'{"result": "above"}'
