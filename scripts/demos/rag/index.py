@@ -10,7 +10,10 @@ For a chunk hash without a table:
    principal, which merges `pages` and writes chunks_<hash8> with change
    data feed on;
 3. creates the Delta Sync index on that table, with managed embeddings from
-   databricks-gte-large-en, and waits for it, up to 15 minutes.
+   databricks-gte-large-en, and waits for it, up to 25 minutes, as
+   scripts/demo.sh up rag does. The first index on a new endpoint waits for
+   the endpoint's compute: on 30 October that took about 13 minutes, then
+   4 more for the first sync, 17 in all.
 A table that exists already gets its index made or reused. All three
 demo versions share one chunk hash, so one table and one index.
 """
@@ -29,7 +32,8 @@ import rag  # noqa: E402
 from common import fail  # noqa: E402
 from databricks_api import Databricks  # noqa: E402
 
-WAIT_SECONDS = 15 * 60
+WAIT_SECONDS = 15 * 60  # the chunker job
+INDEX_WAIT_SECONDS = 25 * 60  # search.py's UP_TIMEOUT: a new endpoint's first index took 17 minutes
 
 
 def endpoint_online(db, settings=None):
@@ -73,7 +77,7 @@ def run_chunker(db, corpus, script, catalog_name, table, clock=time.monotonic, s
     fail(f"The chunker job didn't finish in {WAIT_SECONDS // 60} minutes.")
 
 
-def wait_online(db, name, clock=time.monotonic, sleep=time.sleep, timeout=WAIT_SECONDS):
+def wait_online(db, name, clock=time.monotonic, sleep=time.sleep, timeout=INDEX_WAIT_SECONDS):
     deadline = clock() + timeout
     while clock() < deadline:
         found = db.index(name) or {}
