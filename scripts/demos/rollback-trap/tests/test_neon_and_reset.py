@@ -186,3 +186,31 @@ def test_each_script_starts_as_its_callers_start_it(script):
                             capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", "HOME": "/tmp"})
     assert result.returncode == 0, result.stderr[-500:]
     assert result.stdout.startswith("usage: ")
+
+
+def test_the_driver_gets_the_standard_secrets_even_with_scripts_on_the_path(tmp_path, monkeypatch):
+    # pg8000's scramp does "from secrets import token_bytes". In the pipeline scripts/
+    # is on the path, and its secrets.py (the SSM helper) was found first: release #65
+    # of 1.6.0 stopped at Staging with that ImportError.
+    import sys
+
+    import database
+
+    shadow = tmp_path / "scripts"
+    shadow.mkdir()
+    (shadow / "secrets.py").write_text('"""The repository\'s SSM helper, not the standard library."""\n')
+    package = tmp_path / "package" / "pg8000"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    (package / "native.py").write_text("from secrets import token_bytes, token_hex\nConnection = object\n")
+    monkeypatch.syspath_prepend(str(shadow))
+    for name in ("secrets", "pg8000", "pg8000.native"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    monkeypatch.setattr(sys, "path", list(sys.path))  # driver() adds the package folder: undone after
+    try:
+        native = database.driver(tmp_path / "package")
+        assert native.Connection is object
+        assert hasattr(sys.modules["secrets"], "token_bytes")
+    finally:
+        for name in ("pg8000", "pg8000.native"):
+            sys.modules.pop(name, None)

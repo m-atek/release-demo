@@ -11,10 +11,13 @@ into it), so the tools host needs none of its own.
 
 import hashlib
 import importlib
+import importlib.util
 import ssl
 import sys
+import sysconfig
 import time
 import urllib.parse
+from pathlib import Path
 
 TABLE = """CREATE TABLE IF NOT EXISTS schema_migrations (
   file text PRIMARY KEY,
@@ -24,11 +27,27 @@ TABLE = """CREATE TABLE IF NOT EXISTS schema_migrations (
 )"""
 
 
+def standard_secrets():
+    """The standard library's secrets module, in sys.modules. scramp, which pg8000
+    needs, imports it by name, and scripts/ has a secrets.py of its own (the SSM
+    helper): with scripts/ on the path, as in the pipeline's stages, that one was
+    found first and the deploy stopped at "cannot import name 'token_bytes'"."""
+    loaded = sys.modules.get("secrets")
+    if loaded is not None and hasattr(loaded, "token_bytes"):
+        return loaded
+    spec = importlib.util.spec_from_file_location("secrets", Path(sysconfig.get_paths()["stdlib"]) / "secrets.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    sys.modules["secrets"] = module
+    return module
+
+
 def driver(folder):
     """pg8000.native from an unpacked package (or any folder that holds it)."""
     folder = str(folder)
     if folder not in sys.path:
         sys.path.insert(0, folder)
+    standard_secrets()
     return importlib.import_module("pg8000.native")
 
 
