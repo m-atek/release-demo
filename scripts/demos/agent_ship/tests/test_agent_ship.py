@@ -420,8 +420,14 @@ def test_servicenow_gets_the_two_fields_next_to_requested_by():
     import servicenow_setup
 
     class SN:
+        """The form section as a PDI keeps it: an element made through the Table API
+        lands at the end of its section, whatever position it is given."""
+
         def __init__(self):
             self.calls = []
+            self.rows = [{"sys_id": "e1", "element": "number", "position": "0"},
+                         {"sys_id": "e2", "element": "requested_by", "position": "3"},
+                         {"sys_id": "e3", "element": "category", "position": "4"}]
 
         def find(self, table, query, fields=None):
             return {"sys_id": "section"} if table == "sys_ui_section" else None
@@ -429,9 +435,12 @@ def test_servicenow_gets_the_two_fields_next_to_requested_by():
         def call(self, method, path, body=None, **query):
             self.calls.append((method, path, body))
             if method == "GET":
-                return [{"sys_id": "e1", "element": "number", "position": "0"},
-                        {"sys_id": "e2", "element": "requested_by", "position": "3"},
-                        {"sys_id": "e3", "element": "category", "position": "4"}]
+                return [dict(row) for row in self.rows]
+            if method == "POST" and path == "/api/now/table/sys_ui_element":
+                self.rows.append({"sys_id": f"e{len(self.rows) + 1}", "element": body["element"],
+                                  "position": str(len(self.rows) + 10)})
+            elif method == "PATCH":
+                next(row for row in self.rows if path.endswith("/" + row["sys_id"]))["position"] = body["position"]
             return {}
 
     sn = SN()
@@ -439,9 +448,8 @@ def test_servicenow_gets_the_two_fields_next_to_requested_by():
     created = [body for method, path, body in sn.calls if path == "/api/now/table/sys_dictionary"]
     assert [(b["element"], b["column_label"]) for b in created] == [("u_code_written_by", "Code written by"),
                                                                    ("u_code_reviewed_by", "Code reviewed by")]
-    assert ("PATCH", "/api/now/table/sys_ui_element/e3", {"position": "6"}) in sn.calls
-    placed = [b for method, path, b in sn.calls if method == "POST" and path == "/api/now/table/sys_ui_element"]
-    assert [(b["element"], b["position"]) for b in placed] == [("u_code_written_by", "4"), ("u_code_reviewed_by", "5")]
+    order = [row["element"] for row in sorted(sn.rows, key=lambda row: int(row["position"]))]
+    assert order == ["number", "requested_by", "u_code_written_by", "u_code_reviewed_by", "category"]
 
 
 def test_the_host_keeps_the_agent_s_network_off_private_addresses():
