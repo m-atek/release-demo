@@ -3,7 +3,7 @@
     idle_stop.py /run/release-demo/secrets
 
 Idle means: no running or queued Jenkins build (a timer's own check for work,
-such as pull-requests, doesn't count), no job on the GitLab runner (demo 17),
+such as pull-requests, doesn't count, nor a multibranch job's scan), no job on the GitLab runner (demo 17),
 no job on the Azure Pipelines agent and no release run in progress (demo 22),
 and cloudflared's request counter unchanged, so nobody used Jenkins, JCR or
 Splunk through the tunnel. Before it powers off, each demo's
@@ -24,6 +24,11 @@ IDLE_SECONDS = 30 * 60
 # Jobs a timer starts every minute, whose builds alone aren't anyone using the
 # host: video 16's pull-requests looks for a pull request to check, and mostly ends at once.
 NOT_ACTIVITY = {"pull-requests"}
+# Not builds at all: a multibranch job's scan for branches, which network-stack and
+# catalog-production run every minute. Each waits out its 5-second quiet period at
+# the top of the minute, when this timer tends to fire too, so counting the scans
+# kept the host up all night (30 to 31 October).
+SCANS = ("MultiBranchProject", "BranchIndexing", "OrganizationFolder", "FolderComputation")
 
 
 def jenkins_busy(secrets):
@@ -34,16 +39,18 @@ def jenkins_busy(secrets):
         with urllib.request.urlopen(urllib.request.Request("http://localhost:8080" + path, headers=auth), timeout=10) as r:
             return json.loads(r.read())
 
-    def ours(url):
-        return any(f"/job/{job}/" in (url or "") for job in NOT_ACTIVITY)
+    def ours(item):
+        """A build of a NOT_ACTIVITY job, or a scan: item is a running build or a queued task."""
+        return (any(f"/job/{job}/" in (item.get("url") or "") for job in NOT_ACTIVITY)
+                or any(kind in item.get("_class", "") for kind in SCANS))
 
     try:
-        computers = get("/computer/api/json?tree=computer%5Bexecutors%5BcurrentExecutable%5Burl%5D%5D,"
-                        "oneOffExecutors%5BcurrentExecutable%5Burl%5D%5D%5D")["computer"]
-        running = [e["currentExecutable"]["url"] for c in computers
+        computers = get("/computer/api/json?tree=computer%5Bexecutors%5BcurrentExecutable%5Burl,_class%5D%5D,"
+                        "oneOffExecutors%5BcurrentExecutable%5Burl,_class%5D%5D%5D")["computer"]
+        running = [e["currentExecutable"] for c in computers
                    for e in (c.get("executors") or []) + (c.get("oneOffExecutors") or []) if e.get("currentExecutable")]
-        queued = get("/queue/api/json?tree=items%5Btask%5Burl%5D%5D")["items"]
-        return any(not ours(url) for url in running) or any(not ours(i.get("task", {}).get("url")) for i in queued)
+        queued = get("/queue/api/json?tree=items%5Btask%5Burl,_class%5D%5D")["items"]
+        return any(not ours(build) for build in running) or any(not ours(i.get("task") or {}) for i in queued)
     except Exception:
         return False  # Jenkins down counts as idle: a broken host shouldn't run all night
 
