@@ -180,3 +180,11 @@ def test_the_switch_reads_jenkins_until_set():
     assert gitlab_demo.switch(ssm) == "jenkins"
     gitlab_demo.switch(ssm, "gitlab-ci")
     assert gitlab_demo.switch(ssm) == "gitlab-ci"
+
+
+def test_the_runner_owns_what_register_made_as_root():
+    """register runs as root and leaves .runner_system_id beside the config; as root's file, the
+    runner, which runs as its own user, stopped with "permission denied" on its first start."""
+    script = (Path(__file__).resolve().parents[4] / "tools-host" / "gitlab-runner.sh").read_text()
+    handed_over = script.index('chown -R gitlab-runner:gitlab-runner "$(dirname "$CONFIG")"')
+    assert script.index(" register --non-interactive") < handed_over < script.index("User=gitlab-runner")

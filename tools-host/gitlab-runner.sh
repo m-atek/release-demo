@@ -65,7 +65,8 @@ if [[ -f $CONFIG ]]; then
   # One job at a time, and the metrics on localhost only.
   sed -i 's/^concurrent = .*/concurrent = 1/' "$CONFIG"
   grep -q '^listen_address' "$CONFIG" || sed -i '1i listen_address = "127.0.0.1:9252"' "$CONFIG"
-  chown gitlab-runner:gitlab-runner "$CONFIG"
+  # register ran as root and left .runner_system_id beside the config: the runner reads it as its own user.
+  chown -R gitlab-runner:gitlab-runner "$(dirname "$CONFIG")"
   chmod 600 "$CONFIG"
 fi
 
