@@ -110,7 +110,7 @@ def test_every_action_names_an_exact_release_for_the_lockfile_to_pin():
 def test_the_lockfile_check_comes_first_in_build():
     steps = JOBS["build"]["steps"]
     assert steps[0]["uses"].startswith("actions/checkout@")
-    assert "gh actions-lock --verify" in steps[1]["run"]
+    assert "gh actions-lock --verify .github/workflows/release.yml" in steps[1]["run"]
 
 
 def test_the_lockfile_covers_every_action(request):

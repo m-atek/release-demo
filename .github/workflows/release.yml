@@ -56,7 +56,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh extension install github/gh-actions-lock --pin v0.4.0
-          gh actions-lock --verify
+          # release.yml alone: day one's throwaway bridge-test.yml has no lockfile entry
+          gh actions-lock --verify .github/workflows/release.yml
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.13"
