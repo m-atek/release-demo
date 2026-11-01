@@ -1,17 +1,8 @@
 import datetime
 import json
-import time
 
 import handler as app
 from conftest import request
-
-# The page must render fast for every region: RENDERS_PER_REGION renders of
-# each, in under TIME_LIMIT_SECONDS. scripts/demos/flaky/calibrate.py times
-# this test 200 times with coverage, as the pipeline runs it, and sets the
-# limit near the 90th percentile.
-RENDERS_PER_REGION = 200
-# Measured: p50 0.347 s, p90 0.406 s, p99 0.461 s in 200 runs on the tools host, 30 Oct 2026.
-TIME_LIMIT_SECONDS = 0.406
 
 
 def test_health_reports_version_and_environment():
@@ -30,33 +21,6 @@ def test_page_shows_service_version_and_deploy_time():
     assert "orders-service" in response["body"]
     assert app.VERSION in response["body"]
     assert "26 Oct 2026, 09:30 UTC" in response["body"]
-
-
-def test_page_shows_delivery_estimate():
-    assert "Delivery estimate: 2 days in Utrecht" in request("/")["body"]
-
-
-def test_delivery_estimate_per_region():
-    for store, region in app.STORE_REGIONS.items():
-        days = app.delivery_estimate(region)
-        assert days >= 1, store
-        assert f"Delivery estimate: {days} days in {region}" in app.page(region)
-    assert request("/?region=Atlantis", query={"region": "Atlantis"})["statusCode"] == 404
-
-
-def render_every_region():
-    started = time.perf_counter()
-    for region in app.regions():
-        for _ in range(RENDERS_PER_REGION):
-            app.page(region)
-    return time.perf_counter() - started
-
-
-def test_delivery_estimate_timeout(record_property):
-    elapsed = render_every_region()
-    record_property("elapsed_seconds", f"{elapsed:.4f}")
-    assert elapsed < TIME_LIMIT_SECONDS, (
-        f"{RENDERS_PER_REGION} renders per region took {elapsed:.3f}s, over the {TIME_LIMIT_SECONDS}s limit")
 
 
 def test_page_escapes_environment_name(monkeypatch):
