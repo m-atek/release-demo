@@ -97,7 +97,9 @@ def watch(sn, app, run_id, change_id, number):
             print(f"{number}: {decided[0]} in ServiceNow")
         jobs = app.call("GET", f"/repos/{app.repository}/actions/runs/{run_id}/jobs")["jobs"]
         job = next((j for j in jobs if j["name"] == WAITING_JOB), {})
-        if decided and decided[0] == "approved" and job.get("started_at") and job.get("status") != "waiting":
+        # A held job's started_at is from before the approval until it really starts.
+        if (decided and decided[0] == "approved" and job.get("started_at") and job.get("status") != "waiting"
+                and utc(job["started_at"]) >= decided[1]):
             took = utc(job["started_at"]) - decided[1]
             verdict = "ok" if took < 20 else "TOO SLOW: fix the bridge before recording"
             print(f"The job started {took} s after the approval ({verdict}).")
