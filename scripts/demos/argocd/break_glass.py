@@ -10,8 +10,8 @@ Command and sends back only the public certificate, valid for an hour; the
 key never leaves the Mac, and no key, certificate or token lands in SSM's
 command history. Then it holds an SSM port forward to the Kubernetes API on
 127.0.0.1:26443 until Ctrl-C. The role break-glass lets the group read the
-catalog's deployments, replica sets and pods in production, and patch a
-deployment or its scale; nothing in any other namespace.
+catalog's deployments, replica sets and pods in production, and change a
+deployment's scale; nothing in any other namespace.
 
 Needs the Session Manager plugin for the AWS CLI:
 brew install --cask session-manager-plugin
@@ -116,6 +116,7 @@ The tunnel to the cluster's API stays open until Ctrl-C. In the video's terminal
   kubectl -n production scale deploy/catalog --replicas=5
 
 Checks: kubectl auth can-i patch deployments/scale -n production   (yes)
+        kubectl auth can-i patch deployments -n production         (no)
         kubectl auth can-i patch deployments -n staging           (no)
         kubectl auth can-i get secrets -n production              (no)""", flush=True)
     signal.signal(signal.SIGINT, lambda *_: tunnel.terminate())

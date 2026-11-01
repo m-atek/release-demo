@@ -67,13 +67,14 @@ def test_the_audit_policy_records_deployment_writes_in_production_and_certificat
     assert policy["omitStages"] == ["RequestReceived"]
 
 
-def test_break_glass_patches_deployments_in_production_and_reads_no_secrets():
+def test_break_glass_changes_only_the_scale_in_production_and_reads_no_secrets():
     docs = documents(HOST / "break-glass.yaml")
     role = by_name(docs, "Role", "break-glass")
     assert role["metadata"]["namespace"] == "production"
     granted = {(group, resource, verb) for rule in role["rules"] for group in rule["apiGroups"]
                for resource in rule["resources"] for verb in rule["verbs"]}
-    assert ("apps", "deployments/scale", "patch") in granted and ("apps", "deployments", "patch") in granted
+    assert ("apps", "deployments/scale", "patch") in granted
+    assert not any(resource == "deployments" and verb in ("patch", "update") for _, resource, verb in granted)
     assert not any(resource == "secrets" for _, resource, _ in granted)
     assert not any(verb in ("create", "delete", "*") for _, _, verb in granted)
     binding = by_name(docs, "RoleBinding", "break-glass")

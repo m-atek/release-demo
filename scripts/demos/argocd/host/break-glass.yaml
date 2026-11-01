@@ -2,8 +2,9 @@
 # client certificate in the group release-demo:break-glass, which
 # scripts/demos/argocd/break_glass.py has the cluster sign for an hour. They
 # may read the catalog's pods, replica sets and deployments in production,
-# and patch a deployment or its scale. Nothing in any other namespace, no
-# secrets anywhere. Argo CD puts back whatever they change.
+# and change a deployment's scale. Not the deployment itself: a new pod
+# template can mount any Secret in the namespace. Nothing in any other
+# namespace, no secrets anywhere. Argo CD puts back whatever they change.
 apiVersion: v1
 kind: Namespace
 metadata: { name: production }
@@ -18,9 +19,6 @@ rules:
   - apiGroups: [""]
     resources: [pods]
     verbs: [get, list, watch]
-  - apiGroups: [apps]
-    resources: [deployments]
-    verbs: [patch, update]
   - apiGroups: [apps]
     resources: [deployments/scale]
     verbs: [get, patch, update]
