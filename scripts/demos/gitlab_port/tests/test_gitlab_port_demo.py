@@ -188,3 +188,10 @@ def test_the_runner_owns_what_register_made_as_root():
     script = (Path(__file__).resolve().parents[4] / "tools-host" / "gitlab-runner.sh").read_text()
     handed_over = script.index('chown -R gitlab-runner:gitlab-runner "$(dirname "$CONFIG")"')
     assert script.index(" register --non-interactive") < handed_over < script.index("User=gitlab-runner")
+
+
+def test_the_runner_s_logout_script_cant_fail_a_job():
+    """Ubuntu's default .bash_logout runs clear_console, and a job then fails at Prepare environment."""
+    script = (Path(__file__).resolve().parents[4] / "tools-host" / "gitlab-runner.sh").read_text()
+    commented = script.index('$SHLVL" = 1')
+    assert script.index("useradd") < commented < script.index('chown -R gitlab-runner:gitlab-runner "$HOME_DIR"')

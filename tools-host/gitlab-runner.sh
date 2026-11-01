@@ -41,6 +41,10 @@ fi
 
 id gitlab-runner >/dev/null 2>&1 ||
   useradd --system --create-home --home-dir "$HOME_DIR" --shell /bin/bash --groups docker gitlab-runner
+# Ubuntu's default .bash_logout clears the console, which fails a job at "Prepare environment" (GitLab's shell docs).
+if [[ -f $HOME_DIR/.bash_logout ]]; then
+  sed -i '/^if \[ "$SHLVL" = 1 \]; then$/,/^fi$/s/^/# /' "$HOME_DIR/.bash_logout"
+fi
 mkdir -p "$HOME_DIR/builds" "$HOME_DIR/cache/syft" "$HOME_DIR/cache/grype" "$(dirname "$CONFIG")"
 chown -R gitlab-runner:gitlab-runner "$HOME_DIR"
 
