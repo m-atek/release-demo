@@ -47,7 +47,6 @@ DELIVERY_ESTIMATE_DAYS = {
     "Utrecht": 2,
     "Noord-Holland": 2,
     "Zuid-Holland": 2,
-    "Noord-Brabant": 3,
     "Groningen": 3,
 }
 DEFAULT_REGION = "Utrecht"
