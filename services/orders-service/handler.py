@@ -79,11 +79,6 @@ def _lambda_last_modified():
         return "unknown"
 
 
-def delivery_estimate_days():
-    """The regional setting for this environment."""
-    return int(os.environ["DELIVERY_ESTIMATE_DAYS"])
-
-
 def todays_orders(today=None):
     """Fictional orders, the same all day, different every day."""
     today = today or datetime.date.today()
@@ -141,7 +136,6 @@ def page():
         version=html.escape(VERSION),
         commit=html.escape(COMMIT[:7]),
         deployed=html.escape(deployed_at()),
-        delivery_days=delivery_estimate_days(),
         order_count=len(orders),
         rows=rows,
     )
@@ -222,7 +216,6 @@ PAGE = """<!doctype html>
     <span class="demo">Demo system</span>
   </header>
   <div class="version">{version}</div>
-  <p class="note">Delivery estimate: {delivery_days} days</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>
