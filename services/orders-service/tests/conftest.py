@@ -15,6 +15,9 @@ def env(monkeypatch):
     monkeypatch.setattr(app, "_deployed_at", None)
 
 
-def request(path, method="GET"):
+def request(path, method="GET", query=None):
+    path = path.split("?", 1)[0]
     event = {"rawPath": path, "requestContext": {"http": {"method": method, "path": path}}}
+    if query:
+        event["queryStringParameters"] = query
     return app.handler(event, None)

@@ -34,7 +34,23 @@ PRODUCTS = [
     ("Sports socks, 3 pairs", 14.99),
 ]
 STATUSES = ["received", "picking", "packed", "shipped"]
-DELIVERY_ESTIMATE_DAYS = 2
+# Each store's region, and the delivery estimate in days per region.
+STORE_REGIONS = {
+    "Utrecht Centraal": "Utrecht",
+    "Amsterdam Zuid": "Noord-Holland",
+    "Rotterdam Blaak": "Zuid-Holland",
+    "Eindhoven Strijp": "Noord-Brabant",
+    "Den Haag Spui": "Zuid-Holland",
+    "Groningen Vismarkt": "Groningen",
+}
+DELIVERY_ESTIMATE_DAYS = {
+    "Utrecht": 2,
+    "Noord-Holland": 2,
+    "Zuid-Holland": 2,
+    "Noord-Brabant": 3,
+    "Groningen": 3,
+}
+DEFAULT_REGION = "Utrecht"
 
 _deployed_at = None
 
@@ -100,6 +116,16 @@ def todays_orders(today=None):
     return {"date": today.isoformat(), "orders": orders}
 
 
+def regions():
+    """The regions with a delivery estimate."""
+    return sorted(DELIVERY_ESTIMATE_DAYS)
+
+
+def delivery_estimate(region):
+    """Days to deliver an order from a store in this region."""
+    return DELIVERY_ESTIMATE_DAYS[region]
+
+
 def _picker(seed):
     """pick(n) gives a number below n, derived from the seed and a counter: the
     same seed always gives the same numbers. For demo data, not for security."""
@@ -122,7 +148,7 @@ def health():
     }
 
 
-def page():
+def page(region=DEFAULT_REGION):
     env = environment()
     orders = todays_orders()["orders"]
     rows = "\n".join(
@@ -137,7 +163,8 @@ def page():
         version=html.escape(VERSION),
         commit=html.escape(COMMIT[:7]),
         deployed=html.escape(deployed_at()),
-        delivery_days=DELIVERY_ESTIMATE_DAYS,
+        delivery_days=delivery_estimate(region),
+        region=html.escape(region),
         order_count=len(orders),
         rows=rows,
     )
@@ -155,10 +182,13 @@ def handler(event, context):
     if path == "/api/orders":
         return _json(200, todays_orders())
     if path == "/":
+        region = (event.get("queryStringParameters") or {}).get("region", DEFAULT_REGION)
+        if region not in regions():
+            return _json(404, {"error": "no such region", "regions": regions()})
         return {
             "statusCode": 200,
             "headers": {"content-type": "text/html; charset=utf-8", "cache-control": "no-store"},
-            "body": page(),
+            "body": page(region),
         }
     return _json(404, {"error": "not found"})
 
@@ -193,7 +223,6 @@ PAGE = """<!doctype html>
   .env.staging {{ background: var(--staging); }}
   .env.production {{ background: var(--production); }}
   .env.local {{ background: var(--local); }}
-  .demo {{ margin-left: auto; color: var(--muted); font-size: 15px; }}
   .version {{ font-size: 120px; font-weight: 700; letter-spacing: -0.04em; line-height: 1;
     margin: 40px 0 8px; font-variant-numeric: tabular-nums; }}
   .facts {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -215,10 +244,9 @@ PAGE = """<!doctype html>
   <header>
     <h1>{service}</h1>
     <span class="env {env}">{env}</span>
-    <span class="demo">Demo system</span>
   </header>
   <div class="version">{version}</div>
-  <p class="note">Delivery estimate: {delivery_days} days</p>
+  <p class="note">Delivery estimate: {delivery_days} days in {region}</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>
