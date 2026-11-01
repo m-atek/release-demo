@@ -18,10 +18,11 @@ import sys
 import time
 
 import take  # noqa: F401  (puts scripts/ on the path)
-from common import get_parameter, ssm_client  # noqa: E402
+from common import aws_cli_env, get_parameter, ssm_client  # noqa: E402
 
 SECONDS = 60
-COMMAND = "cd /opt/release-demo && /opt/release-demo-venv/bin/python scripts/demos/leaked-token/take_token.py"
+# AWS-StartNonInteractiveCommand runs this without a shell, so no cd and no &&.
+COMMAND = "/opt/release-demo-venv/bin/python /opt/release-demo/scripts/demos/leaked-token/take_token.py"
 
 
 def from_host(the_host=None, run=subprocess.run):
@@ -31,7 +32,7 @@ def from_host(the_host=None, run=subprocess.run):
     result = run(["aws", "ssm", "start-session", "--target", the_host.id,
                   "--document-name", "AWS-StartNonInteractiveCommand",
                   "--parameters", json.dumps({"command": [COMMAND]})],
-                 capture_output=True, text=True, timeout=120)
+                 capture_output=True, text=True, timeout=120, env=aws_cli_env())
     from rotators import records
 
     tokens = records.tokens_in(result.stdout)

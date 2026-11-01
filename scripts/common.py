@@ -72,6 +72,16 @@ def aws_session():
     return boto3.Session(profile_name=profile, region_name=REGION)
 
 
+def aws_cli_env():
+    """The environment for an aws command run from here: the profile aws_session() falls
+    back to is boto3's choice, and the CLI wouldn't find it by itself."""
+    env = dict(os.environ, AWS_DEFAULT_REGION=REGION)
+    profile = aws_session().profile_name
+    if profile and profile != "default":
+        env["AWS_PROFILE"] = profile
+    return env
+
+
 def ssm_client():
     """SSM, after checking the credentials work, or a clear message to sign in.
     The check is sts:GetCallerIdentity, which every identity may call."""

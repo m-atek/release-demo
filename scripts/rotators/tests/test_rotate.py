@@ -580,3 +580,33 @@ def test_the_check_asks_jenkins_for_a_crumb_before_its_script_console():
     method, path, body, headers = jenkins.calls[-1]
     assert (method, path, headers) == ("POST", "/scriptText", {"Jenkins-Crumb": "c0ffee"})
     assert "MessageDigest" in body["script"]
+
+
+def test_the_token_comes_over_a_session_without_a_shell_and_with_the_profile(monkeypatch):
+    """AWS-StartNonInteractiveCommand runs the command without a shell, so "cd ... && ..." only
+    failed; and the aws command doesn't look for the release-demo profile as boto3's session does."""
+    import clipboard
+
+    assert not set("&;|") & set(clipboard.COMMAND) and clipboard.COMMAND.split()[1].startswith("/")
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    monkeypatch.setattr(clipboard, "aws_cli_env", lambda: {"AWS_PROFILE": "release-demo"})
+    seen = {}
+
+    def run(args, **kwargs):
+        seen.update(kwargs)
+        return subprocess.CompletedProcess(args, 0, "Starting session\neyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJl\n", "")
+
+    the_host = type("Host", (), {"id": "i-test"})()
+    assert clipboard.from_host(the_host, run=run).startswith("eyJ")
+    assert seen["env"]["AWS_PROFILE"] == "release-demo"
+
+
+def test_the_cli_gets_the_profile_boto3_falls_back_to(monkeypatch):
+    import common
+
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    monkeypatch.setattr(common, "aws_session", lambda: type("S", (), {"profile_name": "release-demo"})())
+    env = common.aws_cli_env()
+    assert env["AWS_PROFILE"] == "release-demo" and env["AWS_DEFAULT_REGION"] == common.REGION
+    monkeypatch.setattr(common, "aws_session", lambda: type("S", (), {"profile_name": "default"})())
+    assert "AWS_PROFILE" not in common.aws_cli_env(), "the tools host's instance role has no profile"
