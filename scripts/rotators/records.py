@@ -14,8 +14,9 @@ JWT = re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{1
 INCIDENT_PREFIX = "JFrog token of release-pipeline exposed: "
 CMDB_ITEM = "jfrog-container-registry"
 RESOLVED = "6"
-# The instance's own choice for a solved incident, by label, best first.
-SOLVED = ("Solution provided", "Solved (Permanently)", "Solved Remotely (Permanently)", "Solved (Work Around)")
+# The instance's close code for a solved incident. release.pipeline may not read sys_choice,
+# so it is named here; the instance's value has an en dash in it, hence the escape.
+SOLVED_CODE = "Resolved \u2013 Permanent Fix Applied"
 
 
 # Slack
@@ -55,18 +56,6 @@ def author(user_id, everyone):
 
 # ServiceNow
 
-def solved_code(sn):
-    """The close code a resolved incident takes, from the instance's own choices."""
-    rows = sn.call("GET", "/api/now/table/sys_choice", sysparm_query="name=incident^element=close_code^inactive=false",
-                   sysparm_fields="value,label") or []
-    labels = {row["label"]: row["value"] for row in rows}
-    for wanted in SOLVED:
-        if wanted in labels:
-            return labels[wanted]
-    solved = [row["value"] for row in rows if row["label"].lower().startswith(("solved", "solution"))]
-    return solved[0] if solved else "Solution provided"
-
-
 def open_incident(sn, reason, description):
     item = sn.find("cmdb_ci_appl", f"name={CMDB_ITEM}", "sys_id")
     group = sn.find("sys_user_group", "name=Platform team", "sys_id")
@@ -87,7 +76,7 @@ def note(sn, incident, text):
 
 def resolve(sn, incident, notes):
     sn.call("PATCH", f"/api/now/table/incident/{incident['sys_id']}",
-            {"state": RESOLVED, "close_code": solved_code(sn), "close_notes": notes})
+            {"state": RESOLVED, "close_code": SOLVED_CODE, "close_notes": notes})
 
 
 def open_leak_incidents(sn):

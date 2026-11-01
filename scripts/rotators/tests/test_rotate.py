@@ -89,8 +89,6 @@ class FakeServiceNow:
 
     def call(self, method, path, body=None, **query):
         self.calls.append((method, path, body))
-        if path == "/api/now/table/sys_choice":
-            return [{"value": "Duplicate", "label": "Duplicate"}, {"value": "Solution provided", "label": "Solution provided"}]
         if method == "POST":
             return {"sys_id": "incident-id", "number": "INC0010041"}
         return {}
@@ -200,7 +198,7 @@ def test_the_incident_holds_the_timeline_and_the_leak_time(take):
     assert "The Slack message stays; the token in it no longer works." in note
     assert "scripts/deploy.py, scripts/publish.py and 1 more" in note
     resolved = next(body for method, path, body in host.sn.calls if body and body.get("state") == "6")
-    assert resolved["close_code"] == "Solution provided"
+    assert resolved["close_code"] == records.SOLVED_CODE
     assert resolved["close_notes"] == ("Leak to useless: 0m 12s. Revoked, replaced and proven dead by "
                                        "scripts/rotate.py.")
 
@@ -397,8 +395,9 @@ def test_the_mac_prints_the_host_s_lines_and_nothing_else(capsys):
 
     assert rotate.stream(TheHost(), 1200, popen=popen) == 0
     assert capsys.readouterr().out == "14:02:16  found     in #releases, posted 14:02:09\nLeak to useless: 0m 12s\n"
-    assert process.terminated and "AWS-StartNonInteractiveCommand" in seen["args"]
-    assert json.loads(seen["args"][-1]) == {"command": ["tail -c +1201 -F /var/log/release-demo-rotate.log"]}
+    assert process.terminated and "AWS-StartInteractiveCommand" in seen["args"]
+    command = json.loads(seen["args"][-1])["command"][0]
+    assert command.endswith("/scripts/follow_log.py /var/log/release-demo-rotate.log 1200")
 
 
 def test_the_host_runs_it_as_its_own_unit_with_the_reason_quoted():
@@ -610,3 +609,24 @@ def test_the_cli_gets_the_profile_boto3_falls_back_to(monkeypatch):
     assert env["AWS_PROFILE"] == "release-demo" and env["AWS_DEFAULT_REGION"] == common.REGION
     monkeypatch.setattr(common, "aws_session", lambda: type("S", (), {"profile_name": "default"})())
     assert "AWS_PROFILE" not in common.aws_cli_env(), "the tools host's instance role has no profile"
+
+
+def test_the_log_is_followed_from_the_offset_to_the_exit_line(tmp_path):
+    import io
+
+    import follow_log
+
+    log = tmp_path / "rotate.log"
+    log.write_text("an earlier run\n== exit 0\n== 2026-11-02T13:02:15Z rotate.py jcr\n14:02:16  found\n== exit 1\nnot read\n")
+    out = io.StringIO()
+    assert follow_log.follow(log, len("an earlier run\n== exit 0\n"), out=out) == 0
+    assert out.getvalue() == "== 2026-11-02T13:02:15Z rotate.py jcr\n14:02:16  found\n== exit 1\n"
+
+
+def test_an_incident_resolves_without_reading_the_choice_list_the_pipeline_may_not_read():
+    from rotators import records as the_records
+
+    calls = []
+    sn = type("SN", (), {"call": lambda self, method, path, body=None, **q: calls.append((method, path, body))})()
+    the_records.resolve(sn, {"sys_id": "i"}, "Leak to useless: 0m 12s.")
+    assert len(calls) == 1 and calls[0][2]["close_code"] == "Resolved \u2013 Permanent Fix Applied"

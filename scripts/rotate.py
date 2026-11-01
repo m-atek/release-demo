@@ -82,9 +82,10 @@ def stream(the_host, offset, popen=subprocess.Popen):
     """Prints the log from offset as it grows, through Session Manager, until the run's exit line."""
     from common import aws_cli_env
 
-    command = f"tail -c +{offset + 1} -F {LOG}"
+    # Interactive, because a non-interactive session delivers nothing until its command ends.
+    command = f"{host.PYTHON} {host.REPO_DIR}/scripts/follow_log.py {LOG} {offset}"
     process = popen(["aws", "ssm", "start-session", "--target", the_host.id,
-                     "--document-name", "AWS-StartNonInteractiveCommand",
+                     "--document-name", "AWS-StartInteractiveCommand",
                      "--parameters", json.dumps({"command": [command]})],
                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1, env=aws_cli_env())
     try:
