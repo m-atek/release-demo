@@ -31,15 +31,20 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
-# owner/release-demo, which scripts/github_app.py wrote: the subjects name it.
-data "aws_ssm_parameter" "repository" {
-  name = "/release-demo/github/repository"
+# How this repository's OIDC subjects start, which tf.sh reads from GitHub's API.
+# A repository made after 15 July 2026 has ids in them, repo:owner@id/name@id, so
+# that a recycled name can't match: repo:owner/name would match nothing here.
+variable "subject_prefix" {
+  type = string
+  validation {
+    condition     = startswith(var.subject_prefix, "repo:")
+    error_message = "subject_prefix comes from GitHub's API: run this through scripts/demos/github_actions/tf.sh."
+  }
 }
 
 locals {
   account_id = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.region
-  repository = nonsensitive(data.aws_ssm_parameter.repository.value)
   orders     = yamldecode(file("${path.module}/../../../services.yaml"))["orders-service"]
   parameters = yamldecode(file("${path.module}/../../parameters.yaml"))
 }

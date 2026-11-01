@@ -36,4 +36,9 @@ fi
 # .terraform/terraform.tfstate records the backend; without it, init first.
 [[ -f ${TF_DATA_DIR:-$DIR/.terraform}/terraform.tfstate ]] ||
   terraform -chdir="$DIR" init -input=false -backend-config="bucket=$(state_bucket)"
+# How this repository's OIDC subjects start, as GitHub gives it (main.tf).
+repository=$(aws ssm get-parameter --name /release-demo/github/repository --with-decryption --query Parameter.Value --output text)
+TF_VAR_subject_prefix=$(gh api "repos/$repository/actions/oidc/customization/sub" --jq .sub_claim_prefix)
+[[ $TF_VAR_subject_prefix == repo:* ]] || { echo "GitHub didn't give this repository's OIDC subject. Is gh signed in?" >&2; exit 1; }
+export TF_VAR_subject_prefix
 terraform -chdir="$DIR" "$@"

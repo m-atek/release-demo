@@ -28,7 +28,7 @@ locals {
 
   roles = {
     ci = {
-      subject     = "repo:${local.repository}:ref:refs/heads/main"
+      subject     = "${var.subject_prefix}:ref:refs/heads/main"
       environment = null
       parameters = concat(local.common_parameters, local.jfrog_parameters, [
         "jira/site-url", "jira/email", "jira/api-token",
@@ -38,12 +38,12 @@ locals {
       ])
     }
     staging = {
-      subject     = "repo:${local.repository}:environment:staging"
+      subject     = "${var.subject_prefix}:environment:staging"
       environment = "staging"
       parameters  = concat(local.common_parameters, local.jfrog_parameters)
     }
     production = {
-      subject     = "repo:${local.repository}:environment:production"
+      subject     = "${var.subject_prefix}:environment:production"
       environment = "production"
       parameters = concat(local.common_parameters, local.jfrog_parameters, [
         "jira/site-url", "jira/email", "jira/api-token",

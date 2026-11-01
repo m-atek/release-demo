@@ -274,3 +274,13 @@ def test_the_test_change_has_time_to_exist_before_the_job_that_waits_on_it():
     assert wait["name"] == bridge_test.WAITING_JOB and wait["environment"] == "bridge-test" and wait["needs"] == "change"
     assert "environment" not in workflow["jobs"]["change"]
 
+
+def test_the_roles_trust_the_subject_github_really_sends():
+    """A repository made after 15 July 2026 sends repo:owner@id/name@id. Written out as
+    repo:owner/name, every job's AWS sign-in was refused on GitHub Actions' first real run."""
+    root = bridge_test.ROOT
+    roles = (root / "infra" / "demos" / "14-github-actions" / "roles.tf").read_text()
+    assert roles.count("${var.subject_prefix}:") == 3 and "repo:${" not in roles
+    tf_sh = (root / "scripts" / "demos" / "github_actions" / "tf.sh").read_text()
+    assert "actions/oidc/customization/sub" in tf_sh and "sub_claim_prefix" in tf_sh and "export TF_VAR_subject_prefix" in tf_sh
+
