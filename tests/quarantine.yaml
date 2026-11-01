@@ -7,4 +7,10 @@
 # stage, and it isn't rerun. From the day after until, the entry fails the Test
 # stage at its start: fix the test and remove the entry, or extend it.
 
-quarantine: []
+quarantine:
+  - service: orders-service
+    test: tests/test_handler.py::test_delivery_estimate_timeout
+    issue: ORD-101
+    since: 2026-11-01
+    until: 2026-11-15
+    reason: 9 of 78 runs in 14 days failed, then passed on rerun.
