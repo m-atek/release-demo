@@ -30,6 +30,7 @@ from github_demo import ROOT, App, fail, gh, gh_api, gh_signed_in, repository
 from change import connect  # noqa: E402  (scripts/, which github_demo puts on the path)
 
 WORKFLOW = "bridge-test.yml"
+WAITING_JOB = "Waits for ServiceNow"
 SOURCE = "scripts/demos/github_actions/bridge-test.yml"
 NOTE = "Approval bridge check by bridge_test.py: cancelled after the check."
 
@@ -37,13 +38,17 @@ NOTE = "Approval bridge check by bridge_test.py: cancelled after the check."
 def workflow_on_main(repo):
     """With your gh login: GitHub refuses workflow files from an app without the
     workflows permission, which the release-demo app doesn't need otherwise."""
-    if gh_api("GET", f"/repos/{repo}/contents/.github/workflows/{WORKFLOW}?ref=main", check=False):
-        return
     content = base64.b64encode((ROOT / SOURCE).read_bytes()).decode()
-    gh_api("PUT", f"/repos/{repo}/contents/.github/workflows/{WORKFLOW}",
-           {"message": "Day one: a throwaway workflow for the approval bridge [skip ci]", "content": content,
-            "branch": "main"})
+    found = gh_api("GET", f"/repos/{repo}/contents/.github/workflows/{WORKFLOW}?ref=main", check=False)
+    if found and found.get("content", "").replace("\n", "") == content:
+        return
+    body = {"message": "Day one: a throwaway workflow for the approval bridge [skip ci]", "content": content,
+            "branch": "main"}
+    if found:
+        body["sha"] = found["sha"]
+    gh_api("PUT", f"/repos/{repo}/contents/.github/workflows/{WORKFLOW}", body)
     print(f"Put .github/workflows/{WORKFLOW} on main")
+    time.sleep(10)  # gh answers 404 for a workflow until GitHub has registered it
 
 
 def start_run(repo):
@@ -91,7 +96,7 @@ def watch(sn, app, run_id, change_id, number):
             decided = (record["approval"], utc(record["sys_updated_on"]))
             print(f"{number}: {decided[0]} in ServiceNow")
         jobs = app.call("GET", f"/repos/{app.repository}/actions/runs/{run_id}/jobs")["jobs"]
-        job = jobs[0] if jobs else {}
+        job = next((j for j in jobs if j["name"] == WAITING_JOB), {})
         if decided and decided[0] == "approved" and job.get("started_at") and job.get("status") != "waiting":
             took = utc(job["started_at"]) - decided[1]
             verdict = "ok" if took < 20 else "TOO SLOW: fix the bridge before recording"

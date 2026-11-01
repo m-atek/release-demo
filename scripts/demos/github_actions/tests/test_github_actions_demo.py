@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 import app_hook
+import yaml
+
 import bridge_test
 import environments
 import github_demo
@@ -187,13 +189,14 @@ def test_the_throwaway_workflow_comes_and_goes_with_your_gh_login_not_the_app(mo
         if method == "GET":
             return {"name": "bridge-test"} if "/environments/" in path else on_main.get("file")
         if method == "PUT":
-            on_main["file"] = {"sha": "abc"}
+            on_main["file"] = {"sha": "abc", "content": body["content"]}
         if method == "DELETE" and "contents" in path:
             assert body["sha"] == "abc" and "[skip ci]" in body["message"]
             on_main.pop("file")
         return {}
 
     monkeypatch.setattr(bridge_test, "gh_api", gh_api)
+    monkeypatch.setattr(bridge_test.time, "sleep", lambda s: None)
     monkeypatch.setattr(bridge_test, "gh_signed_in", lambda: True)
     monkeypatch.setattr(bridge_test, "repository", lambda: "owner/release-demo")
     monkeypatch.setattr(bridge_test, "App", lambda *a: pytest.fail("the GitHub App may not write workflow files"))
@@ -248,3 +251,26 @@ def test_the_check_wants_the_account_id_variable(monkeypatch, capsys):
     assert environments.check("owner/release-demo", APP_ID, ["staging", "production"]) == 1
     out = capsys.readouterr().out
     assert "no variable AWS_ACCOUNT_ID" in out and out.endswith("1 thing(s) to fix.\n")
+
+
+def test_a_changed_throwaway_workflow_replaces_the_one_on_main(monkeypatch):
+    puts = []
+
+    def gh_api(method, path, body=None, check=True):
+        if method == "GET":
+            return {"sha": "old", "content": "b2xk\n"}
+        puts.append(body)
+        return {}
+
+    monkeypatch.setattr(bridge_test, "gh_api", gh_api)
+    monkeypatch.setattr(bridge_test.time, "sleep", lambda s: None)
+    bridge_test.workflow_on_main("owner/release-demo")
+    assert puts[0]["sha"] == "old" and "[skip ci]" in puts[0]["message"]
+
+
+def test_the_test_change_has_time_to_exist_before_the_job_that_waits_on_it():
+    workflow = yaml.safe_load((bridge_test.ROOT / bridge_test.SOURCE).read_text())
+    wait = workflow["jobs"]["wait"]
+    assert wait["name"] == bridge_test.WAITING_JOB and wait["environment"] == "bridge-test" and wait["needs"] == "change"
+    assert "environment" not in workflow["jobs"]["change"]
+
