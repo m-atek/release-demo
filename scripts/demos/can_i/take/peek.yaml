@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: peek }
+spec:
+  selector:
+    matchLabels: { app: peek }
+  template:
+    metadata:
+      labels: { app: peek }
+    spec:
+      volumes:
+        - name: s
+          secret: { secretName: catalog-db }
+      containers:
+        - name: peek
+          image: busybox:1.37
+          command: ["sh", "-c"]
+          args: ["cat /s/password; echo; sleep 3600"]
+          volumeMounts:
+            - { name: s, mountPath: /s }

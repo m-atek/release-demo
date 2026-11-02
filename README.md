@@ -610,6 +610,25 @@ On the call: as Pieter, `kubectl -n production scale deploy/catalog --replicas=5
 
 After the call: `scripts/demo.sh down argocd` stops the host (USD 0.096 an hour while it runs; its disk about USD 1.76 a month). It also stops itself after 30 idle minutes. `scripts/demo.sh status argocd` shows the host, the application, open drift incidents and the certificate's expiry.
 
+## Demo on a call: can-i says no, the Secret opens anyway (video 26)
+
+Sam's Kubernetes role answers no to `kubectl auth can-i get secrets`, and the same role may create a Deployment, so a pod that mounts the Secret prints it. It runs on demo 8's cluster and costs nothing beyond the tools host. The values are fake and say so themselves: `demo-value-not-a-real-password` in production, `staging-only-demo-value` in staging, in `scripts/demos/can_i/cluster/secrets.yaml`. catalog mounts neither.
+
+Demo 8's cluster gains three things for it, in `scripts/demos/kubernetes/host/`: an audit log (`audit-policy.yaml`; Secrets only ever at Metadata, at most 250 MB of the data volume), Pod Security baseline on staging and production (`cluster.yaml`), and a certificate for Sam in the group `release-demo:developers` (`k3s.py developer`), for 8 hours, with the key staying on the Mac. The first `up` after these restarts k3s once; the pods keep running through it.
+
+Before the call:
+
+1. `scripts/tools.sh up`, then `scripts/demo.sh up can-i`. It refuses while demo 19's cluster host runs (one catalog production at a time), and `up argocd` refuses the other way round.
+2. `.venv/bin/python scripts/reset.py can-i`: both namespaces on 1.8.2, no peek, the role with its deploy rights, `busybox:1.37` on the node, 1.9.1 staged on main. Under two minutes, safe to run twice; `--dry-run` lists the steps. It ends "Ready for a take".
+3. `.venv/bin/python scripts/demos/can_i/connect.py` in a terminal of its own: `~/.kube/release-demo/sam` and `~/.kube/release-demo/config`, and the tunnels until Ctrl-C.
+4. A check without Slack or ServiceNow: `.venv/bin/python scripts/demos/can_i/check.py` prints one ok or FAIL line for each of the acceptance checks 1 and 3 to 6, by real requests as Sam, and puts the role back. Then run the reset again.
+
+On the call, in `scripts/demos/can_i/take/`, as Sam: `kubectl auth can-i get secrets -n production` (no), `kubectl -n production get secret catalog-db` (Forbidden), `kubectl auth can-i create deployments -n production` (yes), `kubectl -n production apply -f peek.yaml`, then `kubectl -n production logs deploy/peek` (the value). As the admin, `.venv/bin/python scripts/demos/can_i/who.py peek` prints the audit log: Sam's refused read, the pod's creator, and the read of the Secret under the node's name. The fix: delete peek, and as the admin `git diff --no-index -U99 before.yaml after.yaml` and `kubectl apply -f after.yaml`. The same `apply` as Sam is now Forbidden, while he keeps pods, logs and staging. Then `/release catalog ORD-90` as Sam, and `who.py catalog` names the pipeline's account on the Deployment. `check.py --audit` holds the audit log to the script's words afterwards.
+
+A Deployment that mounts the node's disk must never run on the tools host. The one such file, `checks/hostpath.yaml`, exists so Pod Security can refuse it: check.py applies it only with the labels on and after a dry run has been refused, and it can't start anyway (no node matches its selector, and its path doesn't exist).
+
+After the call: `scripts/demo.sh down can-i` removes the objects with the label `release-demo/demo: can-i` and any peek, then stops k3s. `scripts/demo.sh status can-i` shows the role's state, the fake Secrets by name, the audit log's size, the labels and Sam's certificate's expiry, and never a value.
+
 ## Demo on a call: a RAG assistant with an evaluation before production (demo 23)
 
 runbook-assistant answers on-call questions from the store company's runbooks and past changes. Its pages, chunk tables and search index live in Databricks; retired pages stay in the table, marked retired, and keeping them out of answers is the retriever's job. Answers come from Claude through `scripts/llm.py`. Every version answers the same forty questions (`scripts/demos/rag/questions.yaml`) against staging in the Evaluation stage, after Check staging: a judge model scores each answer as correct and grounded, code checks every page it cites, and the gate in services.yaml decides. Nothing a model writes approves a release.

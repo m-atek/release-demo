@@ -4,6 +4,10 @@
     k3s.py down               stop k3s and every pod it runs, so it uses no memory
     k3s.py status             running or not, the releases' pods, the memory used
     k3s.py presenter CSR      sign the Mac's certificate request for the video's terminal (8 hours)
+    k3s.py developer CSR      the same for Sam, video 26, in the group release-demo:developers and no other
+    k3s.py audit --since UTC --namespace NAMESPACE --name NAME
+                              the audit log's matching events as JSON lines: time, code, verb, resource,
+                              subresource, name, namespace and user, and nothing else
 
 scripts/demos/kubernetes/host.py runs it through SSM Run Command. The tools
 host installs k3s at its first boot, but neither enables nor starts it: the
@@ -14,13 +18,16 @@ up writes k3s's own configuration and nothing else on the host:
 - /etc/rancher/k3s/config.yaml: one node; Traefik, ServiceLB, metrics-server
   and the local-path provisioner off; data on the data volume; pods held to
   PODS_MIB by the kubelet (system-reserved is the rest of the host's memory);
+  the API server's audit log on, with audit-policy.yaml, at most 250 MB;
 - /etc/rancher/k3s/registries.yaml: k3s pulls artifactory-demo.es.nl images
   from JCR on the host's local network, with a read-only token that expires
   after 12 hours, made afresh at each up;
 - a drop-in that holds k3s itself (server, containerd) to K3S_MIB.
 """
 
+import argparse
 import base64
+import datetime
 import json
 import os
 import subprocess
@@ -40,6 +47,9 @@ CONFIG_DIR = Path("/etc/rancher/k3s")
 DROP_IN = Path("/etc/systemd/system/k3s.service.d/release-demo.conf")
 DATA_DIR = "/data/k3s"
 ADMIN = CONFIG_DIR / "k3s.yaml"
+AUDIT_POLICY = Path(DATA_DIR) / "server" / "audit.yaml"
+AUDIT_LOG = Path(DATA_DIR) / "server" / "logs" / "audit.log"
+DEVELOPERS = "release-demo:developers"
 SECRETS = Path("/run/release-demo/secrets")
 JCR = "http://127.0.0.1:8082"
 REGISTRY_NAME = "artifactory-demo.es.nl"
@@ -48,8 +58,8 @@ K3S_MIB = 768  # the k3s server and containerd
 PULL_TOKEN_SECONDS = 12 * 3600
 
 
-def run(*command, check=True):
-    result = subprocess.run(command, capture_output=True, text=True)
+def run(*command, check=True, stdin=None):
+    result = subprocess.run(command, capture_output=True, text=True, input=stdin)
     if check and result.returncode != 0:
         raise SystemExit(f"{' '.join(command[:3])} failed: {result.stderr.strip() or result.stdout.strip()}")
     return result.stdout
@@ -92,6 +102,8 @@ def k3s_config():
         "disable": ["traefik", "servicelb", "metrics-server", "local-storage"],
         "kubelet-arg": [f"system-reserved=memory={reserved}Mi", "kube-reserved=memory=0Mi",
                         "enforce-node-allocatable=pods", "eviction-hard=memory.available<100Mi", "max-pods=40"],
+        "kube-apiserver-arg": [f"audit-policy-file={AUDIT_POLICY}", f"audit-log-path={AUDIT_LOG}",
+                               "audit-log-format=json", "audit-log-maxsize=50", "audit-log-maxbackup=4"],
     }
 
 
@@ -124,6 +136,8 @@ def configure(active):
     """k3s's configuration. Returns True when k3s must (re)start to pick up a change.
     A running k3s keeps the pull token it started with."""
     changed = write_private(CONFIG_DIR / "config.yaml", yaml.safe_dump(k3s_config(), sort_keys=False))
+    changed |= write_private(AUDIT_POLICY, (HERE / "audit-policy.yaml").read_text())
+    AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
     if changed or not active:
         registries = {"mirrors": {REGISTRY_NAME: {"endpoint": [JCR]}},
                       "configs": {JCR.split("//")[1]: {"auth": {"username": "k3s-pull", "password": pull_token()}}}}
@@ -248,9 +262,43 @@ def status():
 
 
 def presenter(csr_base64):
+    sign(csr_base64, f"release-demo-presenter-{int(time.time())}")
+
+
+def subject_fields(line):
+    """[(type, value), ...] from openssl's one-line subject, -nameopt RFC2253: a comma or a
+    plus ends a field unless a backslash escapes it, so one value can't pose as two."""
+    fields, field, escaped = [], "", False
+    for char in line.strip().removeprefix("subject=") + ",":
+        if escaped:
+            field, escaped = field + char, False
+        elif char == "\\":
+            field, escaped = field + char, True
+        elif char in ",+":
+            kind, _, value = field.partition("=")
+            fields.append((kind.strip(), value))
+            field = ""
+        else:
+            field += char
+    return fields
+
+
+def developer(csr_base64):
+    """Sam's certificate, for video 26: only for a request whose one group is DEVELOPERS, and
+    whose name isn't one the cluster keeps for itself. Otherwise as presenter."""
+    subject = run("openssl", "req", "-noout", "-subject", "-nameopt", "RFC2253",
+                  stdin=base64.b64decode(csr_base64).decode())
+    fields = subject_fields(subject)
+    groups = [value for kind, value in fields if kind == "O"]
+    names = [value for kind, value in fields if kind == "CN"]
+    if groups != [DEVELOPERS] or len(names) != 1 or not names[0] or names[0].startswith("system:"):
+        raise SystemExit(f"Not a developer's request: {subject.strip()}")
+    sign(csr_base64, f"release-demo-developer-{int(time.time())}")
+
+
+def sign(csr_base64, name):
     """Sign a certificate request from the Mac with the cluster's client CA, for 8 hours.
     The private key never leaves the Mac. Prints the certificate and the CA, both public."""
-    name = f"release-demo-presenter-{int(time.time())}"
     request = {"apiVersion": "certificates.k8s.io/v1", "kind": "CertificateSigningRequest",
                "metadata": {"name": name},
                "spec": {"request": csr_base64, "signerName": "kubernetes.io/kube-apiserver-client",
@@ -269,6 +317,62 @@ def presenter(csr_base64):
     print(json.dumps({"certificate": certificate, "ca": ca}))
 
 
+def moment(text):
+    return datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+
+
+def audit_files(since):
+    """The audit log and its rotated copies that can hold events since then, oldest first."""
+    files = sorted(AUDIT_LOG.parent.glob("audit*.log"), key=lambda path: path.stat().st_mtime)
+    return [path for path in files if path.stat().st_mtime >= since.timestamp()]
+
+
+def audit_row(event):
+    """Only these fields leave the host. Never a request's or a response's body. The one thing read
+    from a body is a made pod's name, because the log holds that name nowhere else."""
+    reference = event.get("objectRef") or {}
+    made = (event.get("responseObject") or {}).get("metadata") or {}
+    return {"time": event.get("requestReceivedTimestamp"), "code": (event.get("responseStatus") or {}).get("code"),
+            "verb": event.get("verb"), "resource": reference.get("resource"),
+            "subresource": reference.get("subresource"), "name": reference.get("name") or made.get("name"),
+            "namespace": reference.get("namespace"), "user": (event.get("user") or {}).get("username")}
+
+
+def audit_rows(lines, since, namespace, name):
+    """The matching rows: an object whose name equals or starts with name, and for peek also
+    the Secret it mounts, whose refused read and whose read by the node the video shows.
+    A server-side dry run is audited like a write and writes nothing, so it isn't one of them."""
+    words = [name, "catalog-db"] if name == "peek" else [name]
+    for line in lines:
+        if not any(word in line for word in words):
+            continue
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue  # the log's last line, while it is being written
+        if "dryRun=" in event.get("requestURI", ""):
+            continue
+        row = audit_row(event)
+        if row["namespace"] != namespace or not row["time"] or moment(row["time"]) < since:
+            continue
+        mounted = name == "peek" and (row["resource"], row["name"]) == ("secrets", "catalog-db")
+        if mounted or (row["name"] or "").startswith(name):
+            yield row
+
+
+def audit(arguments):
+    parser = argparse.ArgumentParser(prog="k3s.py audit")
+    parser.add_argument("--since", required=True, help="UTC, for example 2026-11-02T13:22:04Z")
+    parser.add_argument("--namespace", required=True)
+    parser.add_argument("--name", required=True)
+    options = parser.parse_args(arguments)
+    since = moment(options.since)
+    for path in audit_files(since):
+        with open(path, encoding="utf-8", errors="replace") as log:
+            for row in audit_rows(log, since, options.namespace, options.name):
+                print(json.dumps(row))
+
+
 def main():
     if os.geteuid() != 0:
         raise SystemExit("Run as root on the tools host, through scripts/demos/kubernetes/host.py.")
@@ -281,6 +385,10 @@ def main():
         status()
     elif command == "presenter" and len(sys.argv) == 3:
         presenter(sys.argv[2])
+    elif command == "developer" and len(sys.argv) == 3:
+        developer(sys.argv[2])
+    elif command == "audit":
+        audit(sys.argv[2:])
     else:
         raise SystemExit(__doc__)
 

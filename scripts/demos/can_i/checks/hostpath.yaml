@@ -1,0 +1,29 @@
+# Acceptance check 5 and nothing else: Pod Security baseline refuses this pod.
+# The route it stands for must never run on the tools host, so it couldn't run
+# even with Pod Security off: no node has this label, so the pod would stay
+# Pending; the path doesn't exist, so the volume wouldn't mount; and the
+# container reads nothing. check.py applies it only after a dry run has shown
+# the namespace refusing it, and never without the labels.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hostpath-check
+  labels: { release-demo/demo: can-i }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: hostpath-check }
+  template:
+    metadata:
+      labels: { app: hostpath-check }
+    spec:
+      nodeSelector: { release-demo/never-scheduled: "true" }
+      volumes:
+        - name: host
+          hostPath: { path: /nonexistent/can-i-check, type: Directory }
+      containers:
+        - name: check
+          image: busybox:1.37
+          command: ["true"]
+          volumeMounts:
+            - { name: host, mountPath: /host, readOnly: true }
