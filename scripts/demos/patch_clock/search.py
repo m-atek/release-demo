@@ -263,9 +263,14 @@ def summary(rows):
     return f"{said} {unknown} couldn't be searched." if unknown else said
 
 
+def slack_escaped(text):
+    """Slack reads &, < and > as its own marks: a range such as <1.2.1 || >=2.0 would turn into a link. It shows these as typed."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def reply(vulnerability, facts, asked_by, rows, seconds, others):
     count = len(rows)
-    text = ["\n".join(line for line in (head(vulnerability, facts, asked_by), advisory_line(facts, rows)) if line),
+    text = ["\n".join(line for line in (head(vulnerability, facts, asked_by), slack_escaped(advisory_line(facts, rows))) if line),
             "\n".join([f"Searched the SBOMs of {count} live service{'' if count == 1 else 's'} in {run_state.duration(seconds)}:",
                        *(f"{ICON[row.kind]}  {row.says}" for row in rows)]),
             summary(rows)]

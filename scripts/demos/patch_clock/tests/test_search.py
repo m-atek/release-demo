@@ -5,6 +5,7 @@ checksum mismatch are never clear. AWS, JFrog and Grype are fakes.
 """
 
 import ast
+import html
 import io
 import json
 import re
@@ -30,7 +31,8 @@ REQUESTED = 1793000000.0
 
 
 def searched(vulnerability="CVE-2026-111497", asked_by=SAM):
-    return search.search(vulnerability, asked_by, REQUESTED)
+    """The reply as Slack shows it."""
+    return html.unescape(search.search(vulnerability, asked_by, REQUESTED))
 
 
 @pytest.fixture
@@ -50,6 +52,19 @@ Searched the SBOMs of 3 live services in 31s:
 1 of 3 holds it.
 
 {NOT_SEARCHED}"""
+
+
+def test_slack_gets_the_range_escaped_and_the_mention_as_it_is(world):
+    sent = search.search("CVE-2026-111497", SAM, REQUESTED)
+    assert "\nbrotli &gt;=1.0.3,&lt;1.2.1 · fixed in 1.2.1 · published 22 Oct 2026\n" in sent
+    assert f"asked by <@{SAM}>\n" in sent
+
+
+def test_a_range_that_could_read_as_a_link_goes_out_escaped():
+    facts = {"severity": "Critical", "known_exploited": False, "published": None, "names": {"a"}, "ids": {"CVE-1"},
+             "packages": [{"name": "a", "range": ["<1.0", ">=2.0,<2.1"], "fixed": ["1.0", "2.1"], "unfixed": False}]}
+    assert search.advisory_line(facts, []) == "a <1.0 || >=2.0,<2.1 · fixed in 1.0 or 2.1"
+    assert "\na &lt;1.0 || &gt;=2.0,&lt;2.1 · fixed in 1.0 or 2.1\n" in search.reply("CVE-1", facts, SAM, [], 1, [])
 
 
 def test_the_second_reply_names_the_patched_package_and_says_0_of_3(world, six_not_searched):
