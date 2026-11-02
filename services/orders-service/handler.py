@@ -3,7 +3,12 @@
 An AWS Lambda function behind a function URL. It serves one page with the
 service, environment, version, commit and deploy time in large type, a /health
 endpoint for the pipeline's checks, and /api/orders with today's fictional
-orders for the desktop and mobile demos. Standard library only.
+orders for the desktop and mobile demos. Standard library and boto3, which
+Lambda's runtime has.
+
+From 1.8.0 it reads feature flags from AWS AppConfig (flags.yaml names them):
+one session per container, polled at most every 15 seconds, AppConfig's
+minimum. A flag that is missing, or no answer, means off.
 """
 
 import datetime
@@ -12,6 +17,7 @@ import html
 import itertools
 import json
 import os
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -34,8 +40,20 @@ PRODUCTS = [
     ("Sports socks, 3 pairs", 14.99),
 ]
 STATUSES = ["received", "picking", "packed", "shipped"]
+DELIVERY_ESTIMATE_DAYS = 2
+DEFAULT_STORE = "Utrecht Centraal"
+# The delivery estimate per carrier: each store's carrier and its days.
+CARRIERS = {
+    "Utrecht Centraal": ("Polder Post", 2),
+    "Amsterdam Zuid": ("Grachtkoerier", 1),
+    "Rotterdam Blaak": ("Maas Express", 2),
+    "Eindhoven Strijp": ("Brabant Bezorgt", 3),
+    "Den Haag Spui": ("Hofstad Koeriers", 2),
+}
+FLAGS_POLL_SECONDS = 15
 
 _deployed_at = None
+_flags = {"client": None, "token": None, "values": {}, "next_poll": 0.0}
 
 
 def read_package(directory):
@@ -94,9 +112,56 @@ def todays_orders(today=None):
                 "items": [name for name, _ in lines],
                 "total_eur": round(sum(price for _, price in lines), 2),
                 "status": STATUSES[pick(len(STATUSES))],
+                "item_count": len(lines),
             }
         )
     return {"date": today.isoformat(), "orders": orders}
+
+
+def flag(name):
+    """Whether a feature flag is on in this environment, from AWS AppConfig."""
+    now = time.monotonic()
+    if now >= _flags["next_poll"]:
+        _flags["next_poll"] = now + FLAGS_POLL_SECONDS
+        try:
+            _poll_flags()
+        except Exception as error:
+            print(f"{VERSION} flags: no answer from AWS AppConfig ({error.__class__.__name__}), every flag off")
+            _flags.update(token=None, values={})
+    return bool((_flags["values"].get(name) or {}).get("enabled"))
+
+
+def _poll_flags():
+    names = [os.environ.get(f"APPCONFIG_{part}") for part in ("APPLICATION", "ENVIRONMENT", "PROFILE")]
+    if not all(names):
+        _flags["values"] = {}
+        return
+    if _flags["client"] is None:
+        import boto3
+
+        _flags["client"] = boto3.client("appconfigdata")
+    client = _flags["client"]
+    if _flags["token"] is None:
+        application, environment_name, profile = names
+        _flags["token"] = client.start_configuration_session(
+            ApplicationIdentifier=application, EnvironmentIdentifier=environment_name,
+            ConfigurationProfileIdentifier=profile,
+            RequiredMinimumPollIntervalInSeconds=FLAGS_POLL_SECONDS)["InitialConfigurationToken"]
+    reply = client.get_latest_configuration(ConfigurationToken=_flags["token"])
+    _flags["token"] = reply["NextPollConfigurationToken"]
+    content = reply["Configuration"].read()
+    if content:  # empty when nothing changed since the last poll
+        _flags["values"] = json.loads(content)
+
+
+def delivery_estimate(store):
+    """(carrier, days) for a store, from the carrier table."""
+    return CARRIERS[store]
+
+
+def euros(amount):
+    """An amount as the page shows it, with a thousands separator: 1,234.50."""
+    return f"{amount:,.2f}"
 
 
 def _picker(seed):
@@ -126,7 +191,7 @@ def page():
     orders = todays_orders()["orders"]
     rows = "\n".join(
         f"<tr><td>{html.escape(o['id'])}</td><td>{html.escape(o['store'])}</td>"
-        f"<td>{len(o['items'])}</td><td>&euro; {o['total_eur']:.2f}</td>"
+        f"<td>{len(o['items'])}</td><td>&euro; {euros(o['total_eur'])}</td>"
         f"<td>{html.escape(o['status'])}</td></tr>"
         for o in orders[:5]
     )
@@ -136,9 +201,28 @@ def page():
         version=html.escape(VERSION),
         commit=html.escape(COMMIT[:7]),
         deployed=html.escape(deployed_at()),
+        estimate=estimate_line(),
         order_count=len(orders),
         rows=rows,
     )
+
+
+def estimate_line():
+    if flag("delivery_estimate_v2"):
+        carrier, days = delivery_estimate(DEFAULT_STORE)
+        return f"Delivery estimate: {days} days with {html.escape(carrier)}"
+    return f"Delivery estimate: {DELIVERY_ESTIMATE_DAYS} days"
+
+
+def estimate(event):
+    """/api/estimate?store=<store>, behind delivery_estimate_v2."""
+    if not flag("delivery_estimate_v2"):
+        return _json(404, {"error": "not found"})
+    store = (event.get("queryStringParameters") or {}).get("store", DEFAULT_STORE)
+    if store not in STORES:
+        return _json(404, {"error": "no such store"})
+    carrier, days = delivery_estimate(store)
+    return _json(200, {"store": store, "carrier": carrier, "days": days})
 
 
 def handler(event, context):
@@ -152,6 +236,8 @@ def handler(event, context):
         return _json(200, health())
     if path == "/api/orders":
         return _json(200, todays_orders())
+    if path == "/api/estimate":
+        return estimate(event)
     if path == "/":
         return {
             "statusCode": 200,
@@ -191,7 +277,6 @@ PAGE = """<!doctype html>
   .env.staging {{ background: var(--staging); }}
   .env.production {{ background: var(--production); }}
   .env.local {{ background: var(--local); }}
-  .demo {{ margin-left: auto; color: var(--muted); font-size: 15px; }}
   .version {{ font-size: 120px; font-weight: 700; letter-spacing: -0.04em; line-height: 1;
     margin: 40px 0 8px; font-variant-numeric: tabular-nums; }}
   .facts {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -213,9 +298,9 @@ PAGE = """<!doctype html>
   <header>
     <h1>{service}</h1>
     <span class="env {env}">{env}</span>
-    <span class="demo">Demo system</span>
   </header>
   <div class="version">{version}</div>
+  <p class="note">{estimate}</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>
