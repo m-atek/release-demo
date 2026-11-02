@@ -1,0 +1,10 @@
+# Video 25's block: no way in to staging's database, for anything. The database
+# keeps running and no pod is touched. blip_check.py applies this and deletes it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: block-database, namespace: staging }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: catalog-postgres }
+  policyTypes: [Ingress]
+  ingress: []

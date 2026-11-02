@@ -12,10 +12,15 @@ The same source gives the same zip, image digest and chart digest.
 Writes build-info.json with the zip's SHA-256 and the image and chart
 digests, which go into the change. Needs no Docker daemon, so it runs in
 the toolchain container.
+
+A version with a requirements.txt (catalog 1.10.x) gets those packages in the
+same layer, under /app/vendor, installed as scripts/build.py installs a Lambda
+function's. Any other version builds byte for byte as it did.
 """
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import sys
@@ -63,6 +68,24 @@ def write_zip(source, destination):
             archive.writestr(info, path.read_bytes())
 
 
+def install_requirements(requirements, target, runtime):
+    """scripts/build.py's, under another name: this file shadows it."""
+    spec = importlib.util.spec_from_file_location("shared_build", ROOT / "scripts" / "build.py")
+    shared = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shared)
+    shared.install_requirements(requirements, target, runtime)
+
+
+def vendored(source, runtime, prefix):
+    """Layer entries for requirements.txt's packages under <prefix>/vendor; none without the file."""
+    requirements = Path(source) / "requirements.txt"
+    if not requirements.exists():
+        return []
+    with tempfile.TemporaryDirectory() as folder:
+        install_requirements(requirements, Path(folder) / "vendor", runtime)
+        return [entry for entry in oci.tree(folder, ["vendor"], prefix) if entry[0] != prefix]
+
+
 def build(name, version_dir=None, out=None, commit=None, jira_key=None):
     """Build the package for a service from its folder (or a demo state). Returns build-info."""
     config = service(name)
@@ -81,6 +104,7 @@ def build(name, version_dir=None, out=None, commit=None, jira_key=None):
     base = oci.pull(settings["base"], settings["platform"], Path(os.environ.get("OCI_CACHE") or ROOT / ".local" / "oci-cache"))
     files = oci.tree(source, settings["include"], settings["workdir"].strip("/"),
                      extra={"build_info.json": oci.canonical({"service": name, "version": version, "commit": commit})})
+    files += vendored(source, config.get("runtime", ""), settings["workdir"].strip("/"))
     layer, diff_id = oci.app_layer(files)
     labels = {"org.opencontainers.image.title": name, "org.opencontainers.image.version": version,
               "org.opencontainers.image.revision": commit,

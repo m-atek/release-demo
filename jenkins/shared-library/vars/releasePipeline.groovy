@@ -78,6 +78,16 @@ def call() {
                     sh "${serviceConfig.command(cfg, 'evaluation')} ${service}"
                 }
             }
+            if (planned('Blip check')) {
+                // Video 25: staging's database cut off for 30 s; every pod must stay up.
+                releaseStage('Blip check', environment: 'staging') {
+                    try {
+                        sh "${serviceConfig.command(cfg, 'blip_check')} ${service}"
+                    } finally {
+                        archiveArtifacts artifacts: '.release/blip.json', allowEmptyArchive: true
+                    }
+                }
+            }
             if (cfg.scripts.plan) {
                 // What the change needs from the target before it opens (demo 1: the wave plan).
                 releaseStage('Plan') { sh "${serviceConfig.command(cfg, 'plan')} ${service}" }

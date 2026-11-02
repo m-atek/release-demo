@@ -268,6 +268,9 @@ catalog:
     publish: scripts/publish.py
     deploy: scripts/demos/kubernetes/deploy.py
     check: scripts/demos/kubernetes/check.py
+    # Video 25: for versions with database/ only (run_state.VERSION_STAGES). Without
+    # this line no version has the stage: the switch for the video's fallback.
+    blip_check: scripts/demos/database-blip/blip_check.py
 
   servicenow:
     # One CI per namespace. The change names production's: that is what it changes.
@@ -303,6 +306,18 @@ catalog:
 
   sonarqube:
     project_key: m-atek_release-demo_catalog
+    # Video 25's seed is SQL for Postgres, outside the Python analysis.
+    properties:
+      sonar.exclusions: services/catalog/tests/**,services/catalog/database/**
+
+  # Video 25: what the Blip check blocks, how long, and what it calls while it does.
+  blip_check:
+    environment: staging
+    seconds: 30
+    calls_per_second: 10
+    data_route: /api/products
+    alive_route: /health
+    recover_seconds: 60
 
   kubernetes:
     # Where the cluster pulls from: k3s mirrors this name to JCR on the host
@@ -333,7 +348,8 @@ catalog:
     staging:
       namespace: staging
       cmdb_item: catalog-staging
-      replicas: 2
+      # Three like production, so video 25's block can say "3 of 3".
+      replicas: 3
       node_port: 30081
       helm_timeout: 3m
       settings:

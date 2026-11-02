@@ -111,3 +111,96 @@ def test_check_fails_at_once_after_helms_rollback_with_the_notes(monkeypatch, tm
     assert stop.value.code == 1
     assert "FAIL 1.9.0 isn't live: Not ready after 3 minutes. Helm rolled back to 1.8.2" in capsys.readouterr().out
     assert json.loads((tmp_path / "state.json").read_text())["check"]["notes"] == "Helm rolled back: image sha256:aa."
+
+
+class FakeReply:
+    def __init__(self, body=b"{}"):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    def read(self):
+        return self.body
+
+
+def api_with(monkeypatch, tmp_path, answer):
+    """kube.Api with the kubeconfig's token, and urlopen answering as a test says."""
+    import base64
+    import ssl
+    import urllib.request
+
+    import yaml
+
+    config = tmp_path / "kubeconfig"
+    config.write_text(yaml.safe_dump({
+        "clusters": [{"cluster": {"server": "https://127.0.0.1:6443",
+                                  "certificate-authority-data": base64.b64encode(b"ca").decode()}}],
+        "users": [{"user": {"token": "test-token"}}]}))
+    monkeypatch.setattr(ssl, "create_default_context", lambda cadata=None: "context")
+    sent = []
+
+    def urlopen(request, timeout, context):
+        sent.append(request)
+        return answer(request)
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    return kube.Api(config), sent
+
+
+def test_the_api_posts_a_document_with_the_token(monkeypatch, tmp_path):
+    api, sent = api_with(monkeypatch, tmp_path, lambda request: FakeReply(b'{"kind": "NetworkPolicy"}'))
+    assert api.post("/apis/x", {"kind": "NetworkPolicy"}) == {"kind": "NetworkPolicy"}
+    assert sent[0].get_method() == "POST" and sent[0].full_url == "https://127.0.0.1:6443/apis/x"
+    assert json.loads(sent[0].data) == {"kind": "NetworkPolicy"}
+    assert sent[0].get_header("Authorization") == "Bearer test-token"
+    assert sent[0].get_header("Content-type") == "application/json"
+
+
+def test_the_api_deletes_and_says_whether_it_was_there(monkeypatch, tmp_path):
+    import urllib.error
+
+    def answer(request):
+        if request.full_url.endswith("/gone"):
+            raise urllib.error.HTTPError(request.full_url, 404, "not found", {}, None)
+        if request.full_url.endswith("/refused"):
+            raise urllib.error.HTTPError(request.full_url, 403, "forbidden", {}, None)
+        return FakeReply()
+
+    api, sent = api_with(monkeypatch, tmp_path, answer)
+    assert api.delete("/apis/there") is True
+    assert api.delete("/apis/gone") is False
+    with pytest.raises(urllib.error.HTTPError):
+        api.delete("/apis/refused")
+    assert {request.get_method() for request in sent} == {"DELETE"}
+
+
+def test_reset_goes_to_another_baseline_in_each_namespaces_own_process(monkeypatch, tmp_path):
+    """Video 25's reset: 1.9.1, by the same Helm deploy, with the version passed to each child."""
+    import subprocess
+    import sys
+
+    import reset
+
+    monkeypatch.setattr(reset, "BASELINE", reset.BASELINE)
+    started = []
+
+    class Child:
+        stdout = []
+
+        def __init__(self, command, **kwargs):
+            started.append(command)
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(subprocess, "Popen", Child)
+    monkeypatch.setattr(sys, "argv", ["reset.py", "--here", "--baseline", "1.9.1", "--commit", "abc"])
+    reset.main()
+    assert reset.BASELINE == "1.9.1"
+    assert len(started) == 2
+    for command in started:
+        assert command[command.index("--baseline") + 1] == "1.9.1" and "--only" in command

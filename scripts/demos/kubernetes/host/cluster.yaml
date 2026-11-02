@@ -64,6 +64,28 @@ roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: release
 subjects:
   - { kind: ServiceAccount, name: release-pipeline, namespace: jenkins }
 ---
+# Video 25's Blip check: the one write the stage makes, a policy that closes the
+# way in to staging's database, and only that policy may go again. Production
+# gets nothing, so the pipeline can't block production's database.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: { name: blip-check, namespace: staging }
+rules:
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [create]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    resourceNames: [block-database]
+    verbs: [get, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: { name: blip-check, namespace: staging }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: blip-check }
+subjects:
+  - { kind: ServiceAccount, name: release-pipeline, namespace: jenkins }
+---
 # The presenter: the Mac's kubeconfig for the video's terminal, a client
 # certificate that lasts 8 hours (scripts/demos/kubernetes/connect.sh).
 apiVersion: rbac.authorization.k8s.io/v1
