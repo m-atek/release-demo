@@ -21,7 +21,7 @@ class FakeClaude:
     """The SDK client's beta.messages.create, answering with each order's
     message, or raising. No network: the tests never reach the API."""
 
-    def __init__(self, write=None, error=None, stop_reason="end_turn", model="claude-opus-5-5"):
+    def __init__(self, write=None, error=None, stop_reason="end_turn", model="claude-haiku-5-5"):
         self.write = write or (lambda order: f"Your order is on its way from {order['store']}.")
         self.error, self.stop_reason, self.model, self.calls = error, stop_reason, model, []
         self.beta = SimpleNamespace(messages=SimpleNamespace(create=self.create))
@@ -42,6 +42,43 @@ class FakeClaude:
 def claude(monkeypatch):
     fake = FakeClaude()
     monkeypatch.setattr(app, "_claude", fake)
+    return fake
+
+
+class ConditionalCheckFailedException(Exception):
+    def __init__(self):
+        super().__init__("The conditional request failed")
+        self.response = {"Error": {"Code": "ConditionalCheckFailedException"}}
+
+
+class FakeStore:
+    """BatchGetItem and PutItem on the messages table, as DynamoDB answers them."""
+
+    def __init__(self, items=None, broken=False):
+        self.items, self.broken, self.puts = dict(items or {}), broken, []
+
+    def batch_get_item(self, RequestItems, ReturnConsumedCapacity):
+        if self.broken:
+            raise RuntimeError("ResourceNotFoundException")
+        (table, request), = RequestItems.items()
+        found = [{"order_id": {"S": key["order_id"]["S"]}, "text": {"S": self.items[key["order_id"]["S"]]}}
+                 for key in request["Keys"] if key["order_id"]["S"] in self.items]
+        return {"Responses": {table: found}, "ConsumedCapacity": [{"TableName": table, "CapacityUnits": 1.5}]}
+
+    def put_item(self, TableName, Item, ConditionExpression, ReturnConsumedCapacity):
+        if self.broken:
+            raise RuntimeError("ResourceNotFoundException")
+        self.puts.append((TableName, Item, ConditionExpression))
+        if Item["order_id"]["S"] in self.items:
+            raise ConditionalCheckFailedException()
+        self.items[Item["order_id"]["S"]] = Item["text"]["S"]
+        return {"ConsumedCapacity": {"TableName": TableName, "CapacityUnits": 1.0}}
+
+
+@pytest.fixture(autouse=True)
+def store(monkeypatch):
+    fake = FakeStore()
+    monkeypatch.setattr(app, "_dynamodb", fake)
     return fake
 
 

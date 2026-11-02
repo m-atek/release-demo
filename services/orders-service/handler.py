@@ -5,11 +5,13 @@ service, environment, version, commit and deploy time in large type, a /health
 endpoint for the pipeline's checks, and /api/orders with today's fictional
 orders for the desktop and mobile demos.
 
-The page's five orders each get a delivery message that Claude writes, in one
-call per page view, through the official SDK (requirements.txt); the API key
-comes from SSM once per cold start. A message longer than 120 characters, one
-that doesn't name the order's store, or any error gives the plain template.
-Each call logs one JSON line with its tokens, and never the message text.
+The page's five orders each get a delivery message that Claude writes once
+per order, through the official SDK (requirements.txt), and DynamoDB keeps:
+a page view asks only for the orders it finds no message for, in one call.
+The API key comes from SSM once per cold start. A message longer than 120
+characters, one that doesn't name the order's store, or any error gives the
+plain template. Each call logs one JSON line with its tokens, each page view
+one with the store's read and write units, and never the message text.
 """
 
 import datetime
@@ -18,6 +20,7 @@ import html
 import itertools
 import json
 import os
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -43,13 +46,14 @@ STATUSES = ["received", "picking", "packed", "shipped"]
 DELIVERY_ESTIMATE_DAYS = 2
 
 # The delivery messages. A model change is a release.
-MODEL = "claude-opus-5-5"
+MODEL = "claude-haiku-5-5"
 EFFORT = "low"
 MAX_TOKENS = 2000
 CLIENT_TIMEOUT_SECONDS = 20.0
 MESSAGE_LIMIT = 120
 KEY_PARAMETER = "/release-demo/anthropic/api-key"
-FALLBACK = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
+FALLBACK = {}  # Claude Haiku 5.5 has no server-side fallback
+MESSAGE_DAYS = 30  # how long the store keeps a message (its TTL)
 MESSAGE_SYSTEM = (
     "You write the delivery message an order page shows next to each order. For each order in the user "
     "message, write one friendly sentence of at most 120 characters that names the order's store and uses "
@@ -64,6 +68,7 @@ MESSAGE_SCHEMA = {
 
 _deployed_at = None
 _claude = None
+_dynamodb = None
 
 
 def read_package(directory):
@@ -168,10 +173,63 @@ def write_messages(orders, request_id, per):
         return {}
 
 
+def dynamodb():
+    global _dynamodb
+    if _dynamodb is None:
+        import boto3
+
+        _dynamodb = boto3.client("dynamodb")
+    return _dynamodb
+
+
+def messages_table():
+    return os.environ.get("MESSAGES_TABLE") or f"{SERVICE}-messages-{environment()}"
+
+
+def stored_messages(orders):
+    """(the stored message of each order that has one, the read units it took)."""
+    keys = [{"order_id": {"S": o["id"]}} for o in orders]
+    try:
+        reply = dynamodb().batch_get_item(RequestItems={messages_table(): {"Keys": keys}}, ReturnConsumedCapacity="TOTAL")
+    except Exception as error:
+        log({"event": "store_error", "version": VERSION, "error": type(error).__name__})
+        return {}, 0.0
+    items = reply.get("Responses", {}).get(messages_table(), [])
+    units = sum(entry.get("CapacityUnits", 0.0) for entry in reply.get("ConsumedCapacity", []))
+    return {item["order_id"]["S"]: item["text"]["S"] for item in items}, units
+
+
+def store_message(order_id, text):
+    """Stored once: of two page views that race, only the first writes. Returns the write units."""
+    item = {"order_id": {"S": order_id}, "text": {"S": text},
+            "ttl": {"N": str(int(time.time()) + MESSAGE_DAYS * 86400)}}
+    try:
+        reply = dynamodb().put_item(TableName=messages_table(), Item=item, ConditionExpression="attribute_not_exists(order_id)",
+                                    ReturnConsumedCapacity="TOTAL")
+    except Exception as error:
+        consumed = (getattr(error, "response", None) or {}).get("ConsumedCapacity", {})
+        if type(error).__name__ != "ConditionalCheckFailedException":
+            log({"event": "store_error", "version": VERSION, "error": type(error).__name__})
+        return consumed.get("CapacityUnits", 0.0)
+    return reply.get("ConsumedCapacity", {}).get("CapacityUnits", 0.0)
+
+
 def delivery_messages(orders, request_id):
-    """Claude writes every order's message, on every page view."""
-    written = write_messages(orders, request_id, per="page_view")
-    return {o["id"]: written[o["id"]] if usable(written.get(o["id"]), o) else template(o) for o in orders}
+    """Each order's message is written once and stored; a page view asks Claude
+    only for the orders without one, in one call."""
+    messages, read_units = stored_messages(orders)
+    missing = [o for o in orders if o["id"] not in messages]
+    write_units = 0.0
+    if missing:
+        written = write_messages(missing, request_id, per="order")
+        for order in missing:
+            text = written.get(order["id"])
+            messages[order["id"]] = text if usable(text, order) else template(order)
+            if written:  # an answer: keep what it gave, the template included. An error: ask again next time
+                write_units += store_message(order["id"], messages[order["id"]])
+    log({"event": "store", "request_id": request_id, "version": VERSION, "read_units": read_units,
+         "write_units": write_units})
+    return {o["id"]: messages[o["id"]] for o in orders}
 
 
 def todays_orders(today=None):
