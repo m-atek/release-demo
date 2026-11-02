@@ -196,7 +196,7 @@ class Check:
         self.zero = self.applied_at = self.apply_returned = self.delete_at = self.deleted_at = self.zero_wall = None
         self.last_failure = self.give_up_at = self.counts_from = 0.0
         self.problem = None  # "baseline", "no block" or "not back"
-        self.applied = self.removed = self.polling = False
+        self.removed = self.polling = False
         self.before, self.latest, self.events, self.killed, self.restarted_at = {}, {}, {}, {}, {}
         self.crash_loop, self.was_not_ready = set(), set()
         self.all_not_ready_at = self.final = self.stopped = None
@@ -343,7 +343,6 @@ class Check:
 
     def apply(self):
         self.applied_at = self.clock()
-        self.applied = True
         self.api.post(policies(self.config.namespace), policy_document(self.config.namespace))
         self.apply_returned = self.clock()
         self.say(f"NetworkPolicy {POLICY}: no way in")
@@ -631,8 +630,13 @@ def end_line(result):
 
 
 def stop_on_sigterm():
-    """Jenkins aborts with SIGTERM: this makes it an exception, so the finally deletes the policy."""
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+    """Jenkins aborts with SIGTERM: this makes it an exception, so the finally deletes the policy.
+    Only the first one: a second mustn't stop the delete."""
+    def stop(*_):
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        sys.exit(143)
+
+    signal.signal(signal.SIGTERM, stop)
 
 
 def main():

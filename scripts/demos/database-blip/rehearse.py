@@ -192,6 +192,7 @@ class Machine:
         self.rehearsal = loaded("kube_rehearse", KUBERNETES / "rehearse.py")
         self.peak_pods = self.peak_total = 0
         self.sampling = threading.Event()
+        self.changed_the_cluster = False
 
     def preflight(self):
         problems = []
@@ -208,6 +209,7 @@ class Machine:
         return problems
 
     def put_on_baseline(self):
+        self.changed_the_cluster = True
         subprocess.run([sys.executable, str(KUBERNETES / "reset.py"), "--here", "--baseline", BASELINE, "--commit", self.commit],
                        check=True)
 
@@ -547,8 +549,9 @@ def main():
         code = measure(machine, args)
     finally:
         machine.sampling.set()
-        print(f"== Back on {BASELINE}", flush=True)
-        machine.put_on_baseline()
+        if machine.changed_the_cluster:
+            print(f"== Back on {BASELINE}", flush=True)
+            machine.put_on_baseline()
     print(f"Done in {kube.clock(time.monotonic() - started)}. Exit code {code}.", flush=True)
     return code
 
