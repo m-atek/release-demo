@@ -10,6 +10,7 @@ import importlib.util
 import io
 import json
 import re
+import shlex
 from pathlib import Path
 
 import pytest
@@ -328,6 +329,11 @@ def test_the_newest_unchecked_pull_request_from_this_repository_comes_next():
 def test_a_pull_request_that_changes_no_checked_service_gets_the_four_skipped():
     github = FakePRs(ON, [pr(3, "s3")], {}, {3: ["infra/demos/2-terraform/network/exports.tf"]})
     assert pull_requests.next_pull(github) == {"number": 3, "sha": "s3", "service": None}
+
+
+def test_a_value_with_a_space_reaches_the_scanner_as_one_argument():
+    args = shlex.split(pull_requests.sonar_args("orders-service", "1.9.0", 5, "m-atek"))
+    assert "-Dsonar.projectName=orders-service pull requests" in args
 
 
 def test_with_the_ruleset_off_no_pull_request_is_checked():

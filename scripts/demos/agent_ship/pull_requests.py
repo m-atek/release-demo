@@ -19,6 +19,7 @@ checks nothing, so videos 2 and 14 see their pull requests as before.
 
 import argparse
 import json
+import shlex
 import sys
 from pathlib import Path
 
@@ -173,7 +174,7 @@ def sonar_args(service_name, version, number, organization):
     if config.get("runtime", "").startswith("python"):
         args["sonar.python.version"] = config["runtime"].removeprefix("python")
         args["sonar.python.coverage.reportPaths"] = ".release/reports/coverage.xml"
-    return " ".join(f"-D{key}={value}" for key, value in args.items())
+    return " ".join(shlex.quote(f"-D{key}={value}") for key, value in args.items())
 
 
 def main():
