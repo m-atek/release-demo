@@ -5,7 +5,6 @@ about, the fallback switch, and the pieces infra/ and the jobs add. Every outsid
 """
 
 import difflib
-import hashlib
 import importlib.util
 import io
 import json
@@ -30,7 +29,7 @@ import seed
 import setup
 import tools
 import use_fallback
-from conftest import HERE, ORDERS, Functions, Store, World, b64digest, hexdigest, released, saved_bytes
+from conftest import HERE, ORDERS, Functions, Store, World, b64digest, hexdigest, saved_bytes
 
 ROOT = HERE.parents[2]
 STATES = ROOT / "demo-states" / "orders-service"
