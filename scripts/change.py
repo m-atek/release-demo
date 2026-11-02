@@ -211,10 +211,6 @@ def open_change(sn, ssm, state):
     state["change"] = {"sys_id": change_id, "number": number, "type": "standard" if standard else "normal",
                        "url": f"{sn.url}/change_request.do?sys_id={change_id}", "requested_by": asked_by["sys_id"]}
     run_state.save(state)
-    # A standard change takes its plans from the template, and the change API ignores what it's sent for them.
-    # A stage's own backout plan, such as demo 20's verified one, goes on afterwards.
-    if standard and (extras.get("fields") or {}).get("backout_plan"):
-        sn.call("PATCH", f"/api/now/table/change_request/{change_id}", {"backout_plan": extras["fields"]["backout_plan"]})
 
     for name in EVIDENCE:
         path = run_state.REPORTS / name
