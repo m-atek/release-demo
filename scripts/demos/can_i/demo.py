@@ -57,7 +57,8 @@ def down():
     return video8("down")
 
 
-def certificate_line(path=KUBECONFIG):
+def certificate_line(path=None):
+    path = path or KUBECONFIG
     if not path.exists():
         return "Sam's certificate: none on this Mac (connect.py makes one)"
     config = json.loads(path.read_text())
