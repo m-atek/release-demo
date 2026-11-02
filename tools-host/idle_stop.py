@@ -5,8 +5,9 @@
 Idle means: no running or queued Jenkins build (a timer's own check for work,
 such as pull-requests, doesn't count, nor a multibranch job's scan), no job on the GitLab runner (demo 17),
 no job on the Azure Pipelines agent and no release run in progress (demo 22),
-and cloudflared's request counter unchanged, so nobody used Jenkins, JCR or
-Splunk through the tunnel. Before it powers off, each demo's
+no long run handed over to the host (video 25's measurement), and cloudflared's
+request counter unchanged, so nobody used Jenkins, JCR or Splunk through the
+tunnel. Before it powers off, each demo's
 scripts/demos/<demo>/on_idle.sh runs. The host powers off; its shutdown
 behaviour is "stop", so the data stays.
 """
@@ -29,6 +30,9 @@ NOT_ACTIVITY = {"pull-requests"}
 # the top of the minute, when this timer tends to fire too, so counting the scans
 # kept the host up all night (30 to 31 October).
 SCANS = ("MultiBranchProject", "BranchIndexing", "OrganizationFolder", "FolderComputation")
+# Runs handed over through SSM (scripts/host.py) that last long and start no build: video 25's
+# first-day measurement takes about 20 minutes with nothing else to show that the host is in use.
+LONG_RUNS = ("release-demo-blip-rehearse",)
 
 
 def jenkins_busy(secrets):
@@ -85,6 +89,10 @@ def azure_busy():
         return False
 
 
+def long_run_busy():
+    return any(subprocess.run(["systemctl", "is-active", "--quiet", unit]).returncode == 0 for unit in LONG_RUNS)
+
+
 def tunnel_requests():
     try:
         with urllib.request.urlopen("http://127.0.0.1:2000/metrics", timeout=5) as response:
@@ -105,7 +113,7 @@ def main():
     state["last_active"] = max(state["last_active"], booted)
 
     requests = tunnel_requests()
-    if jenkins_busy(secrets) or gitlab_busy() or azure_busy() or requests != state["requests"]:
+    if jenkins_busy(secrets) or gitlab_busy() or azure_busy() or long_run_busy() or requests != state["requests"]:
         state["last_active"] = now
     state["requests"] = requests
     STATE.parent.mkdir(parents=True, exist_ok=True)

@@ -52,3 +52,22 @@ def test_a_running_scan_doesnt_either_but_a_branch_s_build_does(monkeypatch, tmp
     assert jenkins_busy(monkeypatch, tmp_path, [scan], []) is False
     assert jenkins_busy(monkeypatch, tmp_path, [scan, build], []) is True
     assert jenkins_busy(monkeypatch, tmp_path, [], [queued_build]) is True
+
+
+def test_video_25_s_measurement_keeps_the_host_up_though_it_starts_no_build(monkeypatch):
+    """About 20 minutes on the host, handed over through SSM, with no build and no request through the tunnel."""
+    spec = importlib.util.spec_from_file_location("idle_stop", ROOT / "tools-host" / "idle_stop.py")
+    idle = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(idle)
+    running = set()
+    asked = []
+
+    def systemctl(command, **_):
+        asked.append(command)
+        return idle.subprocess.CompletedProcess(command, 0 if command[-1] in running else 3)
+
+    monkeypatch.setattr(idle.subprocess, "run", systemctl)
+    assert idle.long_run_busy() is False
+    running.add("release-demo-blip-rehearse")
+    assert idle.long_run_busy() is True
+    assert asked[-1] == ["systemctl", "is-active", "--quiet", "release-demo-blip-rehearse"]
