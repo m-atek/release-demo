@@ -46,6 +46,26 @@ def test_orders_api_returns_todays_orders():
     assert all(order["total_eur"] > 0 for order in body["orders"])
 
 
+def test_orders_per_store_busiest_first():
+    orders = [{"store": s} for s in ["Amsterdam Zuid", "Utrecht Centraal", "Utrecht Centraal", "Den Haag Spui"]]
+    assert app.orders_per_store(orders) == [("Utrecht Centraal", 2), ("Amsterdam Zuid", 1), ("Den Haag Spui", 1)]
+
+
+def test_page_shows_todays_orders_per_store():
+    section = request("/")["body"].split("Orders per store today")[1]
+    orders = app.todays_orders()["orders"]
+    counts = app.orders_per_store(orders)
+    assert sum(count for _, count in counts) == len(orders)
+    positions = [section.index(f"<td>{store}</td><td>{count}</td>") for store, count in counts]
+    assert positions == sorted(positions)
+
+
+def test_orders_api_keeps_its_shape():
+    body = json.loads(request("/api/orders")["body"])
+    assert set(body) == {"date", "orders"}
+    assert all(set(order) == {"id", "store", "items", "total_eur", "status"} for order in body["orders"])
+
+
 def test_unknown_path_and_method():
     assert request("/admin")["statusCode"] == 404
     assert request("/", method="POST")["statusCode"] == 405
