@@ -9,9 +9,14 @@ replicas: 2
 # The Service's port on the node, so the pipeline's check reaches it.
 nodePort: null
 
-# Environment variables for the service, merged with the environment's settings.
-settings: {}
+# Environment variables for the service, merged with the environment's
+# settings. The catalog database comes with the chart, so no environment can
+# miss it. Its password comes from the Secret catalog-postgres, in the template.
+settings:
+  CATALOG_POSTGRES_URL: postgresql://catalog@catalog-postgres:5432/catalog
 
 resources:
-  requests: { cpu: 10m, memory: 32Mi }
-  limits: { cpu: 250m, memory: 64Mi }
+  requests: { cpu: 10m, memory: 48Mi }
+  # A call that reads the database costs about 30 ms of CPU, on a new connection. While the
+  # others restart one pod can take all the calls, and at 250m (measured) it never caught up.
+  limits: { cpu: 1000m, memory: 96Mi }

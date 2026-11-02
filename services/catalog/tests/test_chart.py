@@ -51,7 +51,7 @@ def test_probes_resources_and_version_label():
     pod = deployment["spec"]["template"]
     container = pod["spec"]["containers"][0]
     assert container["readinessProbe"]["httpGet"]["path"] == "/ready"
-    assert container["livenessProbe"]["httpGet"]["path"] == "/health"
+    assert container["livenessProbe"]["httpGet"]["path"] == "/ready"
     assert set(container["resources"]) == {"requests", "limits"}
     assert pod["metadata"]["labels"]["app.kubernetes.io/version"] == app.VERSION
     # The selector can't change between releases, so it never carries the version.
@@ -67,3 +67,23 @@ def test_settings_become_environment_variables(tmp_path):
 
 def test_no_pod_disruption_budget():
     assert "PodDisruptionBudget" not in render("--set", f"image.digest={DIGEST}")
+
+
+def test_every_environment_gets_the_catalog_database():
+    container = render("--set", f"image.digest={DIGEST}")["Deployment"]["spec"]["template"]["spec"]["containers"][0]
+    assert {"name": "CATALOG_POSTGRES_URL", "value": "postgresql://catalog@catalog-postgres:5432/catalog"} in container["env"]
+
+
+def test_the_password_comes_from_the_secret():
+    container = render("--set", f"image.digest={DIGEST}")["Deployment"]["spec"]["template"]["spec"]["containers"][0]
+    password = next(e for e in container["env"] if e["name"] == "CATALOG_POSTGRES_PASSWORD")
+    assert password == {"name": "CATALOG_POSTGRES_PASSWORD",
+                        "valueFrom": {"secretKeyRef": {"name": "catalog-postgres", "key": "password"}}}
+
+
+def test_the_probes_keep_their_timing():
+    container = render("--set", f"image.digest={DIGEST}")["Deployment"]["spec"]["template"]["spec"]["containers"][0]
+    assert {k: container["readinessProbe"].get(k) for k in ("periodSeconds", "failureThreshold")} == {
+        "periodSeconds": 5, "failureThreshold": 2}
+    assert {k: container["livenessProbe"].get(k) for k in ("initialDelaySeconds", "periodSeconds", "failureThreshold")} == {
+        "initialDelaySeconds": 5, "periodSeconds": 10, "failureThreshold": 3}

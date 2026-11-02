@@ -1,13 +1,14 @@
 """catalog: the service the Kubernetes demo ships.
 
 A small HTTP service in a container. It serves one page with the service,
-environment, version and pod in large type, /health for the liveness probe
-and the pipeline's checks, /ready for the readiness probe, and /api/products
-with the fictional product catalog, searchable by name and by supplier.
-Standard library only.
+environment, version and pod in large type, /health for the pipeline's checks,
+/ready for the probes, and /api/products with the fictional product catalog,
+searchable by name and by supplier.
 
-The catalog comes from the catalog database named by CATALOG_DB_URL, which
-each environment sets. Until it loads, the service is alive but not ready.
+The catalog comes from Postgres, named by CATALOG_POSTGRES_URL, through pg8000,
+which the build puts in /app/vendor from requirements.txt. Each query opens a
+new connection. While the database doesn't answer, the routes that need it
+answer 503 and serve no data; /health doesn't touch it.
 """
 
 import html
@@ -23,8 +24,10 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 HERE = Path(__file__).resolve().parent
+sys.path.append(str(HERE / "vendor"))
 SERVICE = "catalog"
 QUIET = {"/health", "/ready"}  # the probes would fill the log
+DATABASE_TIMEOUT_SECONDS = 0.8  # under the probes' 1 s
 
 
 def read_package(directory):
@@ -46,27 +49,50 @@ def pod():
     return os.environ.get("POD_NAME") or socket.gethostname()
 
 
-class NotReady(Exception):
+class DatabaseUnavailable(Exception):
     pass
 
 
-def catalog_path():
-    """The catalog database from CATALOG_DB_URL. In this demo it is a file: file:///app/data/catalog.json."""
-    url = os.environ.get("CATALOG_DB_URL", "")
-    if not url:
-        raise NotReady("CATALOG_DB_URL is not set")
-    parsed = urlparse(url)
-    if parsed.scheme != "file":
-        raise NotReady(f"CATALOG_DB_URL {url}: only file:// is supported")
-    return Path(parsed.path)
+def connect():
+    """A new connection to the catalog database."""
+    import pg8000.native
+
+    parts = urlparse(os.environ["CATALOG_POSTGRES_URL"])
+    return pg8000.native.Connection(
+        user=parts.username, password=os.environ["CATALOG_POSTGRES_PASSWORD"], host=parts.hostname,
+        port=parts.port or 5432, database=parts.path.lstrip("/"), timeout=DATABASE_TIMEOUT_SECONDS)
+
+
+def run_query(sql):
+    """The rows of one query, on a connection of its own."""
+    try:
+        connection = connect()
+        try:
+            return connection.run(sql)
+        finally:
+            connection.close()
+    except Exception as error:  # whatever the driver or the network raises: no answer
+        print(f"The catalog database didn't answer: {error.__class__.__name__}", flush=True)
+        raise DatabaseUnavailable from error
+
+
+def ask_database():
+    """One query on a new connection: does the catalog database answer?"""
+    try:
+        run_query("SELECT count(*) FROM products")
+    except DatabaseUnavailable:
+        return False
+    return True
 
 
 def products():
-    return json.loads(catalog_path().read_text())["products"]
+    rows = run_query("SELECT id, name, supplier, price_eur FROM products ORDER BY id")
+    return [{"id": id_, "name": name, "supplier": supplier, "price_eur": float(price)}
+            for id_, name, supplier, price in rows]
 
 
-def suppliers():
-    return sorted({p["supplier"] for p in products()})
+def suppliers(items):
+    return sorted({p["supplier"] for p in items})
 
 
 def folded(text):
@@ -86,14 +112,8 @@ def health():
 
 
 def ready():
-    """Ready once the catalog database loads."""
-    try:
-        count = len(products())
-    except NotReady as error:
-        return False, str(error)
-    except (OSError, ValueError, KeyError) as error:
-        return False, f"the catalog doesn't load: {error}"
-    return True, f"{count} products"
+    """Ready while the catalog database answers."""
+    return ask_database()
 
 
 def page():
@@ -103,7 +123,7 @@ def page():
                      for p in items[:6])
     return PAGE.format(service=SERVICE, env=html.escape(environment()), version=html.escape(VERSION),
                        commit=html.escape(COMMIT[:7]), pod=html.escape(pod()), count=len(items), rows=rows,
-                       suppliers=len(suppliers()))
+                       suppliers=len(suppliers(items)))
 
 
 def respond(target):
@@ -113,18 +133,17 @@ def respond(target):
     if url.path == "/health":
         return 200, "application/json", json.dumps(health())
     if url.path == "/ready":
-        ok, reason = ready()
-        return (200 if ok else 503), "application/json", json.dumps(
-            {"ready": ok, "reason": reason, "version": VERSION})
+        ok = ready()
+        return (200 if ok else 503), "application/json", json.dumps({"ready": ok, "version": VERSION})
     try:
         if url.path == "/api/products":
             return 200, "application/json", json.dumps(search(query.get("q", ""), query.get("supplier", "")))
         if url.path == "/api/suppliers":
-            return 200, "application/json", json.dumps({"suppliers": suppliers()})
+            return 200, "application/json", json.dumps({"suppliers": suppliers(products())})
         if url.path == "/":
             return 200, "text/html; charset=utf-8", page()
-    except NotReady as error:
-        return 503, "application/json", json.dumps({"error": f"not ready: {error}"})
+    except DatabaseUnavailable:
+        return 503, "application/json", json.dumps({"error": "the catalog database is unavailable"})
     return 404, "application/json", json.dumps({"error": "not found"})
 
 
@@ -153,8 +172,7 @@ def main():
     server.daemon_threads = True
     # Kubernetes sends SIGTERM once the pod is out of the Service: finish what is in flight, then stop.
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown).start())
-    ok, reason = ready()
-    print(f"{SERVICE} {VERSION} in {environment()} on :{port}, {'ready' if ok else 'not ready'}: {reason}", flush=True)
+    print(f"{SERVICE} {VERSION} in {environment()} on :{port}, {'ready' if ready() else 'not ready'}", flush=True)
     server.serve_forever()
 
 
