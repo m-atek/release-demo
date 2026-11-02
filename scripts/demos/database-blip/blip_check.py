@@ -58,6 +58,7 @@ import kube  # noqa: E402
 import run_state  # noqa: E402
 from common import ROOT, service  # noqa: E402
 
+NAME = "Blip check"  # also in run_state.VERSION_STAGES and releasePipeline.groovy
 POLICY = "block-database"
 LOG = Path("/var/tmp/release-demo-blip.log")
 BASELINE_SECONDS = 5
@@ -69,7 +70,7 @@ LATE_SECONDS = 0.15  # a second's line waits this long for its last calls to ans
 READY_TIMEOUT_SECONDS = 120
 WIDTH = 18  # of a line's first route, so no line passes 44 columns
 ORDER = {200: 0, 503: 1, "refused": 2, "timeout": 3}
-EARLIER = re.compile(r"^Blip check: (.+ pods restarted, .+ Release stopped\.)$", re.M)
+EARLIER = re.compile(rf"^{NAME}: (.+ pods restarted, .+ Release stopped\.)$", re.M)
 
 
 @dataclasses.dataclass
@@ -307,7 +308,7 @@ class Check:
             self.all_not_ready_at = elapsed
             self.say(f"{kube.clock(elapsed):<5} all {len(down)} pods not ready")
         for event, (pod, count) in killings.items():
-            if self.events.get(event, (pod, 0))[1] < count and elapsed is not None:
+            if self.events.get(event, (pod, 0))[1] < count and elapsed is not None and pod in self.before:
                 self.killed.setdefault(pod, elapsed)
                 self.say(f"{kube.clock(elapsed):<5} {pod.rsplit('-', 1)[-1]}: failed liveness, restarting")
         self.events = {**self.events, **killings}
@@ -492,18 +493,18 @@ class Check:
         during = f"during a {config.seconds} s database block."
         restarted = len(self.restarted())
         if not rules:
-            return f"Blip check: {restarted} of {config.replicas} pods restarted {during}"
+            return f"{NAME}: {restarted} of {config.replicas} pods restarted {during}"
         first = rules[0][0]
         if first == "baseline":
-            return f"Blip check failed: {config.data_route} or {config.alive_route} didn't answer before the block."
+            return f"{NAME} failed: {config.data_route} or {config.alive_route} didn't answer before the block."
         if first == "no block":
-            return "Blip check failed: the block didn't take."
+            return f"{NAME} failed: the block didn't take."
         if first == "stopped":
-            return f"Blip check failed: it stopped before the block ended ({self.stopped})."
+            return f"{NAME} failed: it stopped before the block ended ({self.stopped})."
         if first == "restarted":
-            return f"Blip check failed: {restarted} of {config.replicas} pods restarted {during}"
+            return f"{NAME} failed: {restarted} of {config.replicas} pods restarted {during}"
         route = config.alive_route if first == "alive" else config.data_route
-        return f"Blip check failed: {route} didn't answer {during}"
+        return f"{NAME} failed: {route} didn't answer {during}"
 
     def result(self, stopped=None):
         """What blip.json holds, and what the stage decides from."""
@@ -539,7 +540,8 @@ class Check:
             "times": {"first_failure_utc": run_state.iso(self.zero_wall) if self.zero_wall else None,
                       "apply": relative(self.applied_at), "apply_returned": relative(self.apply_returned),
                       "first_failure": 0 if self.zero is not None else None, "delete_returned": relative(self.deleted_at),
-                      "first_success_after_delete": relative(min(answered)) if answered else None},
+                      "first_success_after_delete": relative(min(answered)) if answered else None,
+                      "last_failure": relative(self.last_failure) if self.last_failure else None},
             "block_seconds": round(self.deleted_at - self.zero, 2) if self.deleted_at and self.zero else None,
             "calls": {route: dict(counts[route]) for route in counts},
             "calls_inside_block": {route: dict(inside[route]) for route in inside},
@@ -566,7 +568,7 @@ def comment(result, build):
     measured = result["times"]["first_failure"] is not None and result["problem"] != "baseline"
     what = run_line(result, build) if measured else (
         f"{result['service']} {result['version']}, build #{build}: {result['rules'][0]['what']}.")
-    return f"Blip check: {what} Release stopped."
+    return f"{NAME}: {what} Release stopped."
 
 
 def comment_text(body):
@@ -592,7 +594,7 @@ def earlier_line(key):
 
 
 def work_note(result, build, earlier, data_route):
-    lines = [f"Blip check in {result['environment']}: database blocked for {result['seconds']} s."]
+    lines = [f"{NAME} in {result['environment']}: database blocked for {result['seconds']} s."]
     if earlier:
         lines.append(earlier)
     lines.append(f"{run_line(result, build)} {data_route} answered 503 until the database was back.")

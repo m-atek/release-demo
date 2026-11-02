@@ -169,6 +169,8 @@ def test_up_makes_the_password_once_and_prints_it_nowhere(cluster, capsys):
     posted = [json.loads(stdin) for _, stdin in cluster.calls if stdin]
     secrets = [document for document in posted if document["kind"] == "Secret"]
     assert len(secrets) == 2 and secrets[0]["stringData"]["password"] != secrets[1]["stringData"]["password"]
+    # Created, not applied: apply keeps the value in an annotation, which a describe prints.
+    assert [args[0] for args, stdin in cluster.calls if stdin and "Secret" in stdin] == ["create", "create"]
     assert len(secrets[0]["stringData"]["password"]) >= 32
     output = capsys.readouterr().out
     for secret in secrets:

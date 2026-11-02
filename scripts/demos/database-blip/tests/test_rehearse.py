@@ -24,7 +24,8 @@ def blip(version="1.10.0", **changes):
               "back_at": 31 if fixed else 38, "block_seconds": 30.02,
               "calls": {"/api/products": {"200": 100, "503": 300}, "/health": {"200": 400}},
               "calls_inside_block": {"/api/products": {"503": 300}, "/health": {"200": 300}},
-              "data_in_a_503": 0, "times": {"apply": -0.4, "delete_returned": 30.02, "first_success_after_delete": 30.3}}
+              "data_in_a_503": 0, "times": {"apply": -0.4, "delete_returned": 30.02, "first_success_after_delete": 30.3,
+                                            "last_failure": 30.25}}
     return {**values, **changes}
 
 
@@ -48,6 +49,11 @@ def test_all_down_at_once_is_a_separate_answer():
 ROUTES = ("/api/products", "/health")
 
 
+def test_back_within_2_s_reads_the_calls_not_the_lines_whole_second():
+    times = {"apply": -0.4, "delete_returned": 30.0, "first_success_after_delete": 31.9, "last_failure": 31.85}
+    assert rehearse.fixed_block(blip("1.10.1", back_at=33, times=times), *ROUTES)[0] is True
+
+
 def test_the_fix_passes_with_only_503s_and_every_pod_up():
     ok, line = rehearse.fixed_block(blip("1.10.1"), *ROUTES)
     assert ok
@@ -61,7 +67,7 @@ def test_the_fix_passes_with_only_503s_and_every_pod_up():
     {"calls": {"/api/products": {"200": 100, "503": 299, "refused": 1}, "/health": {"200": 400}}},
     {"calls": {"/api/products": {"200": 100, "503": 299, "timeout": 1}, "/health": {"200": 400}}},
     {"calls_inside_block": {"/api/products": {"503": 299, "200": 1}, "/health": {"200": 300}}},
-    {"back_at": 33},
+    {"times": {"apply": -0.4, "delete_returned": 30.02, "first_success_after_delete": 33.3, "last_failure": 33.25}},
     {"back_at": None},
     {"data_in_a_503": 1},
     {"passed": False},

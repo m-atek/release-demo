@@ -46,7 +46,8 @@ def show(line):
 
 
 def log_size(the_host):
-    code, out, err = the_host.shell(f"stat -c %s {LOG} 2>/dev/null || echo 0")
+    """Where the log ends now. follow_log.py needs the file, and the check's user may write to one root made."""
+    code, out, err = the_host.shell(f"touch {LOG} && chmod 666 {LOG} && stat -c %s {LOG}")
     if code != 0:
         raise SystemExit(f"The tools host didn't answer: {err.strip()[:200]}")
     return int(out.strip().splitlines()[-1])

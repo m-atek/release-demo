@@ -48,8 +48,10 @@ def password_secret(namespace):
     if k3s.kubectl("get", "secret", NAME, "--namespace", namespace, "--ignore-not-found", "-o", "name"):
         return False
     value = base64.urlsafe_b64encode(os.urandom(24)).decode()
-    apply({"apiVersion": "v1", "kind": "Secret", "type": "Opaque",
-           "metadata": {"name": NAME, "labels": LABELS}, "stringData": {"password": value}}, namespace)
+    # create, not apply: apply would keep the value in an annotation, which a describe of the Secret prints.
+    k3s.kubectl("create", "--namespace", namespace, "-f", "-", stdin=json.dumps(
+        {"apiVersion": "v1", "kind": "Secret", "type": "Opaque",
+         "metadata": {"name": NAME, "labels": LABELS}, "stringData": {"password": value}}))
     return True
 
 

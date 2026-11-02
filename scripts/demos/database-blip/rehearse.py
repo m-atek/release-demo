@@ -1,6 +1,6 @@
 """Video 25's first-day measurement: does 1.10.0 restart every pod, and does 1.10.1 stop that?
 
-    .venv/bin/python scripts/demos/database-blip/rehearse.py              from the Mac, about 15 minutes
+    .venv/bin/python scripts/demos/database-blip/rehearse.py              from the Mac, about 20 minutes
     .venv/bin/python scripts/demos/database-blip/rehearse.py --follow     its log again, if the Mac stopped following
     .venv/bin/python scripts/demos/database-blip/rehearse.py --liveness-period 5    1.10.0 with that period at once
 
@@ -116,13 +116,15 @@ def fixed_block(blip, data_route, alive_route):
     only_answers = set(data) <= {"200", "503"}
     in_block_only_503 = set(blip["calls_inside_block"][data_route]) <= {"503"}
     back = blip["back_at"]
-    back_in_time = back is not None and back <= blip["seconds"] + BACK_WITHIN_SECONDS
+    # From the calls, not the line: a line counts its whole second, so "Back at" can read up to 1 s later.
+    times = blip["times"]
+    back_in_time = back is not None and times["last_failure"] - times["delete_returned"] <= BACK_WITHIN_SECONDS
     no_data = blip["data_in_a_503"] == 0
     ok = kept_up and alive_clean and only_answers and in_block_only_503 and back_in_time and no_data and blip["passed"]
     line = (f"{blip['restarted']} of {blip['replicas']} restarted; READY true throughout: "
             f"{not any(pod['was_not_ready'] for pod in pods)}; {alive_route} {alive}; {data_route} {data}, in the block "
-            f"{blip['calls_inside_block'][data_route]}; a 503 with data: {blip['data_in_a_503']}; back at {clock(back)}; "
-            f"block {blip['block_seconds']} s")
+            f"{blip['calls_inside_block'][data_route]}; a 503 with data: {blip['data_in_a_503']}; back at {clock(back)}, "
+            f"last failed call {times['last_failure']} s; block {blip['block_seconds']} s")
     return ok, line
 
 
@@ -140,7 +142,7 @@ def verdict(failing, ladder, fixed, liveness_period=None):
     if with_period and not every:
         lines += ["1.10.0 restarts every pod only with liveness at periodSeconds: 5: a common setting, not a forced one.",
                   "Adopt it: that line in demo-states/catalog/1.10.0/chart/templates/deployment.yaml and in its test_chart.py.",
-                  "The script's \"One line\" becomes \"Two lines\", and reveal.sh a shows both (grep -A2)."]
+                  "The script's \"One line\" becomes \"Two lines\", and reveal.sh a shows both (grep -A3)."]
     elif liveness_period:
         lines += [f"1.10.0 restarts every pod with liveness at periodSeconds: {liveness_period}."]
     if fixed is None:
