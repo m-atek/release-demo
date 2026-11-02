@@ -29,6 +29,7 @@ from common import ROOT, get_parameter, github_api, github_app_token, service, s
 STATE = Path(".release") / "pr-checks.json"
 SKIPPED = "No service with pull request checks changed"
 SONAR = "https://sonarcloud.io"
+RECHECK = "recheck"  # a person puts this label on a pull request to run its checks again
 
 
 class GitHub:
@@ -87,8 +88,11 @@ def next_pull(github):
             continue  # a fork: never built
         sha = pull["head"]["sha"]
         runs = github.call("GET", f"/commits/{sha}/check-runs?app_id={github.app_id}&per_page=100") or {}
-        if any(run["name"] in checks for run in runs.get("check_runs", [])):
+        recheck = any(label.get("name") == RECHECK for label in pull.get("labels", []))
+        if not recheck and any(run["name"] in checks for run in runs.get("check_runs", [])):
             continue
+        if recheck:
+            github.call("DELETE", f"/issues/{pull['number']}/labels/{RECHECK}")
         return {"number": pull["number"], "sha": sha, "service": changed_service(files(github, pull["number"]))}
     return None
 

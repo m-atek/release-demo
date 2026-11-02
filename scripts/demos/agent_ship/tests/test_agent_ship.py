@@ -299,8 +299,12 @@ class FakePRs:
 
     def __init__(self, rules, pulls, runs, files):
         self.rules, self.pulls, self.runs, self.files = rules, pulls, runs, files
+        self.deleted = []
 
     def call(self, method, path, body=None):
+        if method == "DELETE":
+            self.deleted.append(path)
+            return []
         if path == "/rules/branches/main":
             return self.rules
         if path.startswith("/pulls?"):
@@ -329,6 +333,13 @@ def test_the_newest_unchecked_pull_request_from_this_repository_comes_next():
 def test_a_pull_request_that_changes_no_checked_service_gets_the_four_skipped():
     github = FakePRs(ON, [pr(3, "s3")], {}, {3: ["infra/demos/2-terraform/network/exports.tf"]})
     assert pull_requests.next_pull(github) == {"number": 3, "sha": "s3", "service": None}
+
+
+def test_the_label_recheck_runs_a_pull_request_s_checks_again_and_comes_off():
+    labelled = {**pr(8, "s8"), "labels": [{"name": "recheck"}]}
+    github = FakePRs(ON, [labelled], {"s8": [{"name": "Build"}]}, {8: ["services/orders-service/handler.py"]})
+    assert pull_requests.next_pull(github) == {"number": 8, "sha": "s8", "service": "orders-service"}
+    assert github.deleted == ["/issues/8/labels/recheck"]
 
 
 def test_a_value_with_a_space_reaches_the_scanner_as_one_argument():
