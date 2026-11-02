@@ -8,7 +8,8 @@
 #
 # It pulls main and the tags first, without showing it. The long values are
 # short variables, set here: LOG is production's log group, ERRORS the last
-# 30 minutes of lines with "database" in them, without their timestamps.
+# 30 minutes of the handler's "database error:" lines, without their timestamps
+# or the traceback events that follow them.
 # Uses AWS_PROFILE, by default release-demo, for the log.
 
 set -euo pipefail
@@ -20,7 +21,7 @@ export AWS_PROFILE=${AWS_PROFILE:-release-demo} AWS_REGION=${AWS_REGION:-eu-west
 {
   TAG=orders-service-v1.6.0
   LOG=/aws/lambda/orders-service-production
-  ERRORS="--since 30m --format short --filter-pattern database"
+  ERRORS='--since 30m --format short --filter-pattern "error:"'
 }
 
 case ${1:-} in
