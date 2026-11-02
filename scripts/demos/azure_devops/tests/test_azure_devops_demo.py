@@ -57,7 +57,7 @@ def test_the_bridges_headers_are_the_ones_it_reads():
 
 
 def test_release_bot_may_queue_read_and_cancel_the_pipeline_and_nothing_else():
-    assert setup.RELEASE_BOT_RIGHTS == 1 + 128 + 512 + 1024  # view, queue and stop builds, view the pipeline
+    assert setup.RELEASE_BOT_RIGHTS == 1 + 128 + 512 + 1024 + 65536  # view, queue and stop builds, view the pipeline
 
 
 

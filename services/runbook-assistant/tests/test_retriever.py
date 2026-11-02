@@ -29,3 +29,7 @@ def test_the_package_asks_for_five_passages():
 
 def test_search_is_hybrid_so_service_names_match_exactly():
     assert retriever.search_arguments("ORD-12", SETTINGS)["query_type"] == "hybrid"
+
+
+def test_search_asks_for_current_pages_only():
+    assert retriever.search_arguments("q", SETTINGS)["filters"] == {"status": "current"}

@@ -76,13 +76,15 @@ def up(args):
     if args.identity == "you":
         db.endpoint_permissions(endpoint["id"], get_parameter(ssm, "databricks/client-id"), "CAN_MANAGE")
         print("  release-pipeline: may use and delete the endpoint (CAN_MANAGE)")
+    # The chunk tables are the pipeline's, and an index needs SELECT on its table, so the pipeline makes the indexes.
+    indexer = client("pipeline")
     for name in wanted_indexes(ssm, catalog_name):
         table = name.removesuffix("_index")
         if not db.table(table):
             print(f"  {table}: no table yet, so no index (the first release makes both)")
             continue
         if not db.index(name):
-            db.create_index(name, settings["endpoint"], table, settings["embedding_model"], rag.INDEX_COLUMNS)
+            indexer.create_index(name, settings["endpoint"], table, settings["embedding_model"], rag.INDEX_COLUMNS)
         wait(f"index {name.rsplit('.', 1)[1]} online",
              lambda name=name: ((db.index(name) or {}).get("status") or {}).get("ready"), UP_TIMEOUT)
     took = time.monotonic() - started
