@@ -24,14 +24,18 @@ pairs() {
 }
 
 case ${1:-} in
-  a) commands=("grep -A1 livenessProbe \$CHART | sed 's/^ *//'"
+  a) wanted=1.10.0
+     commands=("grep -A1 livenessProbe \$CHART | sed 's/^ *//'"
                "grep -A2 'def ready' app.py | sed 's/^ *//'") ;;
-  b) commands=("git diff \$BEFORE -U0 -- \$CHART app.py | pairs") ;;
+  b) wanted=1.10.1
+     commands=("git diff \$BEFORE -U0 -- \$CHART app.py | pairs") ;;
   *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
 
 git -C "$ROOT" pull --ff-only --quiet
 cd "$ROOT/services/catalog"
+# On any other version pairs finds nothing, and set -e would end this at an Enter without a word.
+[[ $(cat VERSION) == "$wanted" ]] || { echo "main has catalog $(cat VERSION), not $wanted: reset.py database-blip stages it." >&2; exit 1; }
 if [[ $1 == b ]]; then
   # shellcheck disable=SC2034
   BEFORE=$(git log -1 --format=%h --grep='^demo: stage catalog 1\.10\.0 ')

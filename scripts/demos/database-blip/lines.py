@@ -67,8 +67,17 @@ def stream(the_host, offset, popen=subprocess.Popen):
             show(raw.rstrip("\r\n"))
             shown = True
     finally:
-        process.terminate()
+        leave(process)
     return shown
+
+
+def leave(process):
+    """The session ended for good. aws hands it to session-manager-plugin, its child, which
+    reads this window's keyboard and holds it in cbreak with no echo: left behind, it would
+    eat the Enter that reveal.sh waits for in this same window."""
+    subprocess.run(["pkill", "-TERM", "-P", str(process.pid)], capture_output=True)
+    process.terminate()
+    subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL)
 
 
 def poll(the_host, offset, interval=1):

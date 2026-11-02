@@ -463,17 +463,20 @@ def test_lines_colours_a_seconds_results_and_nothing_else():
         assert lines.coloured(plain) == plain
 
 
-def test_lines_shows_the_session_without_its_noise(capsys):
+def test_lines_shows_the_session_without_its_noise(capsys, monkeypatch):
     class Process:
         stdout = ["Starting session with SessionId: abc\r\n", "\r\n", "== reset 2026\r\n", "0:00  database blocked\r\n",
                   "Exiting session with sessionId: abc\r\n"]
         terminated = False
+        pid = 4242
 
         def terminate(self):
             self.terminated = True
 
     process = Process()
     made = []
+    ran = []
+    monkeypatch.setattr(lines.subprocess, "run", lambda command, **kwargs: ran.append(command))
 
     def popen(command, **kwargs):
         made.append(command)
@@ -485,6 +488,8 @@ def test_lines_shows_the_session_without_its_noise(capsys):
     assert lines.stream(Host, 1200, popen=popen) is True
     assert capsys.readouterr().out == "0:00  database blocked\n"
     assert process.terminated
+    # The plugin under aws goes too, and the window gets its keyboard back for reveal.sh.
+    assert ran == [["pkill", "-TERM", "-P", "4242"], ["stty", "sane"]]
     assert "AWS-StartInteractiveCommand" in made[0]
     assert f"{lines.LOG} 1200" in json.loads(made[0][made[0].index("--parameters") + 1])["command"][0]
 
@@ -564,6 +569,19 @@ def test_reveal_a_shows_the_liveness_line_then_ready_each_on_its_enter(stage_rep
         "return ask_database()", ""]
     assert "demo-states" not in reply.stdout
     assert max(len(line) for line in reply.stdout.splitlines()) <= 56
+
+
+def test_reveal_on_the_wrong_version_says_so_before_it_clears_the_window(stage_repository, tmp_path):
+    """Main on 1.10.1 for a, or still on 1.10.0 for b: without this, set -e would end it at an Enter without a word."""
+    reply = reveal(stage_repository, "a", 3, tmp_path)
+    assert reply.returncode == 1 and reply.stdout == ""
+    assert "main has catalog 1.10.1, not 1.10.0" in reply.stderr
+    run = lambda *args: subprocess.run(["git", *args], cwd=stage_repository, check=True, capture_output=True)
+    run("reset", "--quiet", "--hard", "HEAD~1")
+    run("push", "--quiet", "--force", "origin", "HEAD")
+    reply = reveal(stage_repository, "b", 2, tmp_path)
+    assert reply.returncode == 1 and reply.stdout == ""
+    assert "main has catalog 1.10.0, not 1.10.1" in reply.stderr
 
 
 def test_no_em_or_en_dash_in_anything_this_demo_adds():

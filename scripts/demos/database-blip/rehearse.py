@@ -312,7 +312,8 @@ class Machine:
         def production():
             while not stop.wait(0.2):
                 if report["seen"]:
-                    report["production"].append(http_get(f"{self.production}/api/products", timeout=1)[0])
+                    # The pipeline's own 5 s for a page: a slow answer is still an answer (video 18's first view).
+                    report["production"].append(http_get(f"{self.production}/api/products")[0])
 
         threads = [threading.Thread(target=from_a_pod, daemon=True), threading.Thread(target=production, daemon=True)]
         for thread in threads:
@@ -337,7 +338,7 @@ class Machine:
         run.wait(30)
         gone = not policy_there()
         time.sleep(3)
-        status = http_get(f"{self.staging}/api/products", timeout=1)[0]
+        status = http_get(f"{self.staging}/api/products")[0]
         result(took and gone and status == 200, f"13. an aborted run deleted its policy; {self.blip.data_route} answers {status}")
         run = subprocess.Popen(command, stdout=subprocess.DEVNULL)
         took = wait_for_policy()
