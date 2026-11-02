@@ -32,8 +32,8 @@ only frees what a take must create again, and archives instead of deleting:
    nothing. The tools host may not look up the handler's URL, so from the Mac
    reset.py looks it up and passes it on; without it the step is skipped.
 9. Turns the demos' switches off: the AI notes (videos 12 and 13), the cost
-   check (video 18) and the error budget (video 27), so the main video runs as
-   it always has.
+   check (video 18), the patch clock (video 24) and the error budget (video
+   27), so the main video runs as it always has.
 
 Each step looks before it acts, so a second run finds nothing to do. A step
 that fails doesn't stop the others, and the exit code says so. Under two
@@ -72,8 +72,8 @@ SLACK_HANDLER = "release-demo-slack-handler"
 NOT_A_RELEASER = "You can't start releases here."
 # A releaser would get "no option warm-up" instead: nothing starts either way.
 WARM_UP = {"command": "/release", "text": "orders-service ORD-12 warm-up"}
-# Each demo's switch, off after the main reset (scripts/demos/ai_notes, cost_gate and error_budget).
-SWITCHES = ["ai-notes/enabled", "cost-check/enabled", "error-budget/enabled"]
+# Each demo's switch, off after the main reset (scripts/demos/ai_notes, cost_gate, patch_clock and error_budget).
+SWITCHES = ["ai-notes/enabled", "cost-check/enabled", "patch-clock/enabled", "error-budget/enabled"]
 
 
 class HistoryRunning(Exception):

@@ -6,6 +6,8 @@ orders-service:
   path: services/orders-service
   runtime: python3.13
   handler: handler.handler
+  # Video 24: how /sbom reads what is live. A service without this block is listed as not searched.
+  live: { reader: lambda-alias, function: orders-service-production }
 
   jira:
     project: ORD
@@ -194,6 +196,7 @@ pricing-api:
   jcr: { shared: true }
   runtime: python3.13
   handler: handler.handler
+  live: { reader: lambda-alias, function: pricing-api-production }  # video 24
 
   jira:
     project: ORD
@@ -593,6 +596,7 @@ quote-service:
   path: services/quote-service
   runtime: python3.13     # the image's Python, for SonarQube
   jcr: { shared: true }   # demos-candidates/quote-service/, demos-releases/quote-service/
+  live: { reader: lambda-alias, function: quote-service-production }  # video 24: AWS only, read at no cost
 
   jira:
     project: ORD

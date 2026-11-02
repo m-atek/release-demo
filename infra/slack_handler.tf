@@ -9,7 +9,7 @@ locals {
   # Only these people may start releases and rollbacks. Their Slack member ids
   # are in SSM, slack/member-id/<name>, like common.people() reads them.
   releasers = sort([for name, person in local.people : name if try(person.releaser, false)])
-  # Demo 23: everyone with Slack may /ask the runbook assistant.
+  # Demo 23: everyone with Slack may /ask the runbook assistant. Video 24: and /sbom.
   askers = sort([for name, person in local.people : name if try(person.slack, false)])
 
   slack_handler_name = "release-demo-slack-handler"

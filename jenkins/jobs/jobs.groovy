@@ -422,3 +422,26 @@ pipelineJob('runbook-assistant-ask') {
     logRotator { numToKeep(200) }
     definition fromRepository('jenkins/runbook-assistant-ask.Jenkinsfile')
 }
+
+// Video 24: /sbom in Slack. The Slack handler starts it as release-bot; the search
+// reads and reports, in the message the handler posted. Several may run at once,
+// each at most 5 minutes. Only admin starts patch-clock-seed, as reset and stage.
+pipelineJob('sbom-search') {
+    description('Video 24: searches the SBOMs of what is live for one CVE or GHSA id, and answers in the message the Slack handler posted. It reads and reports. Started by the Slack handler as release-bot.')
+    parameters {
+        stringParam('VULN', '', 'A CVE or GHSA id.')
+        stringParam('ASKED_BY', '', 'Slack user id of who asked.')
+        stringParam('REQUESTED_AT', '', 'Epoch seconds of the Slack command, where the time starts.')
+        stringParam('SLACK_CHANNEL', '', 'Channel of the message to answer in.')
+        stringParam('SLACK_TS', '', 'Timestamp of the message to answer in.')
+    }
+    logRotator { numToKeep(200) }
+    definition fromRepository('jenkins/sbom-search.Jenkinsfile')
+}
+
+pipelineJob('patch-clock-seed') {
+    description('Video 24: builds orders-service 1.12.0 and puts it on both aliases outside the pipeline, because the gate refuses it. It runs no scan and records none. Only admin starts it.')
+    properties { disableConcurrentBuilds() }
+    logRotator { numToKeep(20) }
+    definition fromRepository('jenkins/jobs/patch-clock-seed.Jenkinsfile')
+}

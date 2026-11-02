@@ -687,6 +687,26 @@ On the call: `/release orders-service ORD-[a] standard` and wait until the budge
 
 If something doesn't answer, it goes toward a person: without a reading from CloudWatch, `standard` becomes a Normal change and Slack says "no reading". Under 1,000 requests it is too few to judge, and passes. Afterwards: `scripts/demo.sh down error-budget`: the traffic and the check off. Running costs about USD 0.25 a day while the traffic is on, and a fraction of a cent a day while it is off.
 
+## Demo on a call: the patch clock (video 24)
+
+`/sbom <CVE or GHSA id>` searches the SBOMs of what is live and names the service that holds it. The next release is refused by the scan, one line moves the package to the fixed version, the release goes live, its change closes, and a clock that started at the search stops. The same search then finds nothing. Anyone in `people.yaml` with Slack may search; only releasers may release. No Claude, no new account, nothing that bills beyond the tools host.
+
+| State | Jira | What changes | What happens |
+| --- | --- | --- | --- |
+| 1.12.0 | | 1.4.0 without the "Demo system" tag, plus Brotli on `/api/orders` when the request accepts br. `brotli==1.2.0` in requirements.txt, and the code never decodes | Never released: the gate refuses it, so the job `patch-clock-seed` puts it on both aliases, outside the pipeline. That is the video's one staged fact, and its description says so |
+| 1.12.1 | ORD-[f] | "Packed today: [n]" on the page. requirements.txt doesn't change | Stops at SBOM and scan by Grype's own exit code: "Scan: critical CVE-2026-111497 in brotli 1.2.0.", "Fixed in 1.2.1." Nothing reaches production |
+| 1.12.2 | ORD-[p] | `brotli==1.2.1` and its VERSION: the diff is those two lines | Goes live as a pre-approved standard change, and with the switch on stops the clock: "[CHG number] closed. Search to closed change: [8m 40s]." |
+
+How the search stays true: for each service with `live:` in `services.yaml` it reads the live alias through the role `release-demo-sbom-reader`, finds the release folder in JFrog whose `build-info.json` names exactly that checksum or digest, and runs the pinned Grype on the `sbom.cdx.json` that `sbom-info.json` ties to that package. A row reads clear only after that real run. A failed read, a missing SBOM or a mismatch says so, and the summary counts them. It reads and reports: `scripts/demos/patch_clock/search.py` imports nothing that writes. Every release folder now holds its SBOM (`scripts/publish.py`).
+
+Once, after the merge: `scripts/tf.sh apply` (the Slack handler, the switch's name, `AssumeSbomReader`), `scripts/demos/patch_clock/tf.sh init && scripts/demos/patch_clock/tf.sh apply` (one role, one policy), and the Slack app for `/sbom`: `.venv/bin/python scripts/slack_manifest.py`, paste it at api.slack.com/apps, Release Bot, App Manifest, Save Changes, then Install App, Reinstall to Workspace, Allow. The jobs `sbom-search` and `patch-clock-seed` come with the tools host's next boot: `scripts/tools.sh up` doesn't restart a host that is running, so stop it first if it has been up since before the merge. Then `.venv/bin/python scripts/demos/patch_clock/first_day.py cve`, which must pass before anything else counts: Grype on that day's database rates brotli 1.2.0 critical and 1.2.1 clean, or it names the fallback (`scripts/demos/patch_clock/use_fallback.py`). Then `.venv/bin/python scripts/reset.py patch-clock`, which makes ORD-[f] and ORD-[p] if they don't exist and runs the seed.
+
+Before each call or take: `scripts/demo.sh up patch-clock`, then `.venv/bin/python scripts/reset.py patch-clock`. It ends "Ready for a take: production on 1.12.0, 1.12.1 on main, [n] live services with SBOMs." [n] is 3 only while pricing-api and quote-service run a version with a release copy: `reset.py apis` and `reset.py clouds` put them on the versions Terraform made, and their rows then say why they can't be searched. Not with demos 17 or 22 up, not during demo 10's rehearsal, and no other orders-service take between the reset and the take.
+
+On the call: `/sbom CVE-2026-111497`, `/release orders-service ORD-[f] standard`, `.venv/bin/python scripts/host.py stage orders-service 1.12.2` (a fresh clone: the reset's commit makes your checkout's main out of date), `/release orders-service ORD-[p] standard`, and `/sbom CVE-2026-111497` again.
+
+After the call: `.venv/bin/python scripts/reset.py`. It puts production and staging back on 1.3.0 and the switch off, so brotli 1.2.0 isn't left live. `scripts/demo.sh status patch-clock` warns while it is.
+
 ## Layout
 
 ```

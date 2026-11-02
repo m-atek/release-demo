@@ -160,7 +160,8 @@ def test_the_quarantine_file_reads_back_what_it_writes():
     assert quarantine.load_text(quarantine.render(entries)) == entries
     assert quarantine.load_text(quarantine.render([])) == []
     assert quarantine.render([]).startswith("# Tests whose failures don't stop a release")
-    # A release may have added a real entry to the shipped file: it still reads back what it holds.
+    # Main may hold entries a take made (a release commits them), and reset.py flaky ends them: the file
+    # keeps the format either way.
     shipped = ROOT / "tests" / "quarantine.yaml"
     assert shipped.read_text() == quarantine.render(quarantine.load(shipped))
 

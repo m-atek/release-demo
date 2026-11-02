@@ -43,6 +43,12 @@ features:
       description: Ask the runbook assistant
       usage_hint: "<question>"
       should_escape: false
+    # Video 24: which live service holds a CVE, from the SBOMs stored with what is live.
+    - command: /sbom
+      url: https://REPLACE-WITH-SLACK-HANDLER-URL.invalid/
+      description: Search the SBOMs of what's live
+      usage_hint: "<CVE or GHSA id>"
+      should_escape: false
 
 oauth_config:
   scopes:

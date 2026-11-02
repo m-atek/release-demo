@@ -1,0 +1,2 @@
+# Compresses /api/orders for the store apps.
+brotli==1.2.0

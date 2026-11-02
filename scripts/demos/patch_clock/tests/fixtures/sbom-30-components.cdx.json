@@ -1,0 +1,193 @@
+{
+ "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
+ "bomFormat": "CycloneDX",
+ "specVersion": "1.6",
+ "metadata": {
+  "component": {
+   "type": "application",
+   "name": "orders-service"
+  }
+ },
+ "components": [
+  {
+   "bom-ref": "0",
+   "type": "library",
+   "name": "alpine-package-0",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "1",
+   "type": "library",
+   "name": "alpine-package-1",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "2",
+   "type": "library",
+   "name": "alpine-package-2",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "3",
+   "type": "library",
+   "name": "alpine-package-3",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "4",
+   "type": "library",
+   "name": "alpine-package-4",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "5",
+   "type": "library",
+   "name": "alpine-package-5",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "6",
+   "type": "library",
+   "name": "alpine-package-6",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "7",
+   "type": "library",
+   "name": "alpine-package-7",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "8",
+   "type": "library",
+   "name": "alpine-package-8",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "9",
+   "type": "library",
+   "name": "alpine-package-9",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "10",
+   "type": "library",
+   "name": "alpine-package-10",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "11",
+   "type": "library",
+   "name": "alpine-package-11",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "12",
+   "type": "library",
+   "name": "alpine-package-12",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "13",
+   "type": "library",
+   "name": "alpine-package-13",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "14",
+   "type": "library",
+   "name": "alpine-package-14",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "15",
+   "type": "library",
+   "name": "alpine-package-15",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "16",
+   "type": "library",
+   "name": "alpine-package-16",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "17",
+   "type": "library",
+   "name": "alpine-package-17",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "18",
+   "type": "library",
+   "name": "alpine-package-18",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "19",
+   "type": "library",
+   "name": "alpine-package-19",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "20",
+   "type": "library",
+   "name": "alpine-package-20",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "21",
+   "type": "library",
+   "name": "alpine-package-21",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "22",
+   "type": "library",
+   "name": "alpine-package-22",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "23",
+   "type": "library",
+   "name": "alpine-package-23",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "24",
+   "type": "library",
+   "name": "alpine-package-24",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "25",
+   "type": "library",
+   "name": "alpine-package-25",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "26",
+   "type": "library",
+   "name": "alpine-package-26",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "27",
+   "type": "library",
+   "name": "alpine-package-27",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "28",
+   "type": "library",
+   "name": "alpine-package-28",
+   "version": "1.0"
+  },
+  {
+   "bom-ref": "29",
+   "type": "library",
+   "name": "alpine-package-29",
+   "version": "1.0"
+  }
+ ]
+}
