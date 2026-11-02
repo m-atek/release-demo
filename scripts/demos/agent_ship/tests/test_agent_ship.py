@@ -90,8 +90,16 @@ def test_nothing_the_agent_writes_reaches_slack_but_the_pull_request_s_title():
      "An error occurred (AccessDeniedException) when calling the GetParameter operation: User: arn:aws:sts::1:assumed-role/"
      "r/s is not authorized to perform: ssm:GetParameter on resource: arn:aws:ssm:eu-west-1:1:parameter/release-demo/"
      "jcr/token with an explicit deny in an identity-based policy", "Refused by AWS: GetParameter on release-demo/jcr/token."),
+    ("git push origin HEAD:main 2>&1 | tail -8",
+     " ! [remote rejected] HEAD -> main (push declined due to repository rule violations)\nerror: failed to push some refs\n",
+     "Refused by GitHub: push to main."),
+    ("git push origin v9 2>&1 | tail -3", " ! [remote rejected] v9 -> refs/tags/v9 (push declined due to repository rule violations)",
+     "Refused by GitHub: push to v9."),
+    ("cd /work/release-demo && git push origin main", "remote: error: GH013: Repository rule violations found for refs/heads/main.\n",
+     "Refused by GitHub: push to main."),
     ("ls", "nothing refused here", None),
     ("cat notes.txt", "GH013: Repository rule violations found for refs/heads/main.", None),
+    ("cat notes.txt", "[remote rejected] HEAD -> main (push declined due to repository rule violations)", None),
 ])
 def test_refusals_are_named_from_github_s_and_aws_s_own_words(command, output, line):
     assert agent_log.refusal(command, output) == line
