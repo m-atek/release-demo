@@ -88,6 +88,13 @@ def test_option_standard_still_makes_a_standard_change(servicenow):
     assert rest == []
 
 
+def test_a_stages_backout_plan_goes_on_a_standard_change_after_it_is_opened(servicenow):
+    """The change API ignores a template's plans at creation, so demo 20's verified line never showed. 2 November."""
+    state = release_state(option="standard", change_extras={"fields": {"backout_plan": "Verified at 14:00"}})
+    _, _, rest = opened(servicenow, state)
+    assert rest == [("PATCH", "/api/now/table/change_request/change-id", {"backout_plan": "Verified at 14:00"})]
+
+
 def test_extras_and_details_reach_the_change_and_affected_items_go_on_before_assess(servicenow):
     state = release_state("store-sync", change_extras={
         "fields": {"implementation_plan": "Wave 1: STORE-001", "backout_plan": "Per server"},
