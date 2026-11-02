@@ -92,9 +92,19 @@ def automated_sync(app):
         return False, f"the last sync is {operation.get('phase') or 'missing'}"
     if not (operation.get("operation") or {}).get("initiatedBy", {}).get("automated"):
         return False, "the last sync wasn't automated"
-    if len(status.get("history") or []) < 2:
+    if sync_before(status) is None:
         return False, "the application's first sync"
     return True, ""
+
+
+def sync_before(status):
+    """When the sync before the last one finished, or None: the newest history entry from before the
+    last sync started. A self-heal is a partial sync, and Argo CD keeps those out of its history."""
+    operation = status.get("operationState") or {}
+    started = parse_time(operation.get("startedAt") or operation["finishedAt"])
+    earlier = [parse_time(entry["deployedAt"]) for entry in status.get("history") or []]
+    earlier = [moment for moment in earlier if moment < started]
+    return max(earlier) if earlier else None
 
 
 def touched(app):
@@ -234,7 +244,7 @@ def build_event(app, audit, live, csrs, app_events, config):
     if not synced:
         return None, why
     status = app["status"]
-    previous = parse_time(status["history"][-2]["deployedAt"])
+    previous = sync_before(status)
     finished = parse_time(status["operationState"]["finishedAt"])
     resources = touched(app)
     since, until = previous - datetime.timedelta(seconds=1), finished + datetime.timedelta(seconds=5)

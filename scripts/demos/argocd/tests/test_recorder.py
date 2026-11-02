@@ -63,6 +63,13 @@ def test_a_scale_put_back_by_argocd_is_one_drift_event(deployment):
     assert event["id"] == "catalog-production:2026-10-30T10:15:14Z"
 
 
+def test_a_self_heal_left_out_of_the_history_still_counts(deployment):
+    """A self-heal is a partial sync: Argo CD doesn't add it to the history, so it can hold one entry. 2 November."""
+    only_the_sync_before = application([("abc1234def", "2026-10-30T10:10:00Z")])
+    event, why = build([scale(), put_back()], deployment, app=only_the_sync_before)
+    assert why == "" and event["diff"] == [{"path": "spec.replicas", "live": 5, "git": 3}]
+
+
 def test_a_sync_after_an_unrelated_commit_still_counts(deployment):
     """main moved without a sync, so the self-heal is at a new revision: the audit log decides."""
     moved = application([("abc1234def", "2026-10-30T10:10:00Z"), ("fedcba98765", "2026-10-30T10:15:14Z")])
