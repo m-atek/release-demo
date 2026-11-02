@@ -556,3 +556,48 @@ def test_nothing_secret_in_the_lines_the_report_or_the_events(world, monkeypatch
     seen.append(json.dumps(world["events"]))
     text = "\n".join(seen)
     assert not re.search(r"\b\d{12}\b", text) and "arn:" not in text and "lambda-url" not in text and SAM not in text
+
+
+def test_the_three_takes_in_order(world, monkeypatch):
+    """The day of the takes, with the numbers the script plans: one Jira, one budget, three releases."""
+    import sys
+
+    jira = FakeJira([story("ORD-118", summary="Accept product names from the old store app"), story("ORD-120")], next_key=123)
+    monkeypatch.setattr(budget, "production_commit", lambda service, function: "a" * 40)
+    monkeypatch.setattr(budget, "changed_lines", lambda commit, path: 1)
+
+    # Minute 0: the bad release, with a full clean day behind it.
+    bad = release_state(key="ORD-118", option="standard", version="1.27.0")
+    assert stage(bad, window(AS_OF, extra=12), jira) == 0
+    assert bad["lines"][0].endswith("0 of 86,412 requests failed. 99.9% allows 86.\nSpent: 0%.")
+
+    # Take A, 35 minutes of failures in the window: refused, one issue, before any build.
+    take_a = release_state(key="ORD-120", version="1.28.0")
+    assert stage(take_a, window(AS_OF, extra=12, failing=(35, 1)), jira) == budget.REFUSED
+    assert take_a["lines"][1].startswith("The fix goes under ORD-123, opened now.")
+    assert jira.issues["ORD-123"]["reporter"] == "Release Pipeline" and "change_details" not in take_a
+
+    # Take B: the fix, under that issue, as a standard change.
+    take_b = release_state(key="ORD-123", option="standard", version="1.27.1")
+    assert stage(take_b, window(AS_OF, extra=12, failing=(40, 1)), jira) == 0
+    assert take_b["lines"][1] == "ORD-123 passes: this budget's own issue,\n1 line of code changed since production."
+    assert "force_normal" not in take_b and "override" not in take_b
+    jira.transition("ORD-123", "Done")  # jira.py release, at the end of its run
+
+    # A plain release of the feature after the fix: refused, says when, and opens nothing new.
+    plain = release_state(key="ORD-120", version="1.28.1")
+    assert stage(plain, window(AS_OF, extra=55, failing=(52, 6)), jira) == budget.REFUSED
+    assert "Back about" in plain["lines"][0] and jira.created == ["ORD-123"]
+
+    # Take C: the override, Alex's comment, the record.
+    take_c = release_state(key="ORD-120", option="override", version="1.28.1")
+    assert stage(take_c, window(AS_OF, extra=55, failing=(52, 6)), jira) == 0
+    assert take_c["override"] is True and "Override asked by Sam Developer." in take_c["change_details"][2]
+    take_c["change"] = {"sys_id": "c1", "number": "CHG0030090", "type": "normal", "approved_by": "Alex"}
+    run_state.save(take_c)
+    monkeypatch.setitem(sys.modules, "change", FakeChange("The fix is live and failures stopped."))
+    assert budget.approved(take_c) == 0
+    assert take_c["lines"][-1] == "Override reason: The fix is live and failures stopped."
+    assert take_c["close_notes_extra"] == ("Released with the error budget 163% spent. "
+                                           "Override approved by Alex: The fix is live and failures stopped.")
+    assert [event["result"] for event in world["events"]] == ["within", "refused", "fix", "refused", "override-asked", "override-approved"]
