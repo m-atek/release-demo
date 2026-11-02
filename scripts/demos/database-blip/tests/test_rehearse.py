@@ -166,8 +166,8 @@ class Day:
     def database_restarts(self):
         return "0"
 
-    def blocks_on_fresh_pods(self, label, count=None):
-        self.log.append(f"blocks {label}")
+    def blocks_on_fresh_pods(self, label, count=None, after_a_block=False):
+        self.log.append(f"blocks {label}{' after a block' if after_a_block else ''}")
         return self.failing[:count] if label == "1.10.0" else self.fixed[:count]
 
     def one_block(self):
@@ -213,6 +213,7 @@ def test_a_good_day_exit_0(capsys):
     assert "18 PASS and 0 FAIL" in out and "\nFAIL" not in out
     assert "[thirty-eight], 1.10.0 back at: 0:38, 0:38, 0:38." in out
     assert day.log[:2] == ["baseline", "release 1.10.0"]
+    assert "blocks 1.10.1 after a block" in day.log  # new pods before the second block of 1.10.1 too
 
 
 def test_a_bad_day_no_video_exit_1_and_the_fix_never_measured(capsys):

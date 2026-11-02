@@ -241,11 +241,11 @@ class Machine:
             for args in (["rollout", "restart", "deployment/catalog"], ["rollout", "status", "deployment/catalog", "--timeout=180s"]):
                 subprocess.run(["kubectl", *args, "-n", self.blip.namespace], env=env, check=True, capture_output=True)
 
-    def blocks_on_fresh_pods(self, label, count=None):
+    def blocks_on_fresh_pods(self, label, count=None, after_a_block=False):
         """Three blocks, each on new pods: the deploy's first, then a rollout restart between."""
         found = []
         for number in range(1, (count or self.blocks) + 1):
-            if number > 1:
+            if number > 1 or after_a_block:
                 self.new_pods()
             print(f"-- {label}, block {number} of {count or self.blocks}", flush=True)
             found.append(self.one_block())
@@ -480,7 +480,8 @@ def measure(machine, args):
     stop.set()
     for thread in threads:
         thread.join(10)
-    fixed_blips = [first, *machine.blocks_on_fresh_pods("1.10.1", machine.blocks - 1)] if machine.blocks > 1 else [first]
+    fixed_blips = [first, *machine.blocks_on_fresh_pods("1.10.1", machine.blocks - 1, after_a_block=True)
+                   ] if machine.blocks > 1 else [first]
     fixed = []
     for number, blip in enumerate(fixed_blips, 1):
         ok, line = fixed_block(blip, data, alive)
