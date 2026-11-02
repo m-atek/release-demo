@@ -160,8 +160,9 @@ def test_the_quarantine_file_reads_back_what_it_writes():
     assert quarantine.load_text(quarantine.render(entries)) == entries
     assert quarantine.load_text(quarantine.render([])) == []
     assert quarantine.render([]).startswith("# Tests whose failures don't stop a release")
+    # Empty as built; a take's quarantine sits on main until reset.py flaky ends it.
     shipped = ROOT / "tests" / "quarantine.yaml"
-    assert quarantine.load(shipped) == [] and shipped.read_text() == quarantine.render([])
+    assert shipped.read_text() == quarantine.render(quarantine.load(shipped))
 
 
 def results_of(outcome_attempts, first=40.0, rerun=0.0):
