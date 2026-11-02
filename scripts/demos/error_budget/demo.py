@@ -87,13 +87,19 @@ def main_version(path):
         return base64.b64decode(json.loads(response.read())["content"]).decode().strip()
 
 
+def last_real_minute(client, settings, as_of):
+    """The newest whole minute as AWS/Lambda counted it, seed or no seed: the seed can't vouch for the traffic."""
+    return budget.read_series(client, settings["function"], as_of, 1, budget.metrics_of(settings))[-1]
+
+
 def status():
     session = aws_session()
     settings = budget.settings_of(SERVICE)
     print(f"Check's switch: {load_switch().value() or 'not readable'}")
     print(f"Traffic until: {plain_parameter(TRAFFIC)}")
-    reading = budget.take_reading(session.client("cloudwatch"), settings, time.time())
-    minute, requests, failed = reading.series[-1]
+    client = session.client("cloudwatch")
+    reading = budget.take_reading(client, settings, time.time())
+    minute, requests, failed = last_real_minute(client, settings, reading.as_of)
     print(f"The traffic's last minute, {budget.clock(minute)}: {requests} requests, {failed} failed")
     print(budget.head(reading, f"Spent: {reading.spent}%.{budget.back_about(reading, time.time())}"))
     print(budget.seeded_line(reading))
@@ -133,8 +139,9 @@ def checks(session=None, now=None):
     ci = plain_parameter("ci/orders-service") or "jenkins"
     found.append((ci == "jenkins", f"/release orders-service starts on {ci}" + ("" if ci == "jenkins" else ": that demo's down first")))
     try:
-        reading = budget.take_reading(session.client("cloudwatch"), settings, now)
-        last = reading.series[-1]
+        client = session.client("cloudwatch")
+        reading = budget.take_reading(client, settings, now)
+        last = last_real_minute(client, settings, reading.as_of)
         found.append((last[1] in PER_MINUTE, f"last whole minute: {last[1]} requests (60, give or take 2), {last[2]} failed"))
         found.append((True, f"window: {reading.failed:,} of {reading.requests:,} failed, allows {reading.allowed:,}, spent {reading.spent}%"))
         found.append((True, budget.seeded_line(reading)))

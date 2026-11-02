@@ -205,6 +205,15 @@ def test_check_waits_for_a_full_day():
     assert seed.check(cloudwatch, SETTINGS, NOW, out=lines.append) == 1
 
 
+def test_check_won_t_take_the_seed_s_word_for_the_traffic(monkeypatch):
+    import demo
+
+    # Seeded up to the newest minute, with nothing sent: the seeded minute reads 60, and the check still says FAIL.
+    cloudwatch = FakeCloudWatch(seeded={minute: seed.count_for(minute) for minute in range(AS_OF - 86400, AS_OF, 60)})
+    assert budget.take_reading(cloudwatch, SETTINGS, NOW).series[-1][1] in range(59, 62)
+    assert demo.last_real_minute(cloudwatch, SETTINGS, AS_OF)[1:] == (0, 0)
+
+
 # The right to write it.
 
 def test_the_tools_host_may_write_this_namespace_and_no_other():
