@@ -152,6 +152,7 @@ def price(event):
     name = query.get("product", [""])[0]
     if not name:
         return _json(400, {"error": "product is required"})
+    name = name.split(",")[0].strip()
     return _json(200, {"product": name, "price_eur": PRICES[name]})
 
 

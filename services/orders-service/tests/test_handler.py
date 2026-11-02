@@ -57,6 +57,12 @@ def test_price_of_a_product_by_its_exact_name():
     assert json.loads(response["body"]) == {"product": "Rain jacket", "price_eur": 74.50}
 
 
+def test_price_accepts_the_old_store_apps_product_names():
+    response = price_of("Rain jacket, blue")
+    assert response["statusCode"] == 200
+    assert json.loads(response["body"]) == {"product": "Rain jacket", "price_eur": 74.50}
+
+
 def test_price_without_a_product_is_a_bad_request():
     assert request("/api/price")["statusCode"] == 400
 
