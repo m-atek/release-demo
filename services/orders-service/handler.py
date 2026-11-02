@@ -3,7 +3,13 @@
 An AWS Lambda function behind a function URL. It serves one page with the
 service, environment, version, commit and deploy time in large type, a /health
 endpoint for the pipeline's checks, and /api/orders with today's fictional
-orders for the desktop and mobile demos. Standard library only.
+orders for the desktop and mobile demos.
+
+The page's five orders each get a delivery message that Claude writes, in one
+call per page view, through the official SDK (requirements.txt); the API key
+comes from SSM once per cold start. A message longer than 120 characters, one
+that doesn't name the order's store, or any error gives the plain template.
+Each call logs one JSON line with its tokens, and never the message text.
 """
 
 import datetime
@@ -36,7 +42,28 @@ PRODUCTS = [
 STATUSES = ["received", "picking", "packed", "shipped"]
 DELIVERY_ESTIMATE_DAYS = 2
 
+# The delivery messages. A model change is a release.
+MODEL = "claude-opus-5-5"
+EFFORT = "low"
+MAX_TOKENS = 2000
+CLIENT_TIMEOUT_SECONDS = 20.0
+MESSAGE_LIMIT = 120
+KEY_PARAMETER = "/release-demo/anthropic/api-key"
+FALLBACK = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
+MESSAGE_SYSTEM = (
+    "You write the delivery message an order page shows next to each order. For each order in the user "
+    "message, write one friendly sentence of at most 120 characters that names the order's store and uses "
+    "only the details given: the store, the items, the status and the delivery estimate in days."
+)
+MESSAGE_SCHEMA = {
+    "type": "object", "additionalProperties": False, "required": ["messages"],
+    "properties": {"messages": {"type": "array", "items": {
+        "type": "object", "additionalProperties": False, "required": ["order_id", "text"],
+        "properties": {"order_id": {"type": "string"}, "text": {"type": "string"}}}}},
+}
+
 _deployed_at = None
+_claude = None
 
 
 def read_package(directory):
@@ -78,6 +105,73 @@ def _lambda_last_modified():
         return modified.strftime("%d %b %Y, %H:%M UTC")
     except Exception:
         return "unknown"
+
+
+def claude():
+    """The Claude client, made once per cold start with the key from SSM. The key is never logged."""
+    global _claude
+    if _claude is None:
+        import anthropic
+        import boto3
+
+        name = os.environ.get("ANTHROPIC_KEY_PARAMETER", KEY_PARAMETER)
+        key = boto3.client("ssm").get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
+        _claude = anthropic.Anthropic(api_key=key, timeout=CLIENT_TIMEOUT_SECONDS, max_retries=0)
+    return _claude
+
+
+def log(line):
+    print(json.dumps(line))
+
+
+def template(order):
+    return f"Ships from {order['store']}. Delivery estimate: {DELIVERY_ESTIMATE_DAYS} days."
+
+
+def usable(text, order):
+    return isinstance(text, str) and 0 < len(text) <= MESSAGE_LIMIT and order["store"] in text
+
+
+def tokens(usage):
+    return {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
+            "cache_read_input_tokens": usage.cache_read_input_tokens or 0,
+            "cache_creation_input_tokens": usage.cache_creation_input_tokens or 0}
+
+
+def write_messages(orders, request_id, per):
+    """Claude's message for each order, in one call, or {} on any error.
+    One log line per call: its tokens and the model that answered, no text."""
+    details = [{"order_id": o["id"], "store": o["store"], "items": o["items"], "status": o["status"],
+                "delivery_estimate_days": DELIVERY_ESTIMATE_DAYS} for o in orders]
+    try:
+        response = claude().beta.messages.create(
+            model=MODEL, max_tokens=MAX_TOKENS, system=MESSAGE_SYSTEM,
+            messages=[{"role": "user", "content": json.dumps(details)}],
+            output_config={"effort": EFFORT, "format": {"type": "json_schema", "schema": MESSAGE_SCHEMA}},
+            **FALLBACK,
+        )
+    except Exception as error:
+        log({"event": "claude_error", "request_id": request_id, "version": VERSION, "error": type(error).__name__})
+        return {}
+    line = {"event": "claude", "request_id": request_id, "version": VERSION, "per": per,
+            "orders": [o["id"] for o in orders], "model": response.model, **tokens(response.usage)}
+    iterations = getattr(response.usage, "iterations", None) or []
+    if iterations:
+        line["iterations"] = [{"model": getattr(i, "model", None) or MODEL, **tokens(i)} for i in iterations]
+    log(line)
+    if response.stop_reason != "end_turn":
+        return {}
+    try:
+        data = json.loads("".join(block.text for block in response.content if block.type == "text"))
+        return {message["order_id"]: message["text"] for message in data["messages"]}
+    except (ValueError, KeyError, TypeError):
+        return {}
+
+
+def delivery_messages(orders, request_id):
+    """Claude writes every order's message, on every page view."""
+    written = write_messages(orders, request_id, per="page_view")
+    return {o["id"]: written[o["id"]] if usable(written.get(o["id"]), o) else template(o) for o in orders}
 
 
 def todays_orders(today=None):
@@ -122,13 +216,14 @@ def health():
     }
 
 
-def page():
+def page(request_id="local"):
     env = environment()
     orders = todays_orders()["orders"]
+    messages = delivery_messages(orders[:5], request_id)
     rows = "\n".join(
         f"<tr><td>{html.escape(o['id'])}</td><td>{html.escape(o['store'])}</td>"
         f"<td>{len(o['items'])}</td><td>&euro; {o['total_eur']:.2f}</td>"
-        f"<td>{html.escape(o['status'])}</td></tr>"
+        f"<td>{html.escape(o['status'])}</td><td>{html.escape(messages[o['id']])}</td></tr>"
         for o in orders[:5]
     )
     return PAGE.format(
@@ -158,7 +253,7 @@ def handler(event, context):
         return {
             "statusCode": 200,
             "headers": {"content-type": "text/html; charset=utf-8", "cache-control": "no-store"},
-            "body": page(),
+            "body": page(getattr(context, "aws_request_id", "local")),
         }
     return _json(404, {"error": "not found"})
 
@@ -193,7 +288,6 @@ PAGE = """<!doctype html>
   .env.staging {{ background: var(--staging); }}
   .env.production {{ background: var(--production); }}
   .env.local {{ background: var(--local); }}
-  .demo {{ margin-left: auto; color: var(--muted); font-size: 15px; }}
   .version {{ font-size: 120px; font-weight: 700; letter-spacing: -0.04em; line-height: 1;
     margin: 40px 0 8px; font-variant-numeric: tabular-nums; }}
   .facts {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -215,7 +309,6 @@ PAGE = """<!doctype html>
   <header>
     <h1>{service}</h1>
     <span class="env {env}">{env}</span>
-    <span class="demo">Demo system</span>
   </header>
   <div class="version">{version}</div>
   <p class="note">Delivery estimate: {delivery_days} days</p>
@@ -226,7 +319,7 @@ PAGE = """<!doctype html>
   </section>
   <h2>Today's orders ({order_count})</h2>
   <table>
-    <thead><tr><th>Order</th><th>Store</th><th>Items</th><th>Total</th><th>Status</th></tr></thead>
+    <thead><tr><th>Order</th><th>Store</th><th>Items</th><th>Total</th><th>Status</th><th>Delivery message</th></tr></thead>
     <tbody>
 {rows}
     </tbody>
