@@ -2,6 +2,7 @@
 the measurement from Lambda's own lines (7), a person instead of a stop (8),
 and the lines Slack and the change show."""
 
+import datetime
 import json
 
 import pytest
@@ -87,6 +88,7 @@ def test_one_seven_zero_is_measured_from_lambdas_own_lines_and_priced_to_the_cen
 
 
 def test_the_change_s_five_lines(production):
+    read_on = datetime.date.fromisoformat(str(cost_check.prices()["read"])).strftime("%-d %B %Y")  # the date changes with each re-read
     record = run("1.10.0", logs_1_10_0())
     lines = cost_check.change_lines(record, state("1.10.0"))
     assert lines[0] == (f"Cost check (staging, 50 page views): +USD {record['delta_usd']:,} a month at the expected "
@@ -94,7 +96,7 @@ def test_the_change_s_five_lines(production):
     assert lines[1] == ("Measured per page view in staging (50 page views): 1 Claude call, 1,512 tokens in and 398 out "
                         "on claude-opus-5-5; Lambda 6,825 ms billed at 1024 MB.")
     assert lines[2] == ("Prices: claude-opus-5-5 USD 4 in and USD 20 out per million tokens; Lambda USD 0.0000166667 "
-                        "per GB-second (prices.yaml, read 30 October 2026).")
+                        f"per GB-second (prices.yaml, read {read_on}).")
     assert lines[3] == "Expected volume (services.yaml): 3,000,000 page views and 60,000 new orders a month."
     assert lines[4] == "Production 1.4.0: USD 3 a month at the same volume."
     assert cost_check.change_lines(record, state("1.10.0", option=""))[0].endswith("Cost and change approvers decide.")
