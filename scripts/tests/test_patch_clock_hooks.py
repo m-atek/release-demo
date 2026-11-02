@@ -202,6 +202,13 @@ def test_a_release_folder_gets_the_sbom_it_lacked_when_the_same_package_is_relea
     assert fake.puts == ["orders-service-releases/1.12.2/sbom.cdx.json", "orders-service-releases/1.12.2/sbom-info.json"]
 
 
+def test_a_kubernetes_build_infos_image_is_a_string_and_its_digest_has_its_own_key():
+    """catalog's build-info.json: "image" is "repository@digest". Its first release after the merge stopped here. 2 November."""
+    tied = publish.sbom_info({"service": "catalog", "version": "1.10.0", "sha256": "ab",
+                              "image": "registry/catalog@sha256:cd", "image_digest": "sha256:cd"}, b"{}")
+    assert tied["image_digest"] == "sha256:cd" and tied["service"] == "catalog"
+
+
 def test_an_image_service_ties_its_digest_too():
     tied = publish.sbom_info({"service": "quote-service", "version": "1.2.0", "sha256": "ab", "image": {"digest": "sha256:cd"}}, b"x")
     assert tied["image_digest"] == "sha256:cd" and tied["package_sha256"] == "ab"

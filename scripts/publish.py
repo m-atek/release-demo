@@ -115,9 +115,10 @@ def copy_beside(token, candidate, base):
 
 def sbom_info(info, sbom):
     """What ties an SBOM to its package: the checksums of both, as they were when it was stored."""
-    image = (info.get("image") or {}).get("digest") or info.get("image_digest")
+    image = info.get("image")   # a dict for some services; catalog's build-info.json has "repository@digest"
+    digest = (image.get("digest") if isinstance(image, dict) else None) or info.get("image_digest")
     return {"service": info.get("service"), "version": info.get("version"), "package_sha256": info.get("sha256"),
-            **({"image_digest": image} if image else {}), "sbom_sha256": hashlib.sha256(sbom).hexdigest()}
+            **({"image_digest": digest} if digest else {}), "sbom_sha256": hashlib.sha256(sbom).hexdigest()}
 
 
 def upload_sbom(token, base, info, sbom):
