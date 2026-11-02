@@ -27,7 +27,7 @@ def state(version, option="standard"):
 
 
 def fetcher(ids=IDS, statuses=None):
-    answers = iter(zip(ids, statuses or [200] * len(ids)))
+    answers = iter([("first-view", 200), *zip(ids, statuses or [200] * len(ids))])  # one page view, then the sample
     return lambda url: next(answers)
 
 
@@ -126,6 +126,19 @@ def test_one_seven_one_prices_its_per_order_call_per_new_order(production):
                     "Lambda 41 ms billed at 1024 MB. Per new order: 1 Claude call for 5 orders, 210 tokens in and 80 out "
                     "per order on claude-haiku-5-5; DynamoDB 1 write units.")
     assert cost_check.slack_line(record).endswith("Within the USD 100 limit.")
+
+
+def test_the_first_page_view_fills_the_store_and_isn_t_counted(production):
+    """Five first views at once on an empty store once read as +USD 110 a month: 2 November, video 18."""
+    first = [claude_line("first-view", "1.10.1", "order", model="claude-haiku-5-5", tokens_in=1050, tokens_out=400),
+             store_line("first-view", "1.10.1", 1.5, 5.0), report("first-view", 9200)]
+    record = run("1.10.1", first + logs_1_10_1(first_call=False))
+    page, order = record["per_page_view"], record["per_new_order"]
+    assert len(record["requests"]) == 50 and "first-view" not in [r["request_id"] for r in record["requests"]]
+    assert page["claude_calls"] == 0 and page["billed_ms"] == 41
+    assert (order["claude_calls"], order["orders"], order["input_tokens"]) == (1, 5, 210)
+    assert record["driver"]["used"] == "order" and record["driver"]["from_lookback"] is False
+    assert record["result"] == "within"
 
 
 def test_with_the_messages_stored_already_it_prices_the_last_seven_days_call(production):
