@@ -6,8 +6,9 @@
 Reads what is live, finds the release copy that is that package, downloads it with release-pipeline's
 token (which may deploy and not delete), checks its SHA-256, runs the pinned Syft over it as the
 pipeline's SBOM and scan stage does (dir:, or oci-dir: for a package that holds an image), and stores
-the SBOM next to the package with sbom-info.json. A folder that has one is left alone. Runs on the tools
-host, where JFrog and Docker are; reset.py patch-clock calls it for pricing-api and quote-service.
+the SBOM next to the package with sbom-info.json. A folder that has one is left alone. It runs on the tools
+host, where JFrog and Docker are: from the Mac it hands itself over. reset.py patch-clock calls it for
+pricing-api and quote-service.
 """
 
 import argparse
@@ -20,6 +21,7 @@ sys.path.insert(0, str(HERE))
 if str(HERE.parents[1]) not in sys.path:
     sys.path.insert(1, str(HERE.parents[1]))
 
+import host  # noqa: E402
 import live as readers  # noqa: E402
 import publish  # noqa: E402
 import tools  # noqa: E402
@@ -66,7 +68,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("service", nargs="*", help="default: every service with live: in services.yaml")
     parser.add_argument("--dry-run", action="store_true", help="print what it would make, change nothing")
+    parser.add_argument("--here", action="store_true", help="run here, not on the tools host")
     args = parser.parse_args()
+    if not args.here and not host.on_host():
+        shown = [*args.service, *(["--dry-run"] if args.dry_run else [])]
+        return host.hand_over("patch-clock-backfill", "demos/patch_clock/backfill.py", shown, title=" ".join(["patch_clock backfill", *shown]))
+    sys.stdout.reconfigure(line_buffering=True)
 
     def act(what, do):
         if args.dry_run:

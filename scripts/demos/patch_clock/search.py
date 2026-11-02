@@ -165,7 +165,9 @@ def warning(service_name, version, says):
 
 
 def error_name(error):
-    """AWS's own name for what went wrong, or the error's class: nothing a token could be in."""
+    """AWS's own name for what went wrong, JFrog's status, or the error's class: nothing a token could be in."""
+    if isinstance(error, readers.JFrogAnswered):
+        return str(error)
     return (getattr(error, "response", None) or {}).get("Error", {}).get("Code") or error.__class__.__name__
 
 

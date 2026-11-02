@@ -5,12 +5,14 @@ checksum mismatch are never clear. AWS, JFrog and Grype are fakes.
 """
 
 import ast
+import io
 import json
 import re
 import sqlite3
 import subprocess
 import sys
 import threading
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -242,8 +244,33 @@ def test_jfrog_refusing_isnt_clear(world, monkeypatch):
 
     monkeypatch.setattr(readers, "evidence_reader", Refusing)
     text = searched()
-    assert only_row(text, "pricing-api") == ":warning:  pricing-api 2.1.2: couldn't read JFrog (JFrogAnswered)"
+    assert only_row(text, "pricing-api") == ":warning:  pricing-api 2.1.2: couldn't read JFrog (403)"
     assert "clear" not in text
+
+
+def test_jfrogs_answers_reach_the_reader_as_statuses(monkeypatch):
+    class Answer(io.BytesIO):
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def urlopen(request, timeout):
+        assert request.get_method() == "GET" and request.full_url == "http://jfrog.test/artifactory/a/b.json"
+        assert request.get_header("Authorization") == "Bearer the-token"
+        if urlopen.missing:
+            raise urllib.error.HTTPError(request.full_url, 404, "not found", {}, io.BytesIO(b"gone"))
+        return Answer(b"body")
+
+    monkeypatch.setattr(readers.urllib.request, "urlopen", urlopen)
+    jfrog = readers.JFrog("the-token", base="http://jfrog.test/")
+    urlopen.missing = False
+    assert jfrog.get("a/b.json") == (200, b"body")
+    urlopen.missing = True
+    assert jfrog.get("a/b.json") == (404, b"gone") and readers.present(jfrog, "a/b.json") is None
 
 
 def test_a_missing_jfrog_token_isnt_clear(world, monkeypatch):

@@ -14,7 +14,7 @@ toolchain.build, and calls this, which:
 4. runs check.py for both environments.
 
 No run state, no change, no Slack, no event, and no record that claims a scan passed. Nothing else in the
-repository needs this path, and no other demo sees it. The script's description says it plainly.
+repository needs this path, and no other demo sees it. The video's description says so plainly.
 """
 
 import hashlib

@@ -293,6 +293,15 @@ def test_with_no_release_copy_of_what_is_live_the_backfill_makes_nothing(old_rel
     assert "no release copy of what is live" in capsys.readouterr().out and old_release.store.puts == []
 
 
+def test_from_the_mac_the_backfill_hands_itself_to_the_tools_host(monkeypatch):
+    calls = []
+    monkeypatch.setattr(host, "on_host", lambda: False)
+    monkeypatch.setattr(host, "hand_over", lambda name, script, args, **kwargs: calls.append((name, script, args)) or 0)
+    monkeypatch.setattr(sys, "argv", ["backfill.py", "orders-service", "--dry-run"])
+    assert backfill.main() == 0
+    assert calls == [("patch-clock-backfill", "demos/patch_clock/backfill.py", ["orders-service", "--dry-run"])]
+
+
 # Setup.
 
 class FakeJira:
