@@ -2,6 +2,7 @@
 send, how it reads an answer, and what a call costs. The real SDK, with a
 mock transport: nothing leaves the machine."""
 
+import datetime
 import json
 import re
 import sys
@@ -89,7 +90,7 @@ def test_a_summary_of_twelve_thousand_tokens_in_and_four_out_costs_about_thirtee
 
 def test_the_prices_file_is_dated_and_names_its_pages():
     prices = llm.prices()
-    assert str(prices["read"]) == "2026-10-30"
+    assert datetime.date.fromisoformat(str(prices["read"]))  # the date changes with each re-read
     assert prices["claude"]["source"].startswith("https://platform.claude.com/")
     assert prices["claude"]["per_million_tokens"]["claude-opus-5-5"] == {"input": 4.0, "output": 20.0,
                                                                          "cache_read": 0.2, "cache_write": 5.0}
