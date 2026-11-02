@@ -165,7 +165,11 @@ def client():
 
 def handler(event, context, ssm=None, now=time.time, sleep=time.sleep, get=fetch):
     ssm = ssm or client()
-    value = ssm.get_parameter(Name=SSM_PREFIX + SWITCH)["Parameter"]["Value"]
+    try:
+        value = ssm.get_parameter(Name=SSM_PREFIX + SWITCH)["Parameter"]["Value"]
+    except Exception as error:  # no name yet (infra/ not applied) or no right to read it: off, and say why
+        print(f"Switch not read ({error.__class__.__name__}): no traffic.")
+        return {"sent": 0}
     if not traffic_on(value, now()):
         return {"sent": 0}
     remaining = (lambda: context.get_remaining_time_in_millis() / 1000) if context else None

@@ -87,6 +87,15 @@ def test_off_exits_at_once_and_reads_only_the_switch():
     assert ssm.asked == ["/release-demo/error-budget/traffic-until"] and sent == []
 
 
+def test_a_switch_it_cant_read_is_off(capsys):
+    class NoName:
+        def get_parameter(self, Name):
+            raise KeyError("ParameterNotFound")
+
+    assert traffic.handler({}, None, ssm=NoName(), now=lambda: NOW, get=lambda url, timeout: pytest.fail("sent")) == {"sent": 0}
+    assert "Switch not read (KeyError)" in capsys.readouterr().out
+
+
 def test_a_run_sends_sixty_one_a_second_with_a_five_second_timeout():
     clock = FakeClock()
     calls, slept = [], []
