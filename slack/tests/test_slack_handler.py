@@ -584,7 +584,7 @@ def test_on_azure_the_message_says_so_and_release_bot_queues_the_run_from_main(a
     assert run.get_header("Authorization") == "Bearer test-release-bot-token"
     assert json.loads(run.data) == {
         "resources": {"repositories": {"self": {"refName": "refs/heads/main"}}},
-        "templateParameters": {"service": "orders-service", "jiraKey": "ORD-12", "option": "", "requestedBy": SAM,
+        "templateParameters": {"service": "orders-service", "jiraKey": "ORD-12", "requestedBy": SAM,
                                "requestedAt": "1793000000", "slackChannel": "C0RELEASES", "slackTs": "1793000000.000100"}}
     assert calls.jenkins == [] and calls.slack_calls("chat.update") == []
 

@@ -63,6 +63,30 @@ def test_a_scale_put_back_by_argocd_is_one_drift_event(deployment):
     assert event["id"] == "catalog-production:2026-10-30T10:15:14Z"
 
 
+def test_a_self_heal_left_out_of_the_history_still_counts(deployment):
+    """A self-heal is a partial sync: Argo CD doesn't add it to the history, so it can hold one entry. 2 November."""
+    only_the_sync_before = application([("abc1234def", "2026-10-30T10:10:00Z")])
+    event, why = build([scale(), put_back()], deployment, app=only_the_sync_before)
+    assert why == "" and event["diff"] == [{"path": "spec.replicas", "live": 5, "git": 3}]
+
+
+def test_a_server_dry_run_is_not_an_edit(deployment):
+    """kubectl's --dry-run=server is audited like a write, and writes nothing. 2 November."""
+    dry_run = audit(PIETER["user"], "2026-10-30T10:12:00Z", subresource="scale", body={"spec": {"replicas": 5}},
+                    groups=PIETER["groups"], uri="/apis/apps/v1/namespaces/production/deployments/catalog/scale"
+                                                 "?dryRun=All&fieldManager=kubectl-scale")
+    event, why = build([dry_run, scale(), put_back()], deployment)
+    assert why == "" and len(event["edits"]) == 1 and event["edits"][0]["at"].startswith("2026-10-30T10:15:07")
+    assert event["seconds"] == 7
+
+
+def test_an_earlier_self_heal_ends_the_edits_before_it(deployment):
+    """Self-heals aren't in the history, so the sync before can be an hour old: only the edits since Argo CD last wrote count."""
+    earlier = [scale(at="2026-10-30T10:11:00Z"), put_back(at="2026-10-30T10:11:07Z")]
+    event, why = build([*earlier, scale(), put_back()], deployment)
+    assert why == "" and len(event["edits"]) == 1 and event["seconds"] == 7
+
+
 def test_a_sync_after_an_unrelated_commit_still_counts(deployment):
     """main moved without a sync, so the self-heal is at a new revision: the audit log decides."""
     moved = application([("abc1234def", "2026-10-30T10:10:00Z"), ("fedcba98765", "2026-10-30T10:15:14Z")])

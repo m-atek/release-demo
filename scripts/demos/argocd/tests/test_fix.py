@@ -102,3 +102,41 @@ def test_an_image_jfrog_doesnt_have_fails_by_name(monkeypatch):
     assert not ok and title == "sha256:bbbbbbbbbbbb... isn't in docker-local/catalog"
     ok, title = gitops.image_in_jfrog({"image": {"repository": "x/docker-local/catalog", "digest": ""}}, "token")
     assert not ok and "isn't a sha256 digest" in title
+
+
+def test_the_record_step_resolves_the_incident_and_says_live_in(monkeypatch):
+    """Its first real run stopped on a name clash: scripts/ and bridge/ both have an events module. 2 November."""
+    import change as servicenow_change
+    import events
+    import github
+
+    found = state(change={"number": "CHG0030094", "sys_id": "chg-id", "type": "emergency",
+                          "approved_by_name": "Alex Change Manager"},
+                  sync={"revision": "791bf95d6e87", "finished_at": "2026-11-02T13:38:36Z"})
+    closed, resolved = [], []
+    monkeypatch.setattr(fix, "load", lambda: found)
+    monkeypatch.setattr(fix, "save", lambda state: None)
+    monkeypatch.setattr(fix, "post", lambda state, ssm: None)
+    monkeypatch.setattr(fix, "ssm_client", lambda: None)
+    monkeypatch.setattr(servicenow_change, "connect", lambda: (None, None))
+    monkeypatch.setattr(servicenow_change, "close", lambda sn, state, code, notes: closed.append((code, notes)))
+    monkeypatch.setattr(gitops, "resolve", lambda sn, incident, notes: resolved.append((incident, notes)))
+    monkeypatch.setattr(events, "annotate", lambda *args: None)
+    monkeypatch.setattr(github, "GitHub", lambda: type("Client", (), {"call": lambda self, *args: None})())
+    fix.finish(None)
+    assert closed[0][0] == "successful" and "Synced by Argo CD at 14:38:36, revision 791bf95." in closed[0][1]
+    assert resolved == [("inc-id", "Fixed through CHG0030094: spec.replicas 5, approved by Alex Change Manager, "
+                                   "synced by Argo CD at 14:38:36.")]
+    assert found["lines"][-1].startswith("Live in ") and found["result"] == "live"
+
+
+def test_a_resolve_names_its_close_code_because_the_pipeline_cant_read_the_choices():
+    calls = []
+
+    class ServiceNow:
+        def call(self, method, path, body=None, **query):
+            calls.append((method, path, body))
+
+    gitops.resolve(ServiceNow(), "inc-id", "Fixed.")
+    assert calls == [("PATCH", "/api/now/table/incident/inc-id",
+                      {"state": "6", "close_code": gitops.SOLVED_CODE, "close_notes": "Fixed."})]

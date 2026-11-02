@@ -46,6 +46,7 @@ PATTERNS = [
     re.compile(r"(?i)(aws_secret_access_key|aws_session_token)\s*[=:]\s*\S+"),
 ]
 GH013 = re.compile(r"GH013: Repository rule violations found for refs/(heads|tags)/(\S+?)\.?(?:\s|$)")
+PUSH_REJECTED = re.compile(r"\[remote rejected\]\s+\S+ -> (?:refs/(heads|tags)/)?(\S+) \(push declined due to repository rule violations\)")
 AWS_DENIED = re.compile(r"\((AccessDenied(?:Exception)?)\) when calling the (\w+) operation: User: \S+ is not "
                         r"authorized to perform: (\S+) on resource: (\S+)")
 PULL_URL = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/pull/(\d+)")
@@ -79,10 +80,10 @@ def short_resource(arn):
 def refusal(command, output, pull=None):
     """The Slack line for what a tool result shows the platform refused, or None."""
     command = command or ""
-    found = GH013.search(output)
-    if found and command.lstrip().startswith("git"):
+    found = GH013.search(output) or PUSH_REJECTED.search(output)  # the agent may pipe the push through tail
+    if found and re.search(r"\bgit\b[^|;&]*\bpush\b", command):
         kind, ref = found.groups()
-        return "Refused by GitHub: push to main." if (kind, ref) == ("heads", "main") else f"Refused by GitHub: push to {ref}."
+        return "Refused by GitHub: push to main." if ref == "main" and kind != "tags" else f"Refused by GitHub: push to {ref}."
     found = AWS_DENIED.search(output)
     if found:
         _, operation, action, resource = found.groups()
