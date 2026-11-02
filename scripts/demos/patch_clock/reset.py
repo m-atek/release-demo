@@ -12,7 +12,7 @@ off), with 1.12.0's release copy kept and no stop on 1.3.0 in between: a second 
 2. the seed's zip, build-info.json, SBOM and sbom-info.json copied to orders-service-releases/1.12.0/;
 3. both aliases moved to the Lambda version described 1.12.0 whose CodeSha256 is the seed's, and each function called once;
 4. 1.12.1 staged on main;
-5. ORD-[f] and ORD-[p] reopened;
+5. ORD-[f] and ORD-[p] made if they don't exist yet, as setup.py makes them, and reopened;
 6. backfill.py for pricing-api and quote-service, which released before SBOMs travelled with packages;
 7. `grype db update` once, so no take waits for a download;
 8. open clock files removed, and the switch on.
@@ -113,7 +113,8 @@ def lambda_aliases(reset):
         function = environment["function"]
         versions = []
         for page in client.get_paginator("list_versions_by_function").paginate(FunctionName=function):
-            versions += [v for v in page["Versions"] if v.get("Description") == VERSION and base64_to_hex(v["CodeSha256"]) == wanted]
+            versions += [v for v in page["Versions"] if v["Version"] != "$LATEST" and v.get("Description") == VERSION
+                         and base64_to_hex(v["CodeSha256"]) == wanted]
         if not versions:
             fail(f"{function} has no Lambda version of {VERSION} with the seed's checksum. Delete {seed.SEED}/ in JFrog as admin and run the reset again.")
         target = max(versions, key=lambda v: int(v["Version"]))["Version"]
@@ -147,13 +148,15 @@ def reopen_issues(reset):
     from jira import Jira
 
     jira = Jira()
-    for summary in setup.summaries():
-        found = setup.find(jira, summary)
+    issues = {summary: setup.find(jira, summary) for summary in setup.summaries()}
+    if not all(issues.values()):
+        reset.act("make ORD-[f] and ORD-[p] in Jira, whichever is missing", setup.issues)
+    for found, name in zip(issues.values(), setup.NAMES):
         if not found:
-            fail(f'No Jira issue "{summary}" yet: run scripts/demos/patch_clock/setup.py once.')
+            continue  # just made, and open
         status = found["fields"]["status"]
         if status.get("statusCategory", {}).get("key") != "done":
-            print(f"  {found['key']}: {status['name']}")
+            print(f"  {found['key']} is {name}: {status['name']}")
             continue
 
         def reopen(key=found["key"]):

@@ -7,6 +7,8 @@ Makes the next two free Jira keys, unless they exist: ORD-[f] "Show how many ord
 order page", and ORD-[p] "Patch brotli to 1.2.1 (CVE-2026-111497)". Prints them for the script's
 placeholders. Then starts the Jenkins job patch-clock-seed, as admin, and waits for it, unless
 orders-service-candidates/1.12.0/seed/ already holds the package. Safe to run again.
+
+reset.py patch-clock does the same when either is missing, so a take can start from the reset alone.
 """
 
 import argparse
@@ -28,6 +30,7 @@ JOB = "patch-clock-seed"
 FEATURE = "Show how many orders are packed on the order page"
 SEED_MINUTES = 8
 LABEL = "orders-service"
+NAMES = ("ORD-[f]", "ORD-[p]")   # as the script calls them
 
 
 def summaries():
@@ -63,7 +66,7 @@ def issues(dry_run=False):
     chosen = candidates.chosen()
     made = [issue(jira, feature, "Story", "The order page shows how many of today's orders are packed.", dry_run),
             issue(jira, patch, "Task", f"Move {chosen.package} to {chosen.good}, which fixes {chosen.cve}.", dry_run)]
-    for (key, how), summary, name in zip(made, (feature, patch), ("ORD-[f]", "ORD-[p]")):
+    for (key, how), summary, name in zip(made, (feature, patch), NAMES):
         print(f"{key}: {summary} ({how}). It is {name} in the script.")
     return [key for key, _ in made]
 

@@ -470,6 +470,24 @@ def test_a_second_run_finds_nothing_to_do(resetting, capsys):
     assert resetting.seed_runs == 1 and resetting.store.puts == puts
 
 
+def test_a_first_reset_makes_the_two_issues_when_setup_never_ran(resetting, jira, capsys):
+    jira.issues.clear()
+    assert resetting.reset_module.run(False, None) == 0
+    out = capsys.readouterr().out
+    assert [issue["fields"]["summary"] for issue in jira.issues] == list(setup.summaries())
+    assert "It is ORD-[f] in the script." in out and "It is ORD-[p] in the script." in out
+    assert resetting.reset_module.run(False, None) == 0
+    out = capsys.readouterr().out
+    assert len(jira.issues) == 2 and ": 0 action(s)." in out
+    assert f"{jira.issues[0]['key']} is ORD-[f]: Backlog" in out and f"{jira.issues[1]['key']} is ORD-[p]: Backlog" in out
+
+
+def test_a_dry_run_makes_no_issue_either(resetting, jira, capsys):
+    jira.issues.clear()
+    assert resetting.reset_module.run(True, None) == 0
+    assert jira.issues == [] and "would make ORD-[f] and ORD-[p] in Jira" in capsys.readouterr().out
+
+
 def test_a_dry_run_changes_nothing(resetting, capsys):
     assert resetting.reset_module.run(True, None) == 0
     out = capsys.readouterr().out
@@ -483,6 +501,15 @@ def test_the_aliases_go_only_to_the_version_with_the_seeds_checksum(resetting):
     assert resetting.reset_module.run(False, None) == 0
     fake = resetting.deploy
     fake.versions["orders-service-production"].append({"Version": "99", "Description": "1.12.0", "CodeSha256": b64digest(b"another package")})
+    fake.aliases["orders-service-production"] = "25"
+    resetting.reset_module.lambda_aliases(resetting.shared.Reset(False))
+    assert fake.aliases["orders-service-production"] == "31"
+
+
+def test_the_aliases_never_take_latest_for_a_version(resetting):
+    assert resetting.reset_module.run(False, None) == 0
+    fake = resetting.deploy
+    fake.versions["orders-service-production"].append({"Version": "$LATEST", "Description": "1.12.0", "CodeSha256": b64digest(ORDERS)})
     fake.aliases["orders-service-production"] = "25"
     resetting.reset_module.lambda_aliases(resetting.shared.Reset(False))
     assert fake.aliases["orders-service-production"] == "31"
@@ -543,12 +570,30 @@ def test_down_turns_the_switch_off_and_stops_nothing(monkeypatch, capsys):
 
 
 def test_up_says_ready_only_with_a_valid_database_and_the_functions_read(monkeypatch, capsys):
+    monkeypatch.setattr(demo, "release_ci", lambda: "jenkins")
     monkeypatch.setattr(demo, "host_facts", lambda warm=False: {"built": "2026-11-02", "valid": warm, "error": None, "clocks": []})
     monkeypatch.setattr(demo, "live_now", lambda: {"orders-service": readers.Live("1.3.0", "25", sha256="ab")})
     assert demo.up() == 0 and capsys.readouterr().out.rstrip().endswith("Ready")
     monkeypatch.setattr(demo, "live_now", lambda: {"orders-service": "can't read it (ResourceNotFoundException)"})
     with pytest.raises(SystemExit):
         demo.up()
+
+
+@pytest.mark.parametrize("ci, demo_name", [("azure-pipelines", "azure-devops"), ("gitlab-ci", "gitlab-port")])
+def test_up_isnt_ready_while_another_demo_has_release(monkeypatch, capsys, ci, demo_name):
+    monkeypatch.setattr(demo, "release_ci", lambda: ci)
+    monkeypatch.setattr(demo, "host_facts", lambda warm=False: {"built": "2026-11-02", "valid": True, "error": None, "clocks": []})
+    monkeypatch.setattr(demo, "live_now", lambda: {"orders-service": readers.Live("1.3.0", "25", sha256="ab")})
+    with pytest.raises(SystemExit):
+        demo.up()
+    assert f"scripts/demo.sh down {demo_name} first" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("parameters, ci", [([], "jenkins"), ([{"Value": "jenkins"}], "jenkins"), ([{"Value": "unset"}], "jenkins"),
+                                            ([{"Value": "azure-pipelines"}], "azure-pipelines"), ([{"Value": "gitlab-ci"}], "gitlab-ci")])
+def test_release_ci_reads_as_the_slack_handler_does(monkeypatch, parameters, ci):
+    monkeypatch.setattr(demo, "ssm_client", lambda: SimpleNamespace(get_parameters=lambda Names: {"Parameters": parameters}))
+    assert demo.release_ci() == ci
 
 
 # The fallback.

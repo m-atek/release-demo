@@ -1,6 +1,7 @@
 """scripts/demo.sh up, down and status for video 24, the patch clock.
 
-    python scripts/demos/patch_clock/demo.py up       the tools host answers, the three functions exist, Grype's database is warm
+    python scripts/demos/patch_clock/demo.py up       the tools host answers, the three functions exist, Grype's database is warm,
+                                                      /release orders-service starts on Jenkins
     python scripts/demos/patch_clock/demo.py down     the switch off; there is nothing to stop
     python scripts/demos/patch_clock/demo.py status   the switch, open clocks, what is live, the database's date, and a warning
                                                       if a version below the fix is live
@@ -26,7 +27,7 @@ import clock  # noqa: E402
 import host  # noqa: E402
 import live as readers  # noqa: E402
 import tools  # noqa: E402
-from common import ROOT, aws_session, fail  # noqa: E402
+from common import ROOT, SSM_PREFIX, aws_session, fail, ssm_client  # noqa: E402
 from switch import SWITCH  # noqa: E402
 
 
@@ -80,6 +81,13 @@ def pin_below_the_fix(service_name, version):
     return None
 
 
+def release_ci():
+    """What /release orders-service starts, as the Slack handler reads it: jenkins, unless demo 17 or 22 is up."""
+    found = ssm_client().get_parameters(Names=[f"{SSM_PREFIX}ci/orders-service"])["Parameters"]
+    value = found[0]["Value"] if found else ""
+    return value if value in ("gitlab-ci", "azure-pipelines") else "jenkins"
+
+
 def warnings(found):
     chosen = candidates.chosen()
     lines = []
@@ -98,7 +106,11 @@ def up():
     unreadable = {name: what for name, what in found.items() if isinstance(what, str)}
     for name, what in found.items():
         print(f"{name}: {what if isinstance(what, str) else what.version}")
-    if unreadable or not host_answers["valid"]:
+    ci = release_ci()
+    print(f"/release orders-service starts on: {ci}")
+    if ci != "jenkins":
+        print(f"Demo 17 or 22 is up: scripts/demo.sh down {'gitlab-port' if ci == 'gitlab-ci' else 'azure-devops'} first.")
+    if unreadable or not host_answers["valid"] or ci != "jenkins":
         fail("Not ready: see the lines above.")
     print("Ready")
     return 0
