@@ -31,6 +31,8 @@ orders-service:
     cost_check: scripts/demos/cost_gate/cost_check.py
     # Demo 20's two checks, for versions with migrations only (run_state.VERSION_STAGES).
     # scripts/demos/rollback-trap/checks.py on|off adds or removes these two lines.
+    migration_check: scripts/demos/rollback-trap/migration_check.py
+    rollback_check: scripts/demos/rollback-trap/rollback_check.py
 
   # Demo 15: a failed test is rerun once, in place; a test that keeps failing
   # and then passing on rerun is quarantined for a while (scripts/flaky.py).
