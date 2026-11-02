@@ -87,6 +87,12 @@ def clock(seconds):
     return "none" if seconds is None else kube.clock(seconds)
 
 
+def agent_may_write(path, user="jenkins-agent"):
+    """Take 1's bottom window follows this log, which the pipeline's Blip check writes as the agent's
+    user. This measurement runs as root, so nothing else here would find out it can't."""
+    return subprocess.run(["runuser", "-u", user, "--", "test", "-w", str(path)], capture_output=True).returncode == 0
+
+
 def clocks(values):
     return ", ".join(clock(value) for value in sorted(value for value in values if value is not None)) or "none"
 
@@ -292,6 +298,7 @@ class Machine:
         before = len(self.rehearsal.results)
         self.rehearsal.can_i()
         result(all(self.rehearsal.results[before:]), "3. video 8's can-i answers still hold")
+        result(agent_may_write(blip_check.LOG), f"3. the Jenkins agent's user may write {blip_check.LOG}")
 
     def during_a_block(self):
         """Check 2's parts that need the policy on: from a catalog pod, and production's own route."""

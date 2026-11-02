@@ -119,6 +119,13 @@ def test_the_brackets_and_their_fallbacks():
     assert any("within 2 s" in line for line in close)
 
 
+def test_the_log_is_asked_about_as_the_agents_user_since_the_measurement_is_roots(monkeypatch):
+    asked = []
+    monkeypatch.setattr(rehearse.subprocess, "run", lambda command, **_: asked.append(command) or Namespace(returncode=1))
+    assert rehearse.agent_may_write("/var/tmp/release-demo-blip.log") is False
+    assert asked == [["runuser", "-u", "jenkins-agent", "--", "test", "-w", "/var/tmp/release-demo-blip.log"]]
+
+
 def test_the_ladder_changes_one_line_of_the_real_chart():
     template = (ROOT / "demo-states/catalog/1.10.0/chart/templates/deployment.yaml").read_text()
     changed, count = re.subn(r"periodSeconds: 10\b", "periodSeconds: 5", template)
