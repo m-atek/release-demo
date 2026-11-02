@@ -51,7 +51,8 @@ import yaml
 
 HERE = Path(__file__).resolve().parent
 SCRIPTS = HERE.parents[1]
-sys.path.insert(1, str(SCRIPTS))
+# After the standard library: scripts/secrets.py would shadow its secrets, as it once did for pg8000 (3a2057e).
+sys.path.append(str(SCRIPTS))
 sys.path.append(str(SCRIPTS / "demos" / "kubernetes"))  # last: it has its own build, deploy and check
 
 import kube  # noqa: E402

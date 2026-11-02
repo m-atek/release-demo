@@ -7,11 +7,12 @@ it exists already, and prints its key for the script's placeholders. Safe to
 run again.
 """
 
+import argparse
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parents[1]))
+sys.path.append(str(HERE.parents[1]))  # after the standard library: scripts/ has a secrets.py
 
 from jira import PROJECT, Jira  # noqa: E402
 
@@ -29,6 +30,7 @@ def issue(jira):
 
 
 def main():
+    argparse.ArgumentParser(description=__doc__.splitlines()[0]).parse_args()  # so --help writes nothing to Jira
     key, made = issue(Jira())
     print(f"{key}: {SUMMARY} ({'made now' if made else 'there already'}). It is ORD-[b] in the script.")
 

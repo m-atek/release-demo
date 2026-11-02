@@ -201,6 +201,37 @@ def test_a_k3s_restart_gets_the_database_a_new_pod_so_its_row_reads_0(cluster, c
     assert "a new pod, seeded again" in capsys.readouterr().out
 
 
+def test_setups_help_writes_nothing_to_jira(monkeypatch):
+    import setup
+
+    monkeypatch.setattr(setup, "Jira", lambda: pytest.fail("--help must not reach Jira"))
+    monkeypatch.setattr(sys, "argv", ["setup.py", "--help"])
+    with pytest.raises(SystemExit) as stop:
+        setup.main()
+    assert stop.value.code == 0
+
+
+def test_setup_makes_the_issue_once(capsys):
+    import setup
+
+    class Jira:
+        made = []
+        found = []
+
+        def search(self, jql, fields):
+            return self.found
+
+        def create(self, kind, summary, description, labels=()):
+            self.made.append((kind, summary))
+            return "ORD-110"
+
+    assert setup.issue(Jira()) == ("ORD-110", True)
+    assert Jira.made == [("Story", "Read the catalog from Postgres")]
+    Jira.found = [{"key": "ORD-110", "fields": {"summary": "Read the catalog from Postgres"}}]
+    assert setup.issue(Jira()) == ("ORD-110", False)
+    assert len(Jira.made) == 1
+
+
 def test_up_says_when_the_cluster_isnt_up(monkeypatch):
     monkeypatch.setattr(postgres, "running", lambda: False)
     with pytest.raises(SystemExit, match="scripts/demo.sh up kubernetes"):

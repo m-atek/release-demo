@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(1, str(Path(__file__).resolve().parents[2]))
+sys.path.append(str(Path(__file__).resolve().parents[2]))  # after the standard library: scripts/ has a secrets.py
 
 import host  # noqa: E402
 

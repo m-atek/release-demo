@@ -582,6 +582,17 @@ blip_check.Check(config(), Api(), "1.10.1", lambda text: None, call=http).run()
 """
 
 
+@pytest.mark.parametrize("script", ["blip_check", "reset", "lines", "setup", "rehearse"])
+def test_scripts_secrets_py_never_shadows_the_standard_librarys(script):
+    """It did for pg8000 once (3a2057e). Imported the way each starts, from the repository's root; nothing runs."""
+    code = (f"import sys; sys.path[0] = {str(blip_check.HERE)!r}\n"
+            f"import {script}\nimport secrets; print(secrets.__file__)")
+    reply = subprocess.run([sys.executable, "-c", code], cwd=blip_check.ROOT, capture_output=True, text=True,
+                           env={**os.environ, "PYTHONPATH": ""})
+    assert reply.returncode == 0, reply.stderr
+    assert "/scripts/" not in reply.stdout.strip().splitlines()[-1]
+
+
 def test_jenkins_abort_a_real_sigterm_deletes_the_policy(tmp_path):
     marker = tmp_path / "marker"
     code = HARNESS.format(here=str(blip_check.HERE / "tests"), scripts=str(blip_check.SCRIPTS), marker=str(marker))

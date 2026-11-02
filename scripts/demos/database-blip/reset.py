@@ -34,7 +34,6 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SCRIPTS = HERE.parents[1]
-sys.path.insert(1, str(SCRIPTS))
 
 import blip_check  # noqa: E402  (it puts scripts/ and the Kubernetes demo's folder on the path)
 import host  # noqa: E402
