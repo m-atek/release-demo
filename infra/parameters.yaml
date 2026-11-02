@@ -461,6 +461,10 @@ cost-check/enabled:
   source: script
   secure: false
   help: "on or off; unset is off. Written by scripts/demos/cost_gate/switch.py. The main reset turns it off, reset.py cost-gate on."
+patch-clock/enabled:
+  source: script
+  secure: false
+  help: "on or off; unset is off. Written by scripts/demos/patch_clock/switch.py. The main reset turns it off, reset.py patch-clock on."
 servicenow/fiona-password:
   source: you
   secure: true

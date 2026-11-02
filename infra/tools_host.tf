@@ -69,11 +69,11 @@ data "aws_iam_policy_document" "tools_host" {
       "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/jenkins/agent-secret/*",
     ]
   }
-  # Videos 12, 13 and 18: the resets, which run here, turn the demos' switches on and off.
+  # Videos 12, 13, 18 and 24: the resets, which run here, turn the demos' switches on and off.
   statement {
     sid     = "WriteDemoSwitches"
     actions = ["ssm:PutParameter"]
-    resources = [for name in ["ai-notes/enabled", "cost-check/enabled"] :
+    resources = [for name in ["ai-notes/enabled", "cost-check/enabled", "patch-clock/enabled"] :
     "arn:aws:ssm:${local.region}:${local.account_id}:parameter/release-demo/${name}"]
   }
   statement {
@@ -87,6 +87,12 @@ data "aws_iam_policy_document" "tools_host" {
     sid       = "AssumeEvidenceReader"
     actions   = ["sts:AssumeRole"]
     resources = ["arn:aws:iam::${local.account_id}:role/release-demo-evidence-reader"]
+  }
+  # Video 24: /sbom reads what is live through the role in infra/demos/24-patch-clock.
+  statement {
+    sid       = "AssumeSbomReader"
+    actions   = ["sts:AssumeRole"]
+    resources = ["arn:aws:iam::${local.account_id}:role/release-demo-sbom-reader"]
   }
   # reset.py warms the Slack handler before a take; it needs only its address.
   statement {

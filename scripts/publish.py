@@ -19,6 +19,11 @@ copied twice, and a different one goes next to it, under
 
 A candidate the cost check measured (video 18) has its cost.json next to the
 package; --release copies it with the package, so the release copy keeps it.
+
+When the run made an SBOM (.release/reports/sbom.cdx.json), it goes next to the
+package, with sbom-info.json, which ties it to this package by checksum, and
+--release copies both: the search of video 24 reads the SBOM of what is live.
+A run without one uploads what it always did.
 """
 
 import argparse
@@ -42,6 +47,9 @@ ACCESS = os.environ.get("JCR_ACCESS", "")
 # What Cloudflare answers when nothing is behind the tunnel: the tools host is stopped.
 UNREACHABLE = {502, 503, 504, 521, 522, 523, 524, 530}
 USER_AGENT = "release-demo/1.0 (+https://github.com/m-atek/release-demo)"
+SBOM, SBOM_INFO = "sbom.cdx.json", "sbom-info.json"
+# What a candidate folder may hold beside the package; --release copies each that exists.
+BESIDE_THE_PACKAGE = ["cost.json", SBOM, SBOM_INFO]
 _access = {}
 
 
@@ -95,12 +103,27 @@ def download(token, path):
     return body
 
 
-def copy_cost(token, candidate, base):
-    """The candidate's cost.json, if the cost check left one, next to its release copy."""
-    source, target = f"{candidate}/cost.json", f"{base}/cost.json"
-    if stored_sha256(token, source) and not stored_sha256(token, target):
-        upload(token, target, download(token, source))
-        print(f"Copied {source} to {target}")
+def copy_beside(token, candidate, base):
+    """What the candidate holds beside the package, such as the cost check's cost.json
+    and the SBOM, next to its release copy."""
+    for name in BESIDE_THE_PACKAGE:
+        source, target = f"{candidate}/{name}", f"{base}/{name}"
+        if stored_sha256(token, source) and not stored_sha256(token, target):
+            upload(token, target, download(token, source))
+            print(f"Copied {source} to {target}")
+
+
+def sbom_info(info, sbom):
+    """What ties an SBOM to its package: the checksums of both, as they were when it was stored."""
+    image = (info.get("image") or {}).get("digest") or info.get("image_digest")
+    return {"service": info.get("service"), "version": info.get("version"), "package_sha256": info.get("sha256"),
+            **({"image_digest": image} if image else {}), "sbom_sha256": hashlib.sha256(sbom).hexdigest()}
+
+
+def upload_sbom(token, base, info, sbom):
+    """The SBOM and sbom-info.json into a folder of JFrog."""
+    upload(token, f"{base}/{SBOM}", sbom)
+    upload(token, f"{base}/{SBOM_INFO}", (json.dumps(sbom_info(info, sbom), indent=2) + "\n").encode())
 
 
 def candidates_root(name):
@@ -131,6 +154,8 @@ def main():
         base = f"{candidates_root(args.service)}/{info['version']}/{state['build']['number']}"
         upload(token, f"{base}/{info['package']}", (out / info["package"]).read_bytes())
         upload(token, f"{base}/build-info.json", (out / "build-info.json").read_bytes())
+        if (run_state.REPORTS / SBOM).exists():
+            upload_sbom(token, base, info, (run_state.REPORTS / SBOM).read_bytes())
         state["package"] = {"path": f"{base}/{info['package']}", "sha256": info["sha256"], "name": info["package"]}
         run_state.save(state)
         print(f"Published {base}/{info['package']}")
@@ -147,7 +172,7 @@ def main():
         state["package"]["release_path"] = f"{base}/{info['package']}"
         run_state.save(state)
         print(f"{base}/{info['package']} is already this package (same SHA-256): nothing to copy")
-        copy_cost(token, candidate, base)
+        copy_beside(token, candidate, base)
         return
     if existing:
         print(f"{base}/ holds an earlier build of {info['version']}: this one goes to {base}/{state['build']['number']}/")
@@ -155,7 +180,7 @@ def main():
     target = f"{base}/{info['package']}"
     upload(token, target, package)
     upload(token, f"{base}/build-info.json", (out / "build-info.json").read_bytes())
-    copy_cost(token, candidate, base)
+    copy_beside(token, candidate, base)
     state["package"]["release_path"] = target
     run_state.save(state)
     print(f"Copied to {target}")

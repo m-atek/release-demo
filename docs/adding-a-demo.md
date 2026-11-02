@@ -55,6 +55,7 @@ Optional keys, each with its default where it is missing:
 | `scripts.migration_check`, `scripts.rollback_check` | Stages only versions with `migrations/` in the service folder have (run_state.py's `VERSION_STAGES`): Migration check after SBOM and scan (after Contract check where there is one), Rollback check after Check staging (demo 20). |
 | `train` | `{departures: ["14:00"], days: [Mon, Tue, Wed, Thu, Fri]}`: the release train job releases what is new on main at these times on these days (weekdays if `days` is left out), Europe/Amsterdam (demo 21). Its runs pass several Jira keys, comma-separated, and `ROWS`, the lines under the stages. |
 | `flags` | `{application, profile, strategy, environments, names}`: feature flags in AWS AppConfig that `/flag` may switch in production (demo 21). |
+| `live` | `{reader: lambda-alias, function: <its production function>}`: how `/sbom` reads what runs in production (video 24; `reader` names a function in `scripts/demos/patch_clock/live.py`). A service without it is listed as not searched. |
 
 ## 2. The stage scripts
 
@@ -66,7 +67,7 @@ state through `scripts/run_state.py` (`.release/state.json`).
 | --- | --- | --- |
 | Build | `<build> <service> --jira-key ORD-12` | Write `dist/<service>/<service>-<version>.zip` (any content: the artifact, installer or manifests) and `dist/<service>/build-info.json` with `sha256` of the zip. The same source gives the same checksum where the toolchain allows it. |
 | Test | `<test> <service>` | Write `.release/reports/junit.xml`, and a coverage report where SonarQube supports the language. Exit non-zero on a failed test. |
-| Publish | `scripts/publish.py <service>` | Shared. Uploads the zip and build-info.json to JFrog. |
+| Publish | `scripts/publish.py <service>` | Shared. Uploads the zip and build-info.json to JFrog, and the run's SBOM with `sbom-info.json` when it made one. |
 | Deploy | `<deploy> <service> <environment>` | Deploy the exact published package: download it from JFrog (`publish.download`), verify its SHA-256 against the run state, deploy, and set `deploys.<environment>` in the run state: `number` (what was deployed), `previous_number`, `previous_version`, `url` (what the check calls, if anything), `deployed_at`. |
 | Deploy back | `<deploy> <service> <environment> --back` | Return to `previous_*` from this run. Set `rolled_back_to`. |
 | Deploy previous | `<deploy> <service> <environment> --previous` | Return to the release before the live one (the Slack /rollback command). |

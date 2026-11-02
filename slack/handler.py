@@ -1,4 +1,4 @@
-"""The Slack handler: /release, /rollback, /agent and /ask, from Slack to Jenkins, and /flag, to AWS AppConfig.
+"""The Slack handler: /release, /rollback, /agent, /ask and /sbom, from Slack to Jenkins, and /flag, to AWS AppConfig.
 
 Slack posts each slash command to this function's URL and wants an answer
 within 3 seconds. So the first call only checks the request (Slack's
@@ -26,6 +26,7 @@ Standard library and boto3 only, both in Lambda's Python runtime, so the
 package is this file plus config.json, which Terraform writes from
 services.yaml. The environment (infra/slack_handler.tf) sets RELEASERS, the
 people.yaml names with releaser: true, whose Slack member ids are in SSM;
+ASKERS, everyone in people.yaml with Slack, who may /ask and /sbom;
 TOOLS_HOST_ID; and JENKINS_URL. Secrets come from SSM and are never logged.
 """
 
@@ -53,6 +54,11 @@ NOT_A_RELEASER = "You can't start releases here."
 NOT_IN_THE_TEAM = "You can't ask here."
 ASK_USAGE = "Usage: /ask <question>, 3 to 300 characters, for example /ask How do I roll back orders-service?"
 ASK_JOB = "runbook-assistant-ask"
+# Video 24: /sbom starts nothing and changes nothing, so anyone in people.yaml with Slack may search.
+NOT_A_SEARCHER = "You can't search here."
+SBOM_USAGE = "Usage: /sbom <CVE or GHSA id>, for example /sbom CVE-2026-111497"
+SBOM_JOB = "sbom-search"
+SBOM_READING = ":hourglass_flowing_sand:  Reading the SBOMs of what's live"
 STOPPED = "The release server is stopped. Start it with scripts/tools.sh up."
 STARTING = "The release server is starting. Try again when scripts/tools.sh up says Ready."
 JENKINS_PARAMETERS = ["slack/bot-token", "cloudflare/slack-handler-client-id",
@@ -112,6 +118,8 @@ def from_slack(event, context):
     user, command = form.get("user_id", ""), form.get("command", "")
     if command == "/ask":
         return ask(form, user, {values[name] for name in asker_ids if values[name]}, context)
+    if command == "/sbom":
+        return sbom(form, user, {values[name] for name in asker_ids if values[name]}, headers, context)
     if user not in {values[name] for name in member_ids if values[name]}:
         log(f"{user} {command}: not a releaser")
         return reply(NOT_A_RELEASER)
@@ -152,6 +160,35 @@ def ask(form, user, team, context):
     aws("lambda").invoke(FunctionName=context.invoked_function_arn, InvocationType="Event",
                          Payload=json.dumps({"work": work}).encode())
     log(f"{user} /ask: handed over")
+    return http(200)
+
+
+def vulnerability_id(text):
+    """The id as Grype and GitHub write it: CVE-2026-111497, GHSA-9v8h-qqgm-4m35. None for anything else."""
+    text = text.strip()
+    if re.fullmatch(r"CVE-[0-9]{4}-[0-9]+", text.upper()):
+        return text.upper()
+    if re.fullmatch(r"ghsa-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}", text.lower()):
+        return "GHSA" + text.lower()[4:]
+    return None
+
+
+def sbom(form, user, team, headers, context):
+    """Video 24's /sbom: anyone in people.yaml with Slack may search what is live, not only releasers. The
+    id goes to Jenkins as a parameter, never into a script, with the verified time of the command, where
+    the search's time and the clock start. Its job is never release or rollback."""
+    if user not in team:
+        log(f"{user} /sbom: not in people.yaml")
+        return reply(NOT_A_SEARCHER)
+    vulnerability = vulnerability_id(form.get("text", ""))
+    if not vulnerability:
+        return reply(SBOM_USAGE)
+    work = {"job": SBOM_JOB,
+            "params": {"VULN": vulnerability, "ASKED_BY": user, "REQUESTED_AT": headers["x-slack-request-timestamp"]},
+            "channel": form.get("channel_id", ""), "response_url": form.get("response_url", "")}
+    aws("lambda").invoke(FunctionName=context.invoked_function_arn, InvocationType="Event",
+                         Payload=json.dumps({"work": work}).encode())
+    log(f"{user} /sbom {vulnerability}: handed over")
     return http(200)
 
 
@@ -501,11 +538,16 @@ def queue_azure_run(secrets, token, params):
 AZURE_OPENER = urllib.request.build_opener()
 
 
-def status_message(work, line=":hourglass_flowing_sand:  Starting on Jenkins"):
+STARTING_ON_JENKINS = ":hourglass_flowing_sand:  Starting on Jenkins"
+
+
+def status_message(work, line=STARTING_ON_JENKINS):
     """The first version of the message the pipeline then rewrites at every stage."""
     p = work["params"]
     if work["job"] == ASK_JOB:
         return f"Question from <@{p['ASKED_BY']}>: {p['QUESTION']}\n\n{line}"
+    if work["job"] == SBOM_JOB:
+        return f"*Search for {p['VULN']}* · asked by <@{p['ASKED_BY']}>\n\n{SBOM_READING if line == STARTING_ON_JENKINS else line}"
     if work["job"] == "release":
         option = f" · {p['OPTION']}" if p.get("OPTION") else ""
         head = f"*Release {p['SERVICE']}* · {p['JIRA_KEY']}{option} · requested by <@{p['REQUESTED_BY']}>"

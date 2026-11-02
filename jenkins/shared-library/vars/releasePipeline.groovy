@@ -36,7 +36,15 @@ def call() {
             releaseStage('Build') { toolchain.build(service, params.JIRA_KEY, cfg) }
             releaseStage('Test') { toolchain.test(service, cfg, 'release') }
             releaseStage('Quality gate') { toolchain.qualityGate(service, version, cfg) }
-            releaseStage('SBOM and scan') { toolchain.sbomAndScan(service) }
+            releaseStage('SBOM and scan') {
+                try {
+                    toolchain.sbomAndScan(service)
+                } catch (error) {
+                    // Video 24: Slack names the finding that stopped it. A passing scan never gets here.
+                    sh(returnStatus: true, script: 'python3 scripts/scan_line.py')
+                    throw error
+                }
+            }
             if (cfg.scripts.contract) {
                 releaseStage('Contract check') { sh "${serviceConfig.command(cfg, 'contract')} ${service}" }
             }
@@ -123,6 +131,8 @@ def call() {
                         python3 scripts/change.py close successful --notes "Released $SERVICE $VERSION. Total time: $(python3 scripts/run_state.py get total). Build: $BUILD_URL"
                     '''
                 }
+                // Video 24, behind its switch: this clean scan may stop the patch clock. It can't fail the release.
+                patchClock.stop()
             }
         } catch (error) {
             stopped(error)

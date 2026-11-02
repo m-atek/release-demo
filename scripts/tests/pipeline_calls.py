@@ -48,6 +48,8 @@ TOOLCHAIN = {
 # switch (video 18), an evaluation script (demo 23's runbook-assistant). The
 # other CIs release 1.4.0, which has none of them.
 NOT_ON_OTHER_CIS = ("Contract check", "Plan", "Migration check", "Rollback check", "Cost check", "Evaluation")
+# Calls only Jenkins' release makes: the scan's line in its Slack message (video 24).
+JENKINS_ONLY = ("scan_line.py",)
 # The calls a stage wrapper makes, compared on their own.
 WRAPPER = ("notify.py stage", "change.py note")
 
@@ -119,7 +121,8 @@ def jenkins():
     steps, the deploy and check commands and rollBack() expanded where they run."""
     text = (LIBRARY / "releasePipeline.groovy").read_text()
     body = groovy_function(text, "call")
-    body = body[:body.index("} catch (error)")]
+    # The last catch is the release's own; the one before it is the SBOM and scan stage's (video 24).
+    body = body[:body.rindex("} catch (error)")]
     rollback = groovy_function(text, "rollBack")
     expansions = [
         (r"toolchain\.(build|test|qualityGate|sbomAndScan)\(", lambda m: TOOLCHAIN[m.group(1)]),
@@ -146,7 +149,7 @@ def jenkins():
                     break
         return found
 
-    return expand(body)
+    return [call for call in expand(body) if call not in JENKINS_ONLY]
 
 
 def jenkins_stages():
