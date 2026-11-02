@@ -281,6 +281,14 @@ def test_audit_keeps_to_the_namespace_and_the_time():
     assert rows([event("a", "get", "secrets", "catalog-db", at="2026-11-02T13:21:50.000000Z")])
 
 
+def test_a_server_dry_run_isnt_an_event():
+    """kubectl's --dry-run=server is audited like a write, and writes nothing (video 19's recorder, 2 November)."""
+    dry = event("sam", "create", "deployments", "peek", code=201,
+                requestURI="/apis/apps/v1/namespaces/production/deployments?dryRun=All&fieldManager=kubectl-create")
+    assert rows([dry]) == []
+    assert len(rows([event("sam", "create", "deployments", "peek", code=201)])) == 1
+
+
 def test_a_half_written_last_line_is_skipped():
     assert len(rows([TAKE[0], '{"kind":"Event","objectRef":{"name":"peek'])) == 1
 

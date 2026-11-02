@@ -212,7 +212,8 @@ def attempts(pod):
             "create token": ("create", "token", "default"),
             "get secret": ("get", "secret", "catalog-db"),
             "list secrets": ("get", "secrets"),
-            "watch secrets": ("get", "secrets", "--watch-only", "--request-timeout=5s")}
+            # A raw request: kubectl get --watch-only lists first, so its refusal would be list's.
+            "watch secrets": ("get", "--raw", "/api/v1/namespaces/production/secrets?watch=true&timeoutSeconds=1")}
 
 
 def writes_in(listing):

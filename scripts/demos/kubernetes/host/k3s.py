@@ -340,15 +340,19 @@ def audit_row(event):
 
 def audit_rows(lines, since, namespace, name):
     """The matching rows: an object whose name equals or starts with name, and for peek also
-    the Secret it mounts, whose refused read and whose read by the node the video shows."""
+    the Secret it mounts, whose refused read and whose read by the node the video shows.
+    A server-side dry run is audited like a write and writes nothing, so it isn't one of them."""
     words = [name, "catalog-db"] if name == "peek" else [name]
     for line in lines:
         if not any(word in line for word in words):
             continue
         try:
-            row = audit_row(json.loads(line))
+            event = json.loads(line)
         except ValueError:
             continue  # the log's last line, while it is being written
+        if "dryRun=" in event.get("requestURI", ""):
+            continue
+        row = audit_row(event)
         if row["namespace"] != namespace or not row["time"] or moment(row["time"]) < since:
             continue
         mounted = name == "peek" and (row["resource"], row["name"]) == ("secrets", "catalog-db")

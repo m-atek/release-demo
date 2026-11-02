@@ -116,6 +116,10 @@ class FakeCluster:
             if args[3] == "secrets":
                 return Reply(1, "no")
             return Reply(0, "yes") if self.may_deploy(namespace) else Reply(1, "no")
+        if "--raw" in args:
+            if self.sam_reads_secrets:
+                return Reply(0, '{"type":"ADDED"}')
+            return Reply(1, 'Error from server (Forbidden): secrets is forbidden: User "sam" cannot watch')
         if "get" in args and ("secret" in args or "secrets" in args):
             if self.sam_reads_secrets:
                 return Reply(0, "catalog-db Opaque")
@@ -212,7 +216,8 @@ def test_every_route_in_check_3_is_a_real_request_not_can_i():
                   "scale deploy/catalog --replicas=4", "delete deploy catalog", "run can-i-check",
                   "create job can-i-check", "exec catalog-6c9f7b5d44-abcde", "attach catalog-6c9f7b5d44-abcde",
                   "port-forward catalog-6c9f7b5d44-abcde", "debug catalog-6c9f7b5d44-abcde", "create token default",
-                  "get secret catalog-db", "get secrets", "get secrets --watch-only"):
+                  "get secret catalog-db", "get secrets",
+                  "get --raw /api/v1/namespaces/production/secrets?watch=true"):
         assert any(route in command for command in made), route
 
 
@@ -228,7 +233,8 @@ def test_a_secret_sam_can_read_fails_checks_1_and_3():
     cluster = FakeCluster(sam_reads_secrets=True)
     assert any("get secret catalog-db" in problem for problem in check.check_route(cluster))
     cluster.role = "after"
-    assert "get secret wasn't refused" in check.check_fix(cluster)
+    problems = check.check_fix(cluster)
+    assert "get secret wasn't refused" in problems and "watch secrets wasn't refused" in problems
 
 
 def test_the_route_must_print_the_value():
