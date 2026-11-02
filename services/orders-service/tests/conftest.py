@@ -1,5 +1,4 @@
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -16,16 +15,6 @@ def env(monkeypatch):
     monkeypatch.setattr(app, "_deployed_at", None)
 
 
-def request(path, method="GET", headers=None):
-    event = {"rawPath": path, "headers": headers or {}, "requestContext": {"http": {"method": method, "path": path}}}
+def request(path, method="GET"):
+    event = {"rawPath": path, "requestContext": {"http": {"method": method, "path": path}}}
     return app.handler(event, None)
-
-
-@pytest.fixture
-def fake_brotli(monkeypatch):
-    """The real module is built for Lambda's Linux and comes with the package, not with the
-    toolchain the tests run in: a fake through sys.modules, as 1.6.0's and 1.10.0's tests do."""
-    module = types.ModuleType("brotli")
-    module.compress = lambda data: b"compressed:" + data
-    monkeypatch.setitem(sys.modules, "brotli", module)
-    return module
