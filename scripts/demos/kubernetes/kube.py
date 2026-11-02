@@ -8,7 +8,8 @@ Shared by deploy.py, check.py and reset.py, which run on the tools host:
   the Jenkins service account that lasts 10 minutes (kubectl create token).
   The Jenkins agent runs it through sudo. Nothing long-lived is stored: the
   kubeconfig sits in a private temporary folder and goes when the step ends;
-- Api reads the cluster with that token, for the checks and the rollout watch.
+- Api reads the cluster with that token, for the checks and the rollout watch,
+  and writes what that token may (video 25's Blip check: its network policy).
 """
 
 import base64
@@ -129,6 +130,26 @@ class Api:
         except urllib.error.HTTPError as error:
             if error.code == 404:
                 return None
+            raise
+
+    def post(self, path, document):
+        """Create an object from a dict. A refusal raises, with the API's own words."""
+        request = urllib.request.Request(self.server + path, data=json.dumps(document).encode(), method="POST",
+                                         headers={"Authorization": f"Bearer {self.token}",
+                                                  "Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=15, context=self.context) as response:
+            return json.loads(response.read())
+
+    def delete(self, path):
+        """Delete an object. True when it was there, False when it wasn't."""
+        request = urllib.request.Request(self.server + path, method="DELETE",
+                                         headers={"Authorization": f"Bearer {self.token}"})
+        try:
+            with urllib.request.urlopen(request, timeout=15, context=self.context):
+                return True
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                return False
             raise
 
     def pods(self, namespace, release):

@@ -29,10 +29,11 @@ REPORTS = PATH.parent / "reports"
 # Stages only some services have, from services.yaml: (script key, stage, after which stage).
 OPTIONAL_STAGES = [("contract", "Contract check", "SBOM and scan"), ("plan", "Plan", "Check staging"),
                    ("evaluation", "Evaluation", "Check staging")]  # demo 23: last, so it runs right after Check staging
-# Stages only some versions have (demo 20): (script key, stage, after the last of these stages
-# the run has, folder the staged version must have). Only versions with migrations see them.
+# Stages only some versions have (demos 20 and 25): (script key, stage, after the last of these
+# stages the run has, folder the staged version must have). Only versions with that folder see them.
 VERSION_STAGES = [("migration_check", "Migration check", ("SBOM and scan", "Contract check"), "migrations"),
-                  ("rollback_check", "Rollback check", ("Check staging",), "migrations")]
+                  ("rollback_check", "Rollback check", ("Check staging",), "migrations"),
+                  ("blip_check", "Blip check", ("Check staging",), "database")]
 
 
 def stages_for(config):

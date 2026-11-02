@@ -3,6 +3,7 @@
     python scripts/demos/kubernetes/reset.py              from the Mac: the cluster through SSM, then stage 1.9.0
     python scripts/demos/kubernetes/reset.py --no-stage   the cluster only
     python scripts/demos/kubernetes/reset.py --here       on the tools host: what the Mac's run calls there
+    python scripts/demos/kubernetes/reset.py --here --baseline 1.9.1   another version: what video 25's reset calls
 
 The 1.8.2 package comes from demos-releases/catalog/1.8.2 in JCR. The first time,
 when it isn't there yet, it is built from demo-states/catalog/1.8.2 and stored
@@ -46,7 +47,7 @@ def baseline_package(token, commit):
     path = f"{root}/{BASELINE}/{SERVICE}-{BASELINE}.zip"
     status, body = publish.request("GET", path, token)
     if status == 200:
-        print(f"1.8.2 from JCR: {path}")
+        print(f"{BASELINE} from JCR: {path}")
         return body
     with tempfile.TemporaryDirectory() as out:
         info = build.build(SERVICE, version_dir=ROOT / "demo-states" / SERVICE / BASELINE, out=out, commit=commit)
@@ -60,9 +61,9 @@ def baseline_package(token, commit):
             publish.request("PUT", f"{root}/{BASELINE}/build-info.json", token,
                             (Path(out) / SERVICE / "build-info.json").read_bytes(),
                             {"Content-Type": "application/json"})
-            print(f"1.8.2 built from demo-states/{SERVICE}/{BASELINE} and stored as {path}")
+            print(f"{BASELINE} built from demo-states/{SERVICE}/{BASELINE} and stored as {path}")
         else:
-            print(f"1.8.2 built from demo-states/{SERVICE}/{BASELINE}. Not stored: JCR answered {status} "
+            print(f"{BASELINE} built from demo-states/{SERVICE}/{BASELINE}. Not stored: JCR answered {status} "
                   f"for {path}. Create the repository {root.split('/')[0]} (scripts/jcr_setup.py lists the steps).")
         return package
 
@@ -116,7 +117,7 @@ def here(commit):
     for environment in config["environments"]:
         workspace = tempfile.mkdtemp(prefix=f"reset-{environment}-")
         children[environment] = subprocess.Popen(
-            [sys.executable, __file__, "--here", "--only", environment, "--commit", commit],
+            [sys.executable, __file__, "--here", "--only", environment, "--commit", commit, "--baseline", BASELINE],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env={**os.environ, "WORKSPACE": workspace})
 
     def relay(environment, stream):
@@ -136,12 +137,15 @@ def here(commit):
 
 
 def main():
+    global BASELINE
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--here", action="store_true", help="run on the tools host")
+    parser.add_argument("--baseline", default=BASELINE, help="the version to put the cluster on")
     parser.add_argument("--only", help=argparse.SUPPRESS)
     parser.add_argument("--commit", default="", help=argparse.SUPPRESS)
     parser.add_argument("--no-stage", action="store_true", help=f"don't stage {TAKE} on main")
     args = parser.parse_args()
+    BASELINE = args.baseline
 
     if args.here and args.only:
         sys.exit(reset_environment(args.only, args.commit))

@@ -1,0 +1,94 @@
+# Video 25: a small real Postgres for catalog 1.10.x, one in each namespace,
+# applied by scripts/demo.sh up database-blip as the cluster admin, and removed
+# by the label on every object below. It seeds itself from database/seed.sql at
+# its first start, through the ConfigMap catalog-postgres-seed that up makes, so
+# its data comes back with a new pod. Local storage is off on this cluster, so
+# its folders are emptyDir. The labels aren't catalog's: kube.Api.pods(), which
+# selects instance catalog, never counts this pod.
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-postgres
+  labels:
+    app.kubernetes.io/name: catalog-postgres
+    app.kubernetes.io/instance: catalog-postgres
+    release-demo/demo: database-blip
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: catalog-postgres
+    app.kubernetes.io/instance: catalog-postgres
+  ports:
+    - { name: postgres, port: 5432, targetPort: postgres }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: catalog-postgres
+  labels:
+    app.kubernetes.io/name: catalog-postgres
+    app.kubernetes.io/instance: catalog-postgres
+    release-demo/demo: database-blip
+spec:
+  serviceName: catalog-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: catalog-postgres
+      app.kubernetes.io/instance: catalog-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: catalog-postgres
+        app.kubernetes.io/instance: catalog-postgres
+        release-demo/demo: database-blip
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: postgres
+          # 17.11-alpine, pushed 22 to 26 October, is under two weeks old on build day.
+          # From 9 November: postgres:17.11-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+          image: docker.io/library/postgres:17.10-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+          args: ["-c", "shared_buffers=32MB", "-c", "max_connections=40"]
+          ports:
+            - { name: postgres, containerPort: 5432 }
+          env:
+            - { name: POSTGRES_USER, value: catalog }
+            - { name: POSTGRES_DB, value: catalog }
+            # A folder inside the mount: initdb must own its folder, and root owns the mount itself.
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: catalog-postgres, key: password } }
+          # An exec probe, inside the pod, which no network policy touches. Over TCP, so it
+          # isn't ready during the first start's temporary server, which listens on a socket only.
+          # No liveness probe: nothing in this demo restarts Postgres.
+          readinessProbe:
+            exec: { command: [pg_isready, -h, 127.0.0.1, -U, catalog, -d, catalog] }
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 192Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: run, mountPath: /var/run/postgresql }
+            - { name: tmp, mountPath: /tmp }
+            - { name: seed, mountPath: /docker-entrypoint-initdb.d, readOnly: true }
+      volumes:
+        - { name: data, emptyDir: {} }
+        - { name: run, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+        - name: seed
+          configMap: { name: catalog-postgres-seed }

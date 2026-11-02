@@ -626,6 +626,22 @@ Before a call: `scripts/demo.sh up rag` (about 20 minutes: the endpoint and its 
 
 After the call: `scripts/demo.sh down rag` deletes the endpoint and its indexes, which bill by the hour (about USD 0.28 an hour at the US East rate); the tables, the volume, the experiment and the warehouse stay. The tools host's idle stop also runs it. `scripts/demo.sh status rag` shows what exists.
 
+## Demo on a call: one database blip (video 25)
+
+From 1.10.0, catalog reads its products from a small real Postgres in each namespace (`catalog-postgres`, seeded from `database/seed.sql`, its data in emptyDir). Versions with a `database/` folder get one more stage, the Blip check, after Check staging and before the change: it cuts staging's database off for 30 seconds with a NetworkPolicy (`scripts/demos/database-blip/block.yaml`), calls `/api/products` and `/health` ten times a second through the Service, and reads the pods. Jenkins may write that one policy, in staging only (the Role `blip-check`). The database keeps running, and no pod is touched.
+
+| State | Jira | What changes | Where it stops |
+| --- | --- | --- | --- |
+| 1.9.1 | | Both namespaces before a take | |
+| 1.10.0 | ORD-[b] | The catalog from Postgres. The liveness probe asks /ready, which asks the database | Blip check: the pods restart, no change opens, production stays on 1.9.1 |
+| 1.10.1 | ORD-[b] | Neither probe asks the database. The pods stay up and answer 503 on the routes that need it, with no data | Live, with both runs in one work note |
+
+Once, after the merge: `scripts/tools.sh up`, `scripts/demo.sh up kubernetes` (which applies the new Role), `scripts/demo.sh up database-blip` (prints "Ready"; pulls Postgres from Docker Hub), and `.venv/bin/python scripts/demos/database-blip/setup.py`, which makes ORD-[b] and prints its key. Then the first-day measurement, `.venv/bin/python scripts/demos/database-blip/rehearse.py`, about 15 minutes, no Slack, ServiceNow or Jira, ending on 1.9.1. It prints PASS or FAIL per check and a verdict, and its exit code says it: 0 the video stands, 1 it doesn't, 2 it stands and another check needs fixing first. If 1.10.0 restarts fewer than 3 of 3 pods it tries `periodSeconds: 5` by itself; `--liveness-period 5` goes straight there.
+
+Before each take: `scripts/reset.py database-blip [--stage 1.10.0|1.10.1] [--dry-run]`, or the reset job with DEMO=database-blip and OPTIONS. Under two minutes, safe to run twice; it refuses unless catalog-postgres-0 is ready with RESTARTS 0 in both namespaces, which `scripts/demo.sh up database-blip` sees to after a k3s restart. On the call: `/release catalog ORD-[b]`, with no option word. `connect.py` holds the tunnels for `scripts/demos/database-blip/pods.sh` (the top window); `scripts/demos/database-blip/lines.py` follows the check's lines in the bottom one, and `reveal.sh a` and `reveal.sh b` show the probe lines. Each call's result is in the run's `.release/blip.json`.
+
+Afterwards: `scripts/demo.sh down database-blip` removes the database and its Secret by their label, after your yes, so videos 8 and 26 see the namespaces as their scripts show them. To leave the stage out, delete `scripts.blip_check` from catalog in services.yaml.
+
 ## Layout
 
 ```
