@@ -171,3 +171,32 @@ def test_every_product_has_a_supplier_and_price():
 
 def test_unknown_path_is_404():
     assert get("/admin")[0] == 404
+
+
+def test_main_loads_in_the_background_and_serves(monkeypatch, capsys):
+    """The server answers while the load waits for the database: probes must reach a pod that isn't ready yet."""
+    started, served = [], []
+
+    class Server:
+        daemon_threads = False
+
+        def __init__(self, address, handler):
+            self.address = address
+
+        def serve_forever(self):
+            served.append(self.address)
+
+    class Thread:
+        def __init__(self, target, daemon=False):
+            self.target, self.daemon = target, daemon
+
+        def start(self):
+            started.append((self.target, self.daemon))
+
+    monkeypatch.setattr(app, "ThreadingHTTPServer", Server)
+    monkeypatch.setattr(app.threading, "Thread", Thread)
+    monkeypatch.setattr(app.signal, "signal", lambda *args: None)
+    monkeypatch.setenv("PORT", "8099")
+    app.main()
+    assert started == [(app.load, True)] and served == [("", 8099)]
+    assert app.SERVICE in capsys.readouterr().out
