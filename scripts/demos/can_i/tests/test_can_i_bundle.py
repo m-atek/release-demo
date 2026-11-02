@@ -57,8 +57,9 @@ def test_the_extra_files_go_with_this_demos_commands_only():
     assert remote.host.FILES == usual  # video 8's own commands send what they always sent
 
 
-def test_a_file_video_25_adds_to_host_py_doesnt_go_twice(monkeypatch):
-    monkeypatch.setattr(remote.host, "FILES", [*remote.host.FILES, "scripts/ci_env.py"])
+def test_a_file_host_py_already_sends_doesnt_go_twice(monkeypatch):
+    usual = remote.host.FILES
+    monkeypatch.setattr(remote.host, "FILES", [*usual, *(n for n in ["scripts/ci_env.py"] if n not in usual)])
     names = tarfile.open(fileobj=io.BytesIO(base64.b64decode(own_bundle()))).getnames()
     assert names.count("scripts/ci_env.py") == 1
 
