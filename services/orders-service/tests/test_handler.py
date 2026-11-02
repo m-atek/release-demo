@@ -28,6 +28,18 @@ def test_page_shows_delivery_estimate():
     assert "Delivery estimate: 2 days" in request("/")["body"]
 
 
+def test_page_shows_the_pickup_time():
+    assert "Pickup in store: ready in 2 hours" in request("/")["body"]
+
+
+def test_pickup_time_by_store():
+    answer = json.loads(request("/api/pickup", query="store=Den%20Haag%20Spui")["body"])
+    assert answer == {"store": "Den Haag Spui", "hours": 4}
+    assert json.loads(request("/api/pickup")["body"])["store"] == app.PICKUP_STORE
+    assert app.pickup_hours("Nowhere") == 24
+    assert app.pickup_line("Nowhere") == "Pickup in store: ready in 24 hours"
+
+
 def test_page_escapes_environment_name(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "<staging>")
     assert "<staging>" not in request("/")["body"]
