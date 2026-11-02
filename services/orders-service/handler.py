@@ -36,16 +36,6 @@ PRODUCTS = [
     ("Sports socks, 3 pairs", 14.99),
 ]
 PRICES = dict(PRODUCTS)
-# Pickup in store: how many hours each store needs to get an order ready.
-PICKUP_HOURS = {
-    "Utrecht Centraal": 2,
-    "Amsterdam Zuid": 2,
-    "Rotterdam Blaak": 3,
-    "Eindhoven Strijp": 3,
-    "Den Haag Spui": 4,
-    "Groningen Vismarkt": 4,
-}
-PICKUP_STORE = "Utrecht Centraal"
 STATUSES = ["received", "picking", "packed", "shipped"]
 DELIVERY_ESTIMATE_DAYS = 2
 
@@ -151,27 +141,9 @@ def page():
         commit=html.escape(COMMIT[:7]),
         deployed=html.escape(deployed_at()),
         delivery_days=DELIVERY_ESTIMATE_DAYS,
-        pickup=html.escape(pickup_line()),
         order_count=len(orders),
         rows=rows,
     )
-
-
-def pickup_hours(store):
-    """How soon an order is ready at a store. A store not in the table takes a day."""
-    return PICKUP_HOURS.get(store, 24)
-
-
-def pickup_line(store=PICKUP_STORE):
-    hours = pickup_hours(store)
-    return f"Pickup in store: ready in {hours} hour{'' if hours == 1 else 's'}"
-
-
-def pickup(event):
-    """/api/pickup?store=<store>: how soon an order is ready at a store."""
-    query = urllib.parse.parse_qs(event.get("rawQueryString", ""))
-    store = query.get("store", [PICKUP_STORE])[0]
-    return _json(200, {"store": store, "hours": pickup_hours(store)})
 
 
 def price(event):
@@ -180,7 +152,7 @@ def price(event):
     name = query.get("product", [""])[0]
     if not name:
         return _json(400, {"error": "product is required"})
-    name = name.split(",")[0].strip()
+    name = name if name in PRICES else name.split(",")[0].strip()
     return _json(200, {"product": name, "price_eur": PRICES[name]})
 
 
@@ -195,8 +167,6 @@ def handler(event, context):
         return _json(200, health())
     if path == "/api/orders":
         return _json(200, todays_orders())
-    if path == "/api/pickup":
-        return pickup(event)
     if path == "/api/price":
         return price(event)
     if path == "/":
@@ -262,7 +232,6 @@ PAGE = """<!doctype html>
   </header>
   <div class="version">{version}</div>
   <p class="note">Delivery estimate: {delivery_days} days</p>
-  <p class="note">{pickup}</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>

@@ -28,18 +28,6 @@ def test_page_shows_delivery_estimate():
     assert "Delivery estimate: 2 days" in request("/")["body"]
 
 
-def test_page_shows_the_pickup_time():
-    assert "Pickup in store: ready in 2 hours" in request("/")["body"]
-
-
-def test_pickup_time_by_store():
-    answer = json.loads(request("/api/pickup", query="store=Den%20Haag%20Spui")["body"])
-    assert answer == {"store": "Den Haag Spui", "hours": 4}
-    assert json.loads(request("/api/pickup")["body"])["store"] == app.PICKUP_STORE
-    assert app.pickup_hours("Nowhere") == 24
-    assert app.pickup_line("Nowhere") == "Pickup in store: ready in 24 hours"
-
-
 def test_page_escapes_environment_name(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "<staging>")
     assert "<staging>" not in request("/")["body"]
@@ -73,6 +61,12 @@ def test_price_accepts_the_old_store_apps_product_names():
     response = price_of("Rain jacket, blue")
     assert response["statusCode"] == 200
     assert json.loads(response["body"]) == {"product": "Rain jacket", "price_eur": 74.50}
+
+
+def test_price_of_a_product_with_a_comma_in_its_own_name():
+    response = price_of("Sports socks, 3 pairs")
+    assert response["statusCode"] == 200
+    assert json.loads(response["body"])["price_eur"] == 14.99
 
 
 def test_price_without_a_product_is_a_bad_request():
