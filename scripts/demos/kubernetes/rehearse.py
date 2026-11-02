@@ -36,6 +36,7 @@ import run_state  # noqa: E402
 from common import ROOT, get_parameter, service, ssm_client  # noqa: E402
 
 SERVICE = "catalog"
+STATES = ["1.8.2", "1.9.0", "1.9.1"]  # the demo states this builds, reset.py's 1.8.2 among them
 HERE = Path(__file__).resolve().parent
 results = []
 
@@ -196,6 +197,7 @@ if __name__ == "__main__":
         from common import git
 
         commit = git("rev-parse", "HEAD", check=False).stdout.strip() or "rehearsal"
-        code, output = host.run(f"python3 scripts/demos/kubernetes/rehearse.py --here {commit}", timeout=1800)
+        code, output = host.run(f"python3 scripts/demos/kubernetes/rehearse.py --here {commit}", timeout=1800,
+                                states=STATES)
         print(output, end="")
         sys.exit(code)
