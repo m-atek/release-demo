@@ -13,7 +13,7 @@ image:
   digest: "sha256:4c52b8e3926c94ad312a1e1f446c17cb80c2aa2d656de7f03130611c12bdfbb5"
 
 environment: production
-replicas: 3
+replicas: 5
 # The Service's port on the node: none needed here, nothing outside the cluster calls it.
 nodePort: null
 
