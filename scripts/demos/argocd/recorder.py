@@ -143,7 +143,9 @@ def target(event):
 
 def is_write(event):
     status = (event.get("responseStatus") or {}).get("code", 200)
-    return event.get("verb") in WRITES and event.get("stage", "ResponseComplete") == "ResponseComplete" and status < 400
+    dry_run = "dryRun=" in event.get("requestURI", "")      # asked, not done: kubectl's --dry-run=server
+    return (event.get("verb") in WRITES and event.get("stage", "ResponseComplete") == "ResponseComplete" and status < 400
+            and not dry_run)
 
 
 def machine(username):
@@ -253,6 +255,10 @@ def build_event(app, audit, live, csrs, app_events, config):
     hand = sorted((e for e in writes if not machine(e["user"].get("username", ""))), key=when)
     if not hand:
         return None, "no hand edit since the sync before: Git's change"
+    # An earlier self-heal isn't in the history either: only the edits since Argo CD last wrote count.
+    healed = [when(e) for e in writes if e["user"].get("username") == ARGOCD_CONTROLLER and when(e) < when(hand[-1])]
+    if healed:
+        hand = [e for e in hand if when(e) > max(healed)]
     argocd = sorted((e for e in writes if e["user"].get("username") == ARGOCD_CONTROLLER and when(e) >= when(hand[-1])),
                     key=when)
     if not argocd:
