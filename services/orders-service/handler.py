@@ -100,6 +100,14 @@ def todays_orders(today=None):
     return {"date": today.isoformat(), "orders": orders}
 
 
+def orders_per_store(orders):
+    """(store, count) for each store with orders, busiest first, then by name."""
+    counts = {}
+    for order in orders:
+        counts[order["store"]] = counts.get(order["store"], 0) + 1
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+
+
 def _picker(seed):
     """pick(n) gives a number below n, derived from the seed and a counter: the
     same seed always gives the same numbers. For demo data, not for security."""
@@ -131,6 +139,10 @@ def page():
         f"<td>{html.escape(o['status'])}</td></tr>"
         for o in orders[:5]
     )
+    store_rows = "\n".join(
+        f"<tr><td>{html.escape(store)}</td><td>{count}</td></tr>"
+        for store, count in orders_per_store(orders)
+    )
     return PAGE.format(
         service=SERVICE,
         env=html.escape(env),
@@ -140,6 +152,7 @@ def page():
         delivery_days=DELIVERY_ESTIMATE_DAYS,
         order_count=len(orders),
         rows=rows,
+        store_rows=store_rows,
     )
 
 
@@ -229,6 +242,13 @@ PAGE = """<!doctype html>
     <thead><tr><th>Order</th><th>Store</th><th>Items</th><th>Total</th><th>Status</th></tr></thead>
     <tbody>
 {rows}
+    </tbody>
+  </table>
+  <h2>Orders per store today</h2>
+  <table>
+    <thead><tr><th>Store</th><th>Orders</th></tr></thead>
+    <tbody>
+{store_rows}
     </tbody>
   </table>
 </main>
