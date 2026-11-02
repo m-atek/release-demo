@@ -34,6 +34,7 @@ PRODUCTS = [
     ("Sports socks, 3 pairs", 14.99),
 ]
 STATUSES = ["received", "picking", "packed", "shipped"]
+DELIVERY_ESTIMATE_DAYS = 2
 
 _deployed_at = None
 
@@ -136,6 +137,7 @@ def page():
         version=html.escape(VERSION),
         commit=html.escape(COMMIT[:7]),
         deployed=html.escape(deployed_at()),
+        delivery_days=DELIVERY_ESTIMATE_DAYS,
         order_count=len(orders),
         rows=rows,
     )
@@ -216,6 +218,7 @@ PAGE = """<!doctype html>
     <span class="demo">Demo system</span>
   </header>
   <div class="version">{version}</div>
+  <p class="note">Delivery estimate: {delivery_days} days</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>
