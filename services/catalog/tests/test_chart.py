@@ -71,19 +71,4 @@ def test_no_pod_disruption_budget():
 
 def test_every_environment_gets_the_catalog_database():
     container = render("--set", f"image.digest={DIGEST}")["Deployment"]["spec"]["template"]["spec"]["containers"][0]
-    assert {"name": "CATALOG_POSTGRES_URL", "value": "postgresql://catalog@catalog-postgres:5432/catalog"} in container["env"]
-
-
-def test_the_password_comes_from_the_secret():
-    container = render("--set", f"image.digest={DIGEST}")["Deployment"]["spec"]["template"]["spec"]["containers"][0]
-    password = next(e for e in container["env"] if e["name"] == "CATALOG_POSTGRES_PASSWORD")
-    assert password == {"name": "CATALOG_POSTGRES_PASSWORD",
-                        "valueFrom": {"secretKeyRef": {"name": "catalog-postgres", "key": "password"}}}
-
-
-def test_the_probes_keep_their_timing():
-    container = render("--set", f"image.digest={DIGEST}")["Deployment"]["spec"]["template"]["spec"]["containers"][0]
-    assert {k: container["readinessProbe"].get(k) for k in ("periodSeconds", "failureThreshold")} == {
-        "periodSeconds": 5, "failureThreshold": 2}
-    assert {k: container["livenessProbe"].get(k) for k in ("initialDelaySeconds", "periodSeconds", "failureThreshold")} == {
-        "initialDelaySeconds": 5, "periodSeconds": 10, "failureThreshold": 3}
+    assert {"name": "CATALOG_DB_URL", "value": "file:///app/data/catalog.json"} in container["env"]

@@ -46,8 +46,6 @@ spec:
             {{- range $name, $value := .Values.settings }}
             - { name: {{ $name }}, value: {{ $value | quote }} }
             {{- end }}
-            - name: CATALOG_POSTGRES_PASSWORD
-              valueFrom: { secretKeyRef: { name: catalog-postgres, key: password } }
           # Ready: takes traffic. Alive: keeps running. A pod can be alive but not ready.
           readinessProbe:
             httpGet: { path: /ready, port: http }
