@@ -1,0 +1,36 @@
+# The cluster's audit log, for video 26 (k3s --audit-policy-file). Without a
+# policy the API server logs nothing. The first matching rule wins. Written at
+# /data/k3s/server/audit.yaml by k3s.py; the API server reads it only at start.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages: [RequestReceived]
+rules:
+  - level: Metadata           # who asked for a Secret, and who got one. Never its value.
+    namespaces: [staging, production]
+    resources: [{ group: "", resources: [secrets] }]
+  - level: Request            # what was asked of a Deployment, with the request's body
+    verbs: [create, update, patch, delete]
+    namespaces: [staging, production]
+    resources: [{ group: apps, resources: [deployments, deployments/scale] }]
+  # A controller asks for a pod with generateName, so a pod's name is in the
+  # response and nowhere else: not in objectRef, at any level. A pod's body
+  # names a Secret, and never holds its value.
+  - level: RequestResponse    # pods made
+    verbs: [create]
+    namespaces: [staging, production]
+    resources: [{ group: "", resources: [pods] }]
+  - level: Metadata           # pods removed
+    verbs: [delete]
+    namespaces: [staging, production]
+    resources: [{ group: "", resources: [pods] }]
+  - level: Metadata           # logs read; exec, attach and port-forward tried
+    namespaces: [staging, production]
+    resources:
+      - group: ""
+        resources: [pods/log, pods/exec, pods/attach, pods/portforward, pods/ephemeralcontainers]
+  - level: Metadata           # changes to who may do what
+    verbs: [create, update, patch, delete]
+    resources:
+      - group: rbac.authorization.k8s.io
+        resources: [roles, rolebindings, clusterroles, clusterrolebindings]
+  - level: None

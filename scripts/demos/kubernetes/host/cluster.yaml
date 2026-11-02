@@ -3,13 +3,26 @@
 # kube-state-metrics for the Grafana panel, and the presenter's access for
 # the video's terminal. Applied by host/k3s.py up, as the cluster admin.
 
+# Pod Security baseline on the two namespaces (video 26): no pod here reaches
+# the node's disk, which holds k3s's admin kubeconfig and the tools host's
+# secrets, whoever may create a Deployment. It applies to pods, not
+# Deployments, so a refused pod shows on its ReplicaSet's events. Any pod a
+# demo adds to these namespaces has to pass baseline; root is allowed.
 apiVersion: v1
 kind: Namespace
-metadata: { name: staging }
+metadata:
+  name: staging
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: v1.36
 ---
 apiVersion: v1
 kind: Namespace
-metadata: { name: production }
+metadata:
+  name: production
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: v1.36
 ---
 apiVersion: v1
 kind: Namespace
