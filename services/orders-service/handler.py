@@ -3,9 +3,12 @@
 An AWS Lambda function behind a function URL. It serves one page with the
 service, environment, version, commit and deploy time in large type, a /health
 endpoint for the pipeline's checks, and /api/orders with today's fictional
-orders for the desktop and mobile demos. Standard library only.
+orders for the desktop and mobile demos. /api/orders answers in Brotli when the
+request accepts it: it only ever compresses, with brotli, which the build
+vendors from requirements.txt. Nothing here decodes anything a caller sends.
 """
 
+import base64
 import datetime
 import hashlib
 import html
@@ -34,6 +37,7 @@ PRODUCTS = [
     ("Sports socks, 3 pairs", 14.99),
 ]
 STATUSES = ["received", "picking", "packed", "shipped"]
+DELIVERY_ESTIMATE_DAYS = 2
 
 _deployed_at = None
 
@@ -136,6 +140,8 @@ def page():
         version=html.escape(VERSION),
         commit=html.escape(COMMIT[:7]),
         deployed=html.escape(deployed_at()),
+        delivery_days=DELIVERY_ESTIMATE_DAYS,
+        packed_today=sum(1 for order in orders if order["status"] == "packed"),
         order_count=len(orders),
         rows=rows,
     )
@@ -151,6 +157,8 @@ def handler(event, context):
     if path == "/health":
         return _json(200, health())
     if path == "/api/orders":
+        if _accepts_brotli(event):
+            return _brotli_json(200, todays_orders())
         return _json(200, todays_orders())
     if path == "/":
         return {
@@ -166,6 +174,28 @@ def _json(status, body):
         "statusCode": status,
         "headers": {"content-type": "application/json", "cache-control": "no-store"},
         "body": json.dumps(body),
+    }
+
+
+def _accepts_brotli(event):
+    """Does the request's accept-encoding include br? A quality of 0 means it refuses it."""
+    headers = {name.lower(): value for name, value in (event.get("headers") or {}).items()}
+    for coding in headers.get("accept-encoding", "").replace(" ", "").lower().split(","):
+        name, _, quality = coding.partition(";q=")
+        if name == "br":
+            return not quality or quality.strip("0.") != ""
+    return False
+
+
+def _brotli_json(status, body):
+    """The JSON, compressed with Brotli and base64-encoded, as a function URL returns a binary body."""
+    import brotli
+
+    return {
+        "statusCode": status,
+        "headers": {"content-type": "application/json", "content-encoding": "br", "cache-control": "no-store"},
+        "body": base64.b64encode(brotli.compress(json.dumps(body).encode())).decode(),
+        "isBase64Encoded": True,
     }
 
 
@@ -191,7 +221,6 @@ PAGE = """<!doctype html>
   .env.staging {{ background: var(--staging); }}
   .env.production {{ background: var(--production); }}
   .env.local {{ background: var(--local); }}
-  .demo {{ margin-left: auto; color: var(--muted); font-size: 15px; }}
   .version {{ font-size: 120px; font-weight: 700; letter-spacing: -0.04em; line-height: 1;
     margin: 40px 0 8px; font-variant-numeric: tabular-nums; }}
   .facts {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -200,6 +229,7 @@ PAGE = """<!doctype html>
   .fact span {{ display: block; color: var(--muted); font-size: 15px; }}
   .fact strong {{ font-size: 28px; font-variant-numeric: tabular-nums; }}
   .note {{ font-size: 30px; font-weight: 600; margin: 8px 0 0; }}
+  .packed {{ font-size: 18px; color: var(--muted); margin: 4px 0 0; }}
   table {{ width: 100%; border-collapse: collapse; background: var(--paper);
     border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }}
   th, td {{ text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--line); }}
@@ -213,9 +243,10 @@ PAGE = """<!doctype html>
   <header>
     <h1>{service}</h1>
     <span class="env {env}">{env}</span>
-    <span class="demo">Demo system</span>
   </header>
   <div class="version">{version}</div>
+  <p class="note">Delivery estimate: {delivery_days} days</p>
+  <p class="packed">Packed today: {packed_today}</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>
