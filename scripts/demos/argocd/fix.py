@@ -28,6 +28,7 @@ started on gh pr create. The run state is .release/state.json, as for a release.
 
 import argparse
 import datetime
+import importlib.util
 import json
 import os
 import subprocess
@@ -474,9 +475,10 @@ def sync(args):
 
 
 def clock_time(text):
-    sys.path.insert(0, str(ROOT / "bridge"))
-    import events as bridge_events
-
+    """The bridge's clock, loaded by its path: scripts/ has an events module too, and finish imports that one."""
+    spec = importlib.util.spec_from_file_location("bridge_events", ROOT / "bridge" / "events.py")
+    bridge_events = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bridge_events)
     return bridge_events.clock(text)
 
 

@@ -10,6 +10,7 @@ import importlib.util
 import io
 import json
 import re
+import shlex
 from pathlib import Path
 
 import pytest
@@ -90,8 +91,16 @@ def test_nothing_the_agent_writes_reaches_slack_but_the_pull_request_s_title():
      "An error occurred (AccessDeniedException) when calling the GetParameter operation: User: arn:aws:sts::1:assumed-role/"
      "r/s is not authorized to perform: ssm:GetParameter on resource: arn:aws:ssm:eu-west-1:1:parameter/release-demo/"
      "jcr/token with an explicit deny in an identity-based policy", "Refused by AWS: GetParameter on release-demo/jcr/token."),
+    ("git push origin HEAD:main 2>&1 | tail -8",
+     " ! [remote rejected] HEAD -> main (push declined due to repository rule violations)\nerror: failed to push some refs\n",
+     "Refused by GitHub: push to main."),
+    ("git push origin v9 2>&1 | tail -3", " ! [remote rejected] v9 -> refs/tags/v9 (push declined due to repository rule violations)",
+     "Refused by GitHub: push to v9."),
+    ("cd /work/release-demo && git push origin main", "remote: error: GH013: Repository rule violations found for refs/heads/main.\n",
+     "Refused by GitHub: push to main."),
     ("ls", "nothing refused here", None),
     ("cat notes.txt", "GH013: Repository rule violations found for refs/heads/main.", None),
+    ("cat notes.txt", "[remote rejected] HEAD -> main (push declined due to repository rule violations)", None),
 ])
 def test_refusals_are_named_from_github_s_and_aws_s_own_words(command, output, line):
     assert agent_log.refusal(command, output) == line
@@ -290,8 +299,12 @@ class FakePRs:
 
     def __init__(self, rules, pulls, runs, files):
         self.rules, self.pulls, self.runs, self.files = rules, pulls, runs, files
+        self.deleted = []
 
     def call(self, method, path, body=None):
+        if method == "DELETE":
+            self.deleted.append(path)
+            return []
         if path == "/rules/branches/main":
             return self.rules
         if path.startswith("/pulls?"):
@@ -320,6 +333,18 @@ def test_the_newest_unchecked_pull_request_from_this_repository_comes_next():
 def test_a_pull_request_that_changes_no_checked_service_gets_the_four_skipped():
     github = FakePRs(ON, [pr(3, "s3")], {}, {3: ["infra/demos/2-terraform/network/exports.tf"]})
     assert pull_requests.next_pull(github) == {"number": 3, "sha": "s3", "service": None}
+
+
+def test_the_label_recheck_runs_a_pull_request_s_checks_again_and_comes_off():
+    labelled = {**pr(8, "s8"), "labels": [{"name": "recheck"}]}
+    github = FakePRs(ON, [labelled], {"s8": [{"name": "Build"}]}, {8: ["services/orders-service/handler.py"]})
+    assert pull_requests.next_pull(github) == {"number": 8, "sha": "s8", "service": "orders-service"}
+    assert github.deleted == ["/issues/8/labels/recheck"]
+
+
+def test_a_value_with_a_space_reaches_the_scanner_as_one_argument():
+    args = shlex.split(pull_requests.sonar_args("orders-service", "1.9.0", 5, "m-atek"))
+    assert "-Dsonar.projectName=orders-service pull requests" in args
 
 
 def test_with_the_ruleset_off_no_pull_request_is_checked():

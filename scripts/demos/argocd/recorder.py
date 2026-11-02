@@ -92,9 +92,19 @@ def automated_sync(app):
         return False, f"the last sync is {operation.get('phase') or 'missing'}"
     if not (operation.get("operation") or {}).get("initiatedBy", {}).get("automated"):
         return False, "the last sync wasn't automated"
-    if len(status.get("history") or []) < 2:
+    if sync_before(status) is None:
         return False, "the application's first sync"
     return True, ""
+
+
+def sync_before(status):
+    """When the sync before the last one finished, or None: the newest history entry from before the
+    last sync started. A self-heal is a partial sync, and Argo CD keeps those out of its history."""
+    operation = status.get("operationState") or {}
+    started = parse_time(operation.get("startedAt") or operation["finishedAt"])
+    earlier = [parse_time(entry["deployedAt"]) for entry in status.get("history") or []]
+    earlier = [moment for moment in earlier if moment < started]
+    return max(earlier) if earlier else None
 
 
 def touched(app):
@@ -133,7 +143,9 @@ def target(event):
 
 def is_write(event):
     status = (event.get("responseStatus") or {}).get("code", 200)
-    return event.get("verb") in WRITES and event.get("stage", "ResponseComplete") == "ResponseComplete" and status < 400
+    dry_run = "dryRun=" in event.get("requestURI", "")      # asked, not done: kubectl's --dry-run=server
+    return (event.get("verb") in WRITES and event.get("stage", "ResponseComplete") == "ResponseComplete" and status < 400
+            and not dry_run)
 
 
 def machine(username):
@@ -234,7 +246,7 @@ def build_event(app, audit, live, csrs, app_events, config):
     if not synced:
         return None, why
     status = app["status"]
-    previous = parse_time(status["history"][-2]["deployedAt"])
+    previous = sync_before(status)
     finished = parse_time(status["operationState"]["finishedAt"])
     resources = touched(app)
     since, until = previous - datetime.timedelta(seconds=1), finished + datetime.timedelta(seconds=5)
@@ -243,6 +255,10 @@ def build_event(app, audit, live, csrs, app_events, config):
     hand = sorted((e for e in writes if not machine(e["user"].get("username", ""))), key=when)
     if not hand:
         return None, "no hand edit since the sync before: Git's change"
+    # An earlier self-heal isn't in the history either: only the edits since Argo CD last wrote count.
+    healed = [when(e) for e in writes if e["user"].get("username") == ARGOCD_CONTROLLER and when(e) < when(hand[-1])]
+    if healed:
+        hand = [e for e in hand if when(e) > max(healed)]
     argocd = sorted((e for e in writes if e["user"].get("username") == ARGOCD_CONTROLLER and when(e) >= when(hand[-1])),
                     key=when)
     if not argocd:

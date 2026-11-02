@@ -520,7 +520,8 @@ def queue_azure_run(secrets, token, params):
     """The Runs API: (HTTP status, the run's page or error); status 0 when nothing answered."""
     organization, pipeline = secrets["azure-devops/organization"], secrets["azure-devops/pipeline-id"]
     body = {"resources": {"repositories": {"self": {"refName": "refs/heads/main"}}},
-            "templateParameters": {AZURE_INPUTS[k]: v for k, v in params.items() if k in AZURE_INPUTS}}
+            # Azure refuses an empty string as a parameter's value, so an empty one takes the pipeline's default.
+            "templateParameters": {AZURE_INPUTS[k]: v for k, v in params.items() if k in AZURE_INPUTS and v != ""}}
     request = urllib.request.Request(
         f"https://dev.azure.com/{organization}/{AZURE_PROJECT}/_apis/pipelines/{pipeline}/runs?api-version=7.1",
         method="POST", data=json.dumps(body).encode(),

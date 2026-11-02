@@ -57,8 +57,9 @@ HEADERS = {"Content-Type": "application/json", "PlanUrl": "$(system.CollectionUr
            "TimelineId": "$(system.TimelineId)", "TaskInstanceId": "$(system.TaskInstanceId)",
            "AuthToken": "$(system.AccessToken)", "BuildId": "$(build.BuildId)"}
 BUILD_NAMESPACE = "33344d9c-fc72-4d6f-aba5-fa317101a7e9"
-# View builds, queue builds, stop builds, view the pipeline: queue it, read and cancel its runs.
-RELEASE_BOT_RIGHTS = 1 | 128 | 512 | 1024
+# View builds, queue builds, stop builds, view the pipeline, edit queue build configuration: queue it, read and
+# cancel its runs. Azure asks for the last one before it takes parameters at queue time (TF215106), and answers 500.
+RELEASE_BOT_RIGHTS = 1 | 128 | 512 | 1024 | 65536
 PROJECT_NAMESPACE = "52d39943-cb85-4d7f-8fa8-c6baac873819"
 # View project-level information (GENERIC_READ): a member of a new project group doesn't have it, and Azure
 # DevOps answers 404 for a project its caller can't see. Readers and Contributors have it, with much more.
