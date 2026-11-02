@@ -6,8 +6,7 @@
 On the tools host this:
 
 1. reads the issue as Release Pipeline: its summary, description and fix version;
-2. clones main into a fresh folder, with only services/<service>/ checked out,
-   on a new local branch agent/<key>-<build>,
+2. clones main into a fresh folder, on a new local branch agent/<key>-<build>,
    with git's author set to the agent app's bot and gh as git's credential
    helper (the clone's own config: no token in a file);
 3. gets the app's installation token and assumes release-demo-coding-agent
@@ -125,15 +124,13 @@ class Slack:
         slack("chat.update", self.token, channel=self.channel, ts=self.ts, text=text)
 
 
-def clone(repository, folder, branch, author, email, service):
+def clone(repository, folder, branch, author, email):
     run = lambda *args: subprocess.run(["git", *args], check=True, capture_output=True, text=True)
     run("clone", "--quiet", f"https://github.com/{repository}.git", str(folder))
     # The clone's own config: gh hands git the token from GH_TOKEN, so no file holds it.
     for key, value in [("user.name", author), ("user.email", email),
                        ("credential.https://github.com.helper", "!gh auth git-credential")]:
         run("-C", str(folder), "config", key, value)
-    # Only the service's folder: the platform's own files describe this demo, and whatever stops the agent must be the platform.
-    run("-C", str(folder), "sparse-checkout", "set", "--no-cone", f"/services/{service}/")
     run("-C", str(folder), "checkout", "--quiet", "-b", branch)
     subprocess.run(["chmod", "-R", "a+rwX", str(folder)], check=True)  # the container's user agent edits it
 
@@ -194,7 +191,7 @@ def run(env=os.environ):
     folder = Path(env.get("WORKSPACE", ROOT)) / "agent-work" / f"{key}-{build_number}"
     slug = get_parameter(ssm, "github/agent-app-slug")
     author, email = agent.bot_identity(slug)
-    clone(repository, folder, branch, author, email, name)
+    clone(repository, folder, branch, author, email)
 
     access = agent_access()
     github_token, _ = agent.token(ssm)

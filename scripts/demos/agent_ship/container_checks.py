@@ -64,7 +64,7 @@ def github_checks(repository, stamp):
     os.makedirs(f"{WORK}/.github/workflows", exist_ok=True)
     with open(f"{WORK}/.github/workflows/check-{stamp}.yml", "w") as file:
         file.write("on: push\njobs: {}\n")
-    run("git", "add", "--sparse", ".github/workflows")  # the clone checks out only the service's folder
+    run("git", "add", ".github/workflows")
     run("git", "commit", "-q", "-m", "A workflow, which the app may not push")
     code, out = run("git", "push", "origin", f"HEAD:refs/heads/{branch}-workflow")
     results.append(line(code != 0 and "workflow" in out.lower(), "2. a push that changes .github/workflows/ fails"))
