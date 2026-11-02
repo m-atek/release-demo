@@ -157,8 +157,8 @@ def main():
 
     started = time.monotonic()
     commit = git("log", "-1", "--format=%H", "--", f"demo-states/{SERVICE}/{BASELINE}", check=False).stdout.strip()
-    code, output = host.run(f"python3 scripts/demos/kubernetes/reset.py --here --commit {commit or 'baseline'}",
-                            timeout=600, states=[BASELINE])
+    code, output = host.run(f"python3 scripts/demos/kubernetes/reset.py --here --commit {commit or 'baseline'} "
+                            f"--baseline {BASELINE}", timeout=600, states=[BASELINE])
     print(output, end="")
     if code != 0:
         fail("The cluster reset failed. Is the cluster up? scripts/demo.sh status kubernetes")
