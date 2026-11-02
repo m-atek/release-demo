@@ -15,14 +15,19 @@ where their resets put them:
    reset.py ai-notes does for 1.4.0 (about 6 minutes);
 5. 1.27.0 staged on main;
 6. the check's switch on, the AI notes' and the cost check's off;
-7. both functions called once, and the Slack handler warmed.
+7. both functions called once, and the Slack handler warmed;
+8. the quiet day seeded, up to the minute this ends (seed.py).
 
-Under 2 minutes after the first time, safe to run twice. CloudWatch keeps what
-it counted, so a reset can't clear the budget and nothing here pretends to:
-failures leave by the clock. The traffic has its own switch, which no reset touches.
+Under 2 minutes after the first time, safe to run twice. Everything before the
+end of a reset reads as the seeded day, so a fill can't age out, and a failed
+take's failures don't wait 24 hours: the next take starts on a quiet day. From
+the end of the reset on, every request and failure is real, so the traffic must
+be on by then. It has its own switch, which no reset touches: step 8 stops with a
+failure if it is off, and scripts/demo.sh up error-budget turns it on.
 """
 
 import argparse
+import datetime
 import importlib.util
 import sys
 import time
@@ -33,12 +38,13 @@ SCRIPTS = HERE.parents[1]
 sys.path.insert(1, str(SCRIPTS))
 
 import host  # noqa: E402
-from common import SSM_PREFIX, fail, get_parameter, service, ssm_client  # noqa: E402
+from common import SSM_PREFIX, aws_session, fail, get_parameter, service, ssm_client  # noqa: E402
 
 SERVICE, BASELINE, STAGED = "orders-service", "1.26.0", "1.27.0"
 TAKE_VERSIONS = {"1.27.0", "1.27.1", "1.28.0", "1.28.1"}
 SWITCHES = {"error-budget/enabled": "on", "ai-notes/enabled": "off", "cost-check/enabled": "off"}
 TAKE_COMMENT = "Earlier take"
+TRAFFIC = "error-budget/traffic-until"
 
 
 def shared_reset():
@@ -49,6 +55,18 @@ def shared_reset():
     module.BASELINE = BASELINE
     module.after_baseline = lambda version: version in TAKE_VERSIONS
     return module
+
+
+def load_seed():
+    """seed.py by its path: scripts/demos has more than one."""
+    spec = importlib.util.spec_from_file_location("budget_seed", HERE / "seed.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def cloudwatch_client():
+    return aws_session().client("cloudwatch")
 
 
 def stories():
@@ -99,6 +117,29 @@ def set_switches(reset, wanted, ssm=None):
             continue
         reset.act(f"turn {name} {value}", lambda name=name, value=value: ssm.put_parameter(
             Name=SSM_PREFIX + name, Value=value, Type="String", Overwrite=True))
+
+
+def traffic_is_on(ssm=None, now=None):
+    """The take's own minutes hold what the load generator sends, so it must be on."""
+    ssm = ssm or ssm_client()
+    try:
+        value = ssm.get_parameter(Name=SSM_PREFIX + TRAFFIC)["Parameter"]["Value"]
+        return datetime.datetime.fromisoformat(value).timestamp() > (now or time.time())
+    except (ssm.exceptions.ParameterNotFound, ValueError):
+        return False
+
+
+def seed_fill(reset, now=None):
+    """The quiet day, up to this minute. Only with the traffic on: from here on, nothing is seeded."""
+    if not traffic_is_on(now=now):
+        message = "the traffic is off, so the take's minutes would hold no requests: scripts/demo.sh up error-budget, then this again"
+        if not reset.dry_run:
+            raise RuntimeError(message)
+        print(f"  {message}")
+    seed = load_seed()
+    settings = service(SERVICE)["error_budget"]
+    minutes = seed.minutes_to_seed(now or time.time(), settings["window_hours"])
+    reset.act(seed.describe(minutes), lambda: seed.write(cloudwatch_client(), settings, minutes))
 
 
 def release_baseline(reset, key):
@@ -173,6 +214,7 @@ def run(dry_run, slack_url):
     else:
         reset.step("9. Lambda aliases, and one call each", lambda: shared.lambda_aliases(reset))
     reset.step("10. The Slack handler, one call", lambda: shared.warm_slack_handler(reset, slack_url))
+    reset.step("11. The seeded fill, up to now", lambda: seed_fill(reset))
     took = time.monotonic() - started
     if reset.failed:
         print(f"Finished in {took:.0f}s, but these steps failed: {'; '.join(reset.failed)}. Fix them and run it again.")

@@ -1,7 +1,7 @@
 {
   "uid": "release-demo-error-budget",
   "title": "Error budget",
-  "description": "orders-service production: requests and failures over the last 24 hours from CloudWatch, against a target of 99.9%.",
+  "description": "orders-service production against a target of 99.9% over the last 24 hours. A quiet day before the load generator started is seeded, about 60 requests a minute, none failed; from then on the requests and failures are CloudWatch's.",
   "tags": [
     "release-demo",
     "orders-service",
@@ -119,7 +119,7 @@
       "type": "text",
       "title": "",
       "transparent": true,
-      "description": "The target this page holds the release pipeline to, and what the requests are.",
+      "description": "The target this page holds the release pipeline to, and where the requests come from.",
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -128,14 +128,14 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Target: 99.9% of requests to orders-service production succeed, over a rolling 24 hours. The requests come from a load generator."
+        "content": "Target: 99.9% of requests to orders-service production succeed, over a rolling 24 hours. The quiet day before the load generator started is seeded, none failed. From then on, CloudWatch counts."
       }
     },
     {
       "id": 2,
       "type": "stat",
       "title": "",
-      "description": "orders-service production over the dashboard's range, from CloudWatch, 60-second periods, summed. Requests: what the function URL received (UrlRequestCount). Failed: the function's errors, which the URL answered with a 502 (Errors). Allowed to fail: requests x 0.1%, rounded down, floor(requests / 1000). Budget spent: failed / (requests x 0.1%), in whole percent, rounded down, floor(failed x 100000 / requests). A release is refused when failed is above allowed. One panel, so the four stay in a row in a half-width window.",
+      "description": "orders-service production over the dashboard's range, 60-second periods, summed. A minute of the seeded quiet day (ReleaseDemo/ErrorBudget, SeededRequests) reads that count and 0 failed. Any other minute reads CloudWatch: what the function URL received (UrlRequestCount) and the function's errors, which the URL answered with a 502 (Errors). Allowed to fail: requests x 0.1%, rounded down, floor(requests / 1000). Budget spent: failed / (requests x 0.1%), in whole percent, rounded down, floor(failed x 100000 / requests). A release is refused when failed is above allowed. One panel, so the four stay in a row in a half-width window.",
       "gridPos": {
         "x": 0,
         "y": 2,
@@ -162,7 +162,7 @@
           "matchExact": true,
           "statistic": "Sum",
           "period": "60",
-          "id": "",
+          "id": "r",
           "expression": "",
           "label": "requests",
           "hide": true
@@ -185,57 +185,158 @@
           "matchExact": true,
           "statistic": "Sum",
           "period": "60",
-          "id": "",
+          "id": "f",
           "expression": "",
           "label": "failed",
           "hide": true
         },
         {
+          "refId": "G",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "region": "default",
+          "namespace": "ReleaseDemo/ErrorBudget",
+          "metricName": "SeededRequests",
+          "dimensions": {
+            "FunctionName": "orders-service-production"
+          },
+          "matchExact": true,
+          "statistic": "Maximum",
+          "period": "60",
+          "id": "s",
+          "expression": "",
+          "label": "seeded",
+          "hide": true
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "region": "default",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "req",
+          "expression": "IF(FILL(s,-1) >= 0, FILL(s,0), FILL(r,0))",
+          "label": "requests per minute",
+          "hide": true
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "region": "default",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "bad",
+          "expression": "IF(FILL(s,-1) >= 0, 0, FILL(f,0))",
+          "label": "failed per minute",
+          "hide": true
+        },
+        {
           "refId": "R",
           "datasource": {
-            "type": "__expr__",
-            "uid": "__expr__"
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
           },
-          "type": "reduce",
-          "expression": "A",
-          "reducer": "sum",
-          "settings": {
-            "mode": "dropNN"
-          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "region": "default",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "requests",
+          "expression": "TIME_SERIES(SUM(req))",
+          "label": "",
           "hide": false
         },
         {
           "refId": "F",
           "datasource": {
-            "type": "__expr__",
-            "uid": "__expr__"
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
           },
-          "type": "reduce",
-          "expression": "B",
-          "reducer": "sum",
-          "settings": {
-            "mode": "dropNN"
-          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "region": "default",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "failures",
+          "expression": "TIME_SERIES(SUM(bad))",
+          "label": "",
           "hide": false
         },
         {
           "refId": "L",
           "datasource": {
-            "type": "__expr__",
-            "uid": "__expr__"
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
           },
-          "type": "math",
-          "expression": "floor($R / 1000)",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "region": "default",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "allowed",
+          "expression": "FLOOR(TIME_SERIES(SUM(req)/1000))",
+          "label": "",
           "hide": false
         },
         {
           "refId": "S",
           "datasource": {
-            "type": "__expr__",
-            "uid": "__expr__"
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
           },
-          "type": "math",
-          "expression": "floor($F * 100000 / $R)",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "region": "default",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "spent",
+          "expression": "FLOOR(TIME_SERIES(SUM(bad)*100000/SUM(req)))",
+          "label": "",
           "hide": false
         }
       ],
@@ -349,8 +450,8 @@
       "id": 3,
       "type": "timeseries",
       "title": "Failed requests, running total",
-      "description": "orders-service production's failed requests, per minute from CloudWatch (Errors, Sum, period 60), added up over the last 3 hours. Green marks are releases, red marks are rollbacks, orange marks are overrides. The dashed line is a full day's allowed number: 0.1% of 86,400 requests, rounded down. The budget stays spent until the failures leave the 24-hour window.",
-      "description_per_minute": "orders-service production's failed requests per minute over the last 3 hours, from CloudWatch (Errors, Sum, period 60). Green marks are releases, red marks are rollbacks, orange marks are overrides. The dashed line is a full day's allowed number: 0.1% of 86,400 requests, rounded down.",
+      "description": "orders-service production's failed requests per minute, added up over the last 3 hours: 0 in a minute of the seeded quiet day, CloudWatch's Errors in any other. Green marks are releases, red marks are rollbacks, orange marks are overrides. The dashed line is a full day's allowed number: 0.1% of 86,400 requests, rounded down. The budget stays spent until the failures leave the 24-hour window.",
+      "description_per_minute": "orders-service production's failed requests per minute over the last 3 hours: 0 in a minute of the seeded quiet day, CloudWatch's Errors in any other. Green marks are releases, red marks are rollbacks, orange marks are overrides. The dashed line is a full day's allowed number: 0.1% of 86,400 requests, rounded down.",
       "gridPos": {
         "x": 0,
         "y": 7,
@@ -361,7 +462,7 @@
       "hideTimeOverride": true,
       "targets": [
         {
-          "refId": "A",
+          "refId": "B",
           "datasource": {
             "type": "cloudwatch",
             "uid": "release-demo-cloudwatch"
@@ -378,13 +479,13 @@
           "matchExact": true,
           "statistic": "Sum",
           "period": "60",
-          "id": "",
+          "id": "f",
           "expression": "",
           "label": "failed",
-          "hide": false
+          "hide": true
         },
         {
-          "refId": "B",
+          "refId": "G",
           "datasource": {
             "type": "cloudwatch",
             "uid": "release-demo-cloudwatch"
@@ -393,44 +494,84 @@
           "metricQueryType": 0,
           "metricEditorMode": 0,
           "region": "default",
-          "namespace": "AWS/Lambda",
-          "metricName": "UrlRequestCount",
+          "namespace": "ReleaseDemo/ErrorBudget",
+          "metricName": "SeededRequests",
           "dimensions": {
             "FunctionName": "orders-service-production"
           },
           "matchExact": true,
+          "statistic": "Maximum",
+          "period": "60",
+          "id": "s",
+          "expression": "",
+          "label": "seeded",
+          "hide": true
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "region": "default",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
           "statistic": "Sum",
           "period": "60",
-          "id": "",
-          "expression": "",
-          "label": "requests",
+          "id": "bad",
+          "expression": "IF(FILL(s,-1) >= 0, 0, FILL(f,0))",
+          "label": "failed per minute",
           "hide": true
+        },
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "region": "default",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "running",
+          "expression": "RUNNING_SUM(bad)",
+          "label": "Failed requests, running total",
+          "hide": false
         },
         {
           "refId": "C",
           "datasource": {
-            "type": "__expr__",
-            "uid": "__expr__"
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
           },
-          "type": "math",
-          "expression": "$B * 0 + 86",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "region": "default",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "line",
+          "expression": "TIME_SERIES(86)",
+          "label": "budget",
           "hide": false
         }
       ],
-      "transformations": [
-        {
-          "id": "calculateField",
-          "options": {
-            "mode": "cumulativeFunctions",
-            "cumulative": {
-              "field": "failed",
-              "reducer": "sum"
-            },
-            "alias": "Failed requests, running total",
-            "replaceFields": true
-          }
-        }
-      ],
+      "transformations": [],
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -523,7 +664,7 @@
       "id": 4,
       "type": "stat",
       "title": "Burn rate, last hour",
-      "description": "How fast the budget burns: (failed / requests in the last hour) / 0.1%, from CloudWatch. 1x would spend the budget in exactly the window. Shown only: the plain budget decides a release, not this number. After a fix it falls to 0 while the budget stays spent.",
+      "description": "How fast the budget burns: (failed / requests in the last hour) / 0.1%, each minute read as above. 1x would spend the budget in exactly the window. Shown only: the plain budget decides a release, not this number. After a fix it falls to 0 while the budget stays spent.",
       "gridPos": {
         "x": 0,
         "y": 18,
@@ -551,7 +692,7 @@
           "matchExact": true,
           "statistic": "Sum",
           "period": "60",
-          "id": "",
+          "id": "r",
           "expression": "",
           "label": "requests",
           "hide": true
@@ -574,47 +715,95 @@
           "matchExact": true,
           "statistic": "Sum",
           "period": "60",
-          "id": "",
+          "id": "f",
           "expression": "",
           "label": "failed",
           "hide": true
         },
         {
-          "refId": "R",
+          "refId": "G",
           "datasource": {
-            "type": "__expr__",
-            "uid": "__expr__"
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
           },
-          "type": "reduce",
-          "expression": "A",
-          "reducer": "sum",
-          "settings": {
-            "mode": "dropNN"
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "region": "default",
+          "namespace": "ReleaseDemo/ErrorBudget",
+          "metricName": "SeededRequests",
+          "dimensions": {
+            "FunctionName": "orders-service-production"
           },
+          "matchExact": true,
+          "statistic": "Maximum",
+          "period": "60",
+          "id": "s",
+          "expression": "",
+          "label": "seeded",
           "hide": true
         },
         {
-          "refId": "F",
+          "refId": "D",
           "datasource": {
-            "type": "__expr__",
-            "uid": "__expr__"
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
           },
-          "type": "reduce",
-          "expression": "B",
-          "reducer": "sum",
-          "settings": {
-            "mode": "dropNN"
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "region": "default",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "req",
+          "expression": "IF(FILL(s,-1) >= 0, FILL(s,0), FILL(r,0))",
+          "label": "requests per minute",
+          "hide": true
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
           },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "region": "default",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "bad",
+          "expression": "IF(FILL(s,-1) >= 0, 0, FILL(f,0))",
+          "label": "failed per minute",
           "hide": true
         },
         {
           "refId": "X",
           "datasource": {
-            "type": "__expr__",
-            "uid": "__expr__"
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
           },
-          "type": "math",
-          "expression": "($F / $R) * 1000",
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 1,
+          "region": "default",
+          "namespace": "",
+          "metricName": "",
+          "dimensions": {},
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "burn",
+          "expression": "TIME_SERIES((SUM(bad)/SUM(req))*1000)",
+          "label": "",
           "hide": false
         }
       ],
@@ -653,7 +842,7 @@
       "id": 5,
       "type": "stat",
       "title": "Failed, as the load generator saw them",
-      "description": "The second count, from the caller's side: the sum of failed in the load generator's one summary line a minute (kind=traffic), over the dashboard's range. Failed means a 5xx or no answer. Compare it with Failed above: they agree within 3.",
+      "description": "The second count, from the caller's side: the sum of failed in the load generator's one summary line a minute (kind=traffic), over the dashboard's range. Failed means a 5xx or no answer. Compare it with Failed above: they agree within 3. It holds real requests only, so after a reset it also counts an earlier take, which Failed no longer does.",
       "gridPos": {
         "x": 8,
         "y": 18,

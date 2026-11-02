@@ -53,9 +53,18 @@ class FakeCloudWatch:
     """GetMetricData over per-minute rows: missing zeroes left out as CloudWatch leaves empty minutes out,
     one page per metric when asked, so the reader has to follow NextToken."""
 
-    def __init__(self, rows=(), pages=1, fails=None, status="Complete", extra_after_window=True):
+    def __init__(self, rows=(), pages=1, fails=None, status="Complete", extra_after_window=True, seeded=None):
         self.rows, self.pages, self.fails, self.status = list(rows), pages, fails, status
-        self.calls = []
+        self.seeded = dict(seeded or {})
+        self.calls, self.written = [], []
+
+    def put_metric_data(self, Namespace, MetricData):
+        """As Maximum reads it: the same value twice for a minute stays that value."""
+        assert len(MetricData) <= 1000 and not Namespace.startswith("AWS/")
+        self.written.append((Namespace, MetricData))
+        for datum in MetricData:
+            minute = int(datum["Timestamp"].timestamp())
+            self.seeded[minute] = max(self.seeded.get(minute, 0), datum["Value"])
 
     def get_metric_data(self, **kwargs):
         self.calls.append(kwargs)
@@ -67,6 +76,12 @@ class FakeCloudWatch:
         first_page = "NextToken" not in kwargs
         for query in kwargs["MetricDataQueries"]:
             role = query["Id"]
+            if role == "seeded":
+                minutes = sorted(minute for minute in self.seeded if start <= minute < end)
+                results.append({"Id": role, "Label": role, "StatusCode": self.status,
+                                "Timestamps": [datetime.datetime.fromtimestamp(minute, datetime.timezone.utc) for minute in minutes],
+                                "Values": [float(self.seeded[minute]) for minute in minutes]})
+                continue
             column = {"requests": 1, "failed": 2}[role]
             rows = [row for row in self.rows if start <= row[0] < end and row[column]]
             if self.pages > 1:

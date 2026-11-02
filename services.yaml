@@ -133,6 +133,10 @@ orders-service:
     # AWS/Lambda, FunctionName alone. On this account Url5xxCount never appeared, though
     # function errors answered 502: failed reads Errors until a rehearsal shows otherwise.
     metrics: {requests: UrlRequestCount, failed: Errors}
+    # The quiet day before a take is seeded, not measured (Mateusz's decision, 2 November 2026):
+    # scripts/demos/error_budget/seed.py. A minute with a seeded count reads that count and 0 failed;
+    # any other minute reads AWS/Lambda. Leave this out and the stage reads AWS/Lambda alone.
+    seed: {namespace: ReleaseDemo/ErrorBudget, metric: SeededRequests}
     reason_required: true           # false: an override needs Alex's name, not his comment
 
   # Video 16: /agent orders-service <Jira key> <note> hands an issue to the

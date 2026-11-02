@@ -10,10 +10,12 @@ import budget
 import dashboard
 import demo
 import setup as budget_setup
-from conftest import HERE, NOW, FakeJira, budget_issue, story
+from conftest import HERE, NOW, FakeCloudWatch, FakeJira, budget_issue, story
 
 DASHBOARD = dashboard.build()
 PANELS = {panel.get("title") or panel["id"]: panel for panel in DASHBOARD["panels"]}
+REQUESTS_PER_MINUTE = "IF(FILL(s,-1) >= 0, FILL(s,0), FILL(r,0))"
+FAILED_PER_MINUTE = "IF(FILL(s,-1) >= 0, 0, FILL(f,0))"
 
 
 def load_reset():
@@ -71,6 +73,9 @@ class ResetWorld:
             monkeypatch.setattr(shared, name, lambda *args, n=name: world.calls.append(n))
         monkeypatch.setattr(shared, "release_jobs", lambda: [])
         self.jira = FakeJira([budget_issue("ORD-123"), budget_issue("ORD-90", status="Done")])
+        self.traffic = "2036-11-07T09:00:00+00:00"
+        self.cloudwatch = FakeCloudWatch()
+        monkeypatch.setattr(self.reset, "cloudwatch_client", lambda: world.cloudwatch)
         monkeypatch.setattr(self.reset, "stories", lambda: {"p": "ORD-110", "a": "ORD-111", "f": "ORD-112"})
         monkeypatch.setattr(self.reset, "has_baseline", lambda: has_baseline)
         monkeypatch.setattr(self.reset.host, "main_version", lambda path: main)
@@ -85,7 +90,10 @@ class ResetWorld:
                     pass
 
             def get_parameter(self, Name):
-                return {"Parameter": {"Value": world.switches[Name.removeprefix("/release-demo/")]}}
+                name = Name.removeprefix("/release-demo/")
+                if name == "error-budget/traffic-until":
+                    return {"Parameter": {"Value": world.traffic}}
+                return {"Parameter": {"Value": world.switches[name]}}
 
             def put_parameter(self, Name, Value, Type, Overwrite):
                 assert Type == "String" and Overwrite
@@ -119,7 +127,8 @@ def test_the_reset_is_safe_to_run_twice(monkeypatch, capsys):
     world.jira = FakeJira()
     assert world.reset.run(False, None) == 0
     out = capsys.readouterr().out
-    assert "stage 1.27.0" not in world.calls and "main has orders-service 1.27.0" in out and "0 action(s)" in out
+    # The one action left is the seed, which changes nothing it wrote before.
+    assert "stage 1.27.0" not in world.calls and "main has orders-service 1.27.0" in out and "1 action(s)" in out
 
 
 def test_the_reset_turns_the_other_switches_off(monkeypatch):
@@ -136,6 +145,36 @@ def test_a_dry_run_changes_nothing(monkeypatch, capsys):
     assert "would move ORD-123 to Done" in out
     assert world.switches["error-budget/enabled"] == "off" and world.switches["ai-notes/enabled"] == "on"
     assert world.jira.comments == [] and "stage 1.27.0" not in world.calls
+    assert "would seed 1,437 minutes" in out and world.cloudwatch.written == []
+
+
+def test_the_reset_seeds_last_so_every_request_after_it_is_real(monkeypatch, capsys):
+    world = ResetWorld(monkeypatch)
+    order = []
+    monkeypatch.setattr(world.shared, "warm_slack_handler", lambda *args: order.append("warmed"))
+    real_write = world.reset.load_seed
+    monkeypatch.setattr(world.reset, "load_seed", lambda: (order.append("seed loaded"), real_write())[1])
+    assert world.reset.run(False, None) == 0
+    assert order == ["warmed", "seed loaded"]
+    assert sum(len(points) for _, points in world.cloudwatch.written) == 1437
+    assert {namespace for namespace, _ in world.cloudwatch.written} == {"ReleaseDemo/ErrorBudget"}
+    assert "seed 1,437 minutes" in capsys.readouterr().out
+
+
+def test_the_reset_won_t_seed_while_the_traffic_is_off(monkeypatch, capsys):
+    world = ResetWorld(monkeypatch)
+    world.traffic = "off"
+    assert world.reset.run(False, None) == 1
+    out = capsys.readouterr().out
+    assert "the traffic is off" in out and "scripts/demo.sh up error-budget" in out and "these steps failed: 11." in out
+    assert world.cloudwatch.written == []
+
+
+def test_a_dry_run_only_says_the_traffic_is_off(monkeypatch, capsys):
+    world = ResetWorld(monkeypatch)
+    world.traffic = "2020-01-01T00:00:00+00:00"
+    assert world.reset.run(True, None) == 0
+    assert "the traffic is off" in capsys.readouterr().out and world.cloudwatch.written == []
 
 
 def test_the_first_time_is_a_real_release_under_the_price_story(monkeypatch):
@@ -194,7 +233,7 @@ def test_up_sets_the_traffic_for_72_hours_and_touches_nothing_else(monkeypatch, 
     monkeypatch.setattr(demo, "put_parameter", lambda ssm, name, value, secure=True: written.append((name, value, secure)))
     assert demo.up(now=NOW) == 0
     assert written == [("error-budget/traffic-until", "2026-11-07T12:47:20+00:00", False)]
-    assert "Note the time" in capsys.readouterr().out
+    assert "seed.py" in capsys.readouterr().out
 
 
 def test_up_applies_nothing_and_says_whose_apply_it_is(monkeypatch, capsys):
@@ -237,13 +276,14 @@ class FakeCheckSession:
         if name == "events":
             return SimpleNamespace(describe_rule=lambda Name: {"State": "ENABLED", "ScheduleExpression": "rate(1 minute)"})
         return SimpleNamespace(get_role_policy=lambda RoleName, PolicyName: {"PolicyDocument": {
-            "Statement": [{"Action": "cloudwatch:GetMetricData"}, {"Action": "ssm:PutParameter"}]}})
+            "Statement": [{"Action": "cloudwatch:GetMetricData"}, {"Action": "ssm:PutParameter"},
+                          {"Action": "cloudwatch:PutMetricData"}]}})
 
 
 def test_check_reads_everything_the_demo_needs_and_says_ok_or_fail(monkeypatch, capsys):
     from conftest import window
 
-    monkeypatch.setattr(demo, "plain_parameter", lambda name: "2026-11-07T09:00:00+00:00")
+    monkeypatch.setattr(demo, "plain_parameter", lambda name: "jenkins" if name.startswith("ci/") else "2026-11-07T09:00:00+00:00")
     monkeypatch.setattr(demo, "main_version", lambda path: "1.27.0")
     monkeypatch.setattr(demo, "load_switch", lambda: SimpleNamespace(value=lambda: "off"))
     as_of = budget.as_of_minute(NOW)
@@ -254,11 +294,14 @@ def test_check_reads_everything_the_demo_needs_and_says_ok_or_fail(monkeypatch, 
     assert "last whole minute: 60 requests" in text and "0 of 86,400 failed" in text
     assert "Url5xxCount on orders-service-production: not published; services.yaml reads Errors" in text
     assert "live in production: 1.26.0; staged on main: 1.27.0" in text
+    assert "/release orders-service starts on jenkins" in text and "Seeded: nothing in this window." in text
+    assert "release-demo-tools-host may cloudwatch:PutMetricData" in text
 
-    monkeypatch.setattr(demo, "plain_parameter", lambda name: "off")
+    monkeypatch.setattr(demo, "plain_parameter", lambda name: "azure-pipelines" if name.startswith("ci/") else "off")
     found = dict((what, ok) for ok, what in demo.checks(FakeCheckSession(window(as_of, per_minute=40)), now=NOW))
     assert found["traffic off (error-budget/traffic-until: off)"] is False
     assert found["last whole minute: 40 requests (60, give or take 2), 0 failed"] is False
+    assert found["/release orders-service starts on azure-pipelines: that demo's down first"] is False
 
 
 def test_status_needs_no_secret(monkeypatch):
@@ -303,13 +346,33 @@ def test_the_four_numbers_are_one_row_with_the_stages_arithmetic():
     assert four["type"] == "stat" and four["gridPos"]["w"] == 24 and four["options"]["orientation"] == "horizontal"
     by_ref = {target["refId"]: target for target in four["targets"]}
     assert by_ref["A"]["metricName"] == "UrlRequestCount" and by_ref["B"]["metricName"] == "Errors"
-    assert by_ref["A"]["hide"] and by_ref["B"]["hide"] and not by_ref["R"]["hide"]
-    assert by_ref["R"]["expression"] == "A" and by_ref["R"]["reducer"] == "sum"
-    assert by_ref["L"]["expression"] == "floor($R / 1000)" and by_ref["S"]["expression"] == "floor($F * 100000 / $R)"
+    assert by_ref["G"]["namespace"] == "ReleaseDemo/ErrorBudget" and by_ref["G"]["metricName"] == "SeededRequests"
+    assert by_ref["G"]["statistic"] == "Maximum" and by_ref["A"]["statistic"] == by_ref["B"]["statistic"] == "Sum"
+    assert all(by_ref[ref]["hide"] for ref in "ABGDE") and not by_ref["R"]["hide"]
+    assert by_ref["D"]["expression"] == REQUESTS_PER_MINUTE and by_ref["E"]["expression"] == FAILED_PER_MINUTE
+    assert by_ref["R"]["expression"] == "TIME_SERIES(SUM(req))" and by_ref["F"]["expression"] == "TIME_SERIES(SUM(bad))"
+    assert by_ref["L"]["expression"] == "FLOOR(TIME_SERIES(SUM(req)/1000))"
+    assert by_ref["S"]["expression"] == "FLOOR(TIME_SERIES(SUM(bad)*100000/SUM(req)))"
+    # Grafana sends a hidden query only if it has an id, and a math query needs the code editor's mode.
+    assert all(target["id"] for target in four["targets"])
+    assert all(target["metricEditorMode"] == (1 if target["expression"] else 0) for target in four["targets"])
     names = {o["matcher"]["options"]: o["properties"][0]["value"] for o in four["fieldConfig"]["overrides"]}
     assert names == {"R": "Requests", "F": "Failed", "L": "Allowed to fail: 0.1%", "S": "Budget spent"}
     # The visible order, as the script's frames read them: Requests, Failed, then the other two.
     assert [t["refId"] for t in four["targets"] if not t["hide"]] == ["R", "F", "L", "S"]
+
+
+def minute_by_minute(seeded, real, failed):
+    """The two per-minute expressions, as CloudWatch answered them when read for real on 2 November."""
+    return [(seeded[m] if m in seeded else real.get(m, 0), 0 if m in seeded else failed.get(m, 0)) for m in sorted({*seeded, *real, *failed})]
+
+
+def test_the_panels_read_each_minute_as_the_stage_does():
+    seeded = {0: 60, 60: 61}
+    real = {0: 7, 60: 7, 120: 60, 180: 60}
+    failed = {0: 2, 120: 3, 180: 3}
+    counts = {"seeded": seeded, "requests": real, "failed": failed}
+    assert [row[1:] for row in budget.merged(counts, 0, 240)] == minute_by_minute(seeded, real, failed) == [(60, 0), (61, 0), (60, 3), (60, 3)]
 
 
 def test_the_grafana_formulas_equal_the_stage_to_the_request():
@@ -324,10 +387,11 @@ def test_the_grafana_formulas_equal_the_stage_to_the_request():
 def test_the_chart_is_a_running_total_of_the_last_3_hours_with_the_dashed_line_and_the_marks():
     chart = PANELS["Failed requests, running total"]
     assert chart["timeFrom"] == "3h" and chart["hideTimeOverride"] is True
-    calc = chart["transformations"][0]
-    assert calc["id"] == "calculateField" and calc["options"]["mode"] == "cumulativeFunctions"
-    assert calc["options"]["cumulative"] == {"field": "failed", "reducer": "sum"}
-    assert targets("Failed requests, running total")["C"]["expression"] == "$B * 0 + 86"
+    assert chart["transformations"] == []
+    by_ref = targets("Failed requests, running total")
+    assert by_ref["E"]["expression"] == FAILED_PER_MINUTE and by_ref["E"]["hide"]
+    assert by_ref["A"]["expression"] == "RUNNING_SUM(bad)" and not by_ref["A"]["hide"]
+    assert by_ref["C"]["expression"] == "TIME_SERIES(86)" and not by_ref["C"]["hide"]
     override = chart["fieldConfig"]["overrides"][0]
     assert {"id": "displayName", "value": "budget: 86"} in override["properties"]
     assert {"id": "custom.lineStyle", "value": {"fill": "dash", "dash": [10, 10]}} in override["properties"]
@@ -348,7 +412,7 @@ def test_the_marks_tags_match_what_the_pipeline_sends():
 def test_the_fixed_ranges_and_the_loki_queries():
     assert PANELS["Burn rate, last hour"]["timeFrom"] == "1h" and PANELS["Overrides, last 14 days"]["timeFrom"] == "14d"
     assert "timeFrom" not in PANELS["Failed, as the load generator saw them"] and "timeFrom" not in PANELS[2]
-    assert targets("Burn rate, last hour")["X"]["expression"] == "($F / $R) * 1000"
+    assert targets("Burn rate, last hour")["X"]["expression"] == "TIME_SERIES((SUM(bad)/SUM(req))*1000)"
     generator = targets("Failed, as the load generator saw them")["A"]["expr"]
     assert 'source="release-demo-loadgen"' in generator and 'kind="traffic"' in generator and "unwrap failed" in generator
     overrides = targets("Overrides, last 14 days")["A"]["expr"]
@@ -358,22 +422,32 @@ def test_the_fixed_ranges_and_the_loki_queries():
 def test_the_budget_line_is_a_setting_for_the_partly_filled_fallback():
     built = dashboard.build(budget_line=19)
     chart = next(panel for panel in built["panels"] if panel.get("title") == dashboard.CHART)
-    assert next(t for t in chart["targets"] if t["refId"] == "C")["expression"] == "$B * 0 + 19"
+    assert next(t for t in chart["targets"] if t["refId"] == "C")["expression"] == "TIME_SERIES(19)"
     assert {"id": "displayName", "value": "budget: 19"} in chart["fieldConfig"]["overrides"][0]["properties"]
 
 
 def test_bars_per_minute_are_the_fallback_if_a_running_total_wont_draw():
     built = dashboard.build(per_minute=True)
     chart = next(panel for panel in built["panels"] if panel["id"] == 3)
-    assert chart["title"] == "Failed requests per minute" and chart["transformations"] == []
+    assert chart["title"] == "Failed requests per minute"
+    assert next(t for t in chart["targets"] if t["refId"] == "A")["expression"] == "bad"
     assert chart["fieldConfig"]["defaults"]["custom"]["drawStyle"] == "bars"
     assert "DORA" not in json.dumps(built)
 
 
 def test_the_metrics_names_follow_services_yaml():
     built = dashboard.build(metrics={"requests": "Invocations", "failed": "Url5xxCount"})
-    names = {target["metricName"] for panel in built["panels"] for target in panel.get("targets", []) if "metricName" in target}
-    assert names == {"Invocations", "Url5xxCount"}
+    names = {target["metricName"] for panel in built["panels"] for target in panel.get("targets", []) if target.get("metricName")}
+    assert names == {"Invocations", "Url5xxCount", "SeededRequests"}
     # The file on disk holds what services.yaml says today, so a reader of the JSON isn't misled.
     plain = json.loads((HERE / "dashboard.json").read_text())
-    assert {t["metricName"] for p in plain["panels"] for t in p.get("targets", []) if "metricName" in t} == {"UrlRequestCount", "Errors"}
+    assert {t["metricName"] for p in plain["panels"] for t in p.get("targets", []) if t.get("metricName")} == {
+        "UrlRequestCount", "Errors", "SeededRequests"}
+
+
+def test_nothing_on_the_page_says_the_fill_was_measured():
+    line = PANELS[1]["options"]["content"]
+    assert "seeded" in line and "CloudWatch counts" in line and "The requests come from a load generator" not in line
+    assert len(line) < 210  # two lines at 125% in a half-width window, so the row sits where the card says
+    for panel in (DASHBOARD, PANELS[2], PANELS["Failed requests, running total"]):
+        assert "seeded" in panel["description"]

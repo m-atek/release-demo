@@ -160,18 +160,30 @@ resource "aws_lambda_permission" "traffic" {
 }
 
 # reset.py error-budget and the main reset run on the tools host, and they turn
-# the check's switch on and off. Here and not in infra/tools_host.tf, so the
-# main root's apply for this demo stays free of IAM.
+# the check's switch on and off. reset.py error-budget also writes the seeded
+# fill from there (scripts/demos/error_budget/seed.py). Here and not in
+# infra/tools_host.tf, so the main root's apply for this demo stays free of IAM.
 data "aws_iam_policy_document" "tools_host_switch" {
   statement {
     sid       = "WriteTheBudgetsSwitch"
     actions   = ["ssm:PutParameter"]
     resources = ["${local.parameter}/error-budget/enabled"]
   }
+  # This call has no resource-level permissions: the namespace is what narrows it.
+  statement {
+    sid       = "WriteTheSeededFill"
+    actions   = ["cloudwatch:PutMetricData"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "cloudwatch:namespace"
+      values   = [local.budget.seed.namespace]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "tools_host_switch" {
-  name   = "error-budget-switch"
+  name   = "error-budget-switch-and-seed"
   role   = "release-demo-tools-host"
   policy = data.aws_iam_policy_document.tools_host_switch.json
 }

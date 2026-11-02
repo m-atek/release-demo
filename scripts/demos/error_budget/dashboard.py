@@ -8,7 +8,9 @@ dashboard.json, next to this script: the four numbers, the running total of
 failed requests with the release marks and a dashed budget line, the burn rate,
 the generator's own count and the overrides. It goes in the Releases dashboard's
 folder, "Release demo", default range the last 24 hours. The metrics' names come
-from services.yaml's error_budget.metrics, as the stage reads them. Each panel's
+from services.yaml's error_budget.metrics and .seed, as the stage reads them. Each
+minute reads as the stage reads it, in CloudWatch's own metric math: a seeded minute
+is its seed and 0 failed, any other minute what AWS/Lambda counted. Each panel's
 description gives its formula. Uses the pipeline's service account token from
 SSM (Editor role). Safe to run again: it overwrites the dashboard with the same uid.
 """
@@ -36,15 +38,17 @@ BUDGET_LINE = 86
 def build(budget_line=BUDGET_LINE, per_minute=False, metrics=None):
     """dashboard.json with the metrics' names and the options applied."""
     dashboard = copy.deepcopy(json.loads((HERE / "dashboard.json").read_text()))
-    metrics = metrics or service(SERVICE)["error_budget"]["metrics"]
+    settings = service(SERVICE)["error_budget"]
+    metrics = metrics or settings["metrics"]
     for panel in dashboard["panels"]:
         for target in panel.get("targets", []):
             if target.get("label") in metrics and target.get("namespace") == "AWS/Lambda":
                 target["metricName"] = metrics[target["label"]]
+            if target.get("label") == "seeded":
+                target["namespace"], target["metricName"] = settings["seed"]["namespace"], settings["seed"]["metric"]
     chart = next(panel for panel in dashboard["panels"] if panel.get("title") == CHART)
-    for target in chart["targets"]:
-        if target.get("type") == "math":
-            target["expression"] = f"$B * 0 + {budget_line}"
+    by_ref = {target["refId"]: target for target in chart["targets"]}
+    by_ref["C"]["expression"] = f"TIME_SERIES({budget_line})"
     for override in chart["fieldConfig"]["overrides"]:
         for prop in override["properties"]:
             if prop["id"] == "displayName" and str(prop["value"]).startswith("budget: "):
@@ -52,7 +56,7 @@ def build(budget_line=BUDGET_LINE, per_minute=False, metrics=None):
     if per_minute:
         chart["title"] = PER_MINUTE
         chart["description"] = chart["description_per_minute"]
-        chart["transformations"] = []
+        by_ref["A"].update(expression=by_ref["E"]["id"], label=PER_MINUTE)
         chart["fieldConfig"]["defaults"]["custom"].update(drawStyle="bars", fillOpacity=80, lineWidth=1)
     chart.pop("description_per_minute", None)
     return dashboard

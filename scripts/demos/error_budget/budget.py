@@ -15,7 +15,9 @@ scripts/demos/error_budget/switch.py is on.
 The stage, in order:
 
 1. Read, through the evidence reader role: GetMetricData for both metrics in one
-   call, 60-second periods, FunctionName alone. Missing minutes count as 0.
+   call, 60-second periods, FunctionName alone. Missing minutes count as 0. A
+   minute with a seeded count (seed.py, services.yaml's error_budget.seed) reads
+   that count and 0 failed, never both: only the quiet day before a take is seeded.
 2. Too few requests to judge: one line, pass. Within the budget: the lines, pass.
 3. Spent, and override asked: the lines, the change's description and the
    report, override in the run state, pass. The change is Normal because
@@ -95,8 +97,10 @@ def as_of_minute(now):
 class Reading:
     """One window: [(minute, requests, failed)], oldest first, every minute present."""
 
-    def __init__(self, series, as_of, slo, hours):
+    def __init__(self, series, as_of, slo, hours, seeded=(), under_seed=0):
         self.series, self.as_of, self.slo, self.hours = series, as_of, slo, hours
+        # The minutes in this window that are seeded, and the real failures those minutes hide.
+        self.seeded, self.under_seed = sorted(seeded), under_seed
         self.requests = sum(requests for _, requests, _ in series)
         self.failed = sum(failed for _, _, failed in series)
         self.allowed = allowed_of(self.requests, slo)
@@ -105,6 +109,11 @@ class Reading:
     @property
     def over(self):
         return self.failed > self.allowed
+
+    @property
+    def seeded_until(self):
+        """The minute the seeded part ends: requests before it are seeded, from it on measured."""
+        return self.seeded[-1] + 60 if self.seeded else None
 
     def failed_in_last(self, minutes):
         return sum(failed for _, _, failed in self.series[-minutes:])
@@ -165,6 +174,23 @@ def one_line(reading):
             f"{reading.requests:,} requests failed. {reading.slo:g}% allows {reading.allowed:,}. Spent: {reading.spent}%.")
 
 
+def source_line(reading, settings):
+    """Where the numbers come from, for the override's description, which is on screen."""
+    metrics = metrics_of(settings)
+    line = f"Source: CloudWatch, {metrics['requests']} and {metrics['failed']}, {settings['function']}."
+    if reading.seeded:
+        line += f" Requests before {clock(reading.seeded_until)} are seeded, none failed."
+    return line
+
+
+def seeded_line(reading):
+    """For status: what of this window is seeded."""
+    if not reading.seeded:
+        return "Seeded: nothing in this window."
+    return (f"Seeded: {len(reading.seeded):,} minutes of this window, to {clock(reading.seeded_until)}, none failed. "
+            f"From then on CloudWatch's counts. Real failures the seed hides: {reading.under_seed}.")
+
+
 def changed_text(count):
     return f"{count} line{'' if count == 1 else 's'} of code changed since production"
 
@@ -208,14 +234,21 @@ def metrics_of(settings):
     return {**DEFAULT_METRICS, **(settings.get("metrics") or {})}
 
 
-def read_series(client, function, as_of, hours, metrics):
-    """[(minute, requests, failed)] for the window, from one GetMetricData call and its pages."""
+def read_counts(client, function, as_of, hours, metrics, seed=None):
+    """{requests, failed and with a seed seeded: {minute: count}} for the window, from one
+    GetMetricData call and its pages. Seeded counts read with Maximum, so a second seed.py changes nothing."""
     start = as_of - hours * 3600
-    queries = [{"Id": role, "ReturnData": True,
-                "MetricStat": {"Metric": {"Namespace": "AWS/Lambda", "MetricName": metrics[role],
+
+    def query(role, namespace, name, stat):
+        return {"Id": role, "ReturnData": True,
+                "MetricStat": {"Metric": {"Namespace": namespace, "MetricName": name,
                                           "Dimensions": [{"Name": "FunctionName", "Value": function}]},
-                               "Period": 60, "Stat": "Sum"}} for role in ("requests", "failed")]
-    counts = {"requests": {}, "failed": {}}
+                               "Period": 60, "Stat": stat}}
+
+    queries = [query(role, "AWS/Lambda", metrics[role], "Sum") for role in ("requests", "failed")]
+    if seed:
+        queries.append(query("seeded", seed["namespace"], seed["metric"], "Maximum"))
+    counts = {entry["Id"]: {} for entry in queries}
     token = None
     while True:
         reply = client.get_metric_data(
@@ -230,14 +263,30 @@ def read_series(client, function, as_of, hours, metrics):
                 counts[result["Id"]][int(stamp.timestamp())] = int(value)
         token = reply.get("NextToken")
         if not token:
-            return [(minute, counts["requests"].get(minute, 0), counts["failed"].get(minute, 0))
-                    for minute in range(start, as_of, 60)]
+            return counts
+
+
+def merged(counts, start, as_of):
+    """[(minute, requests, failed)], every minute once: a seeded minute reads its seed and 0 failed,
+    never both, and any other minute what AWS/Lambda counted."""
+    seeded = counts.get("seeded", {})
+    return [(minute, seeded[minute], 0) if minute in seeded
+            else (minute, counts["requests"].get(minute, 0), counts["failed"].get(minute, 0))
+            for minute in range(start, as_of, 60)]
+
+
+def read_series(client, function, as_of, hours, metrics, seed=None):
+    """[(minute, requests, failed)] for the window."""
+    return merged(read_counts(client, function, as_of, hours, metrics, seed), as_of - hours * 3600, as_of)
 
 
 def take_reading(client, settings, now):
     as_of = as_of_minute(now)
-    series = read_series(client, settings["function"], as_of, settings["window_hours"], metrics_of(settings))
-    return Reading(series, as_of, settings["slo"], settings["window_hours"])
+    hours = settings["window_hours"]
+    counts = read_counts(client, settings["function"], as_of, hours, metrics_of(settings), settings.get("seed"))
+    seeded = counts.get("seeded", {})
+    under_seed = sum(count for minute, count in counts["failed"].items() if minute in seeded)
+    return Reading(merged(counts, as_of - hours * 3600, as_of), as_of, settings["slo"], hours, seeded, under_seed)
 
 
 def open_issues(jira, service_name, settings):
@@ -336,7 +385,9 @@ def report_path():
 
 def numbers_of(reading):
     return {"requests": reading.requests, "failed": reading.failed, "allowed": reading.allowed, "spent": reading.spent,
-            "slo": reading.slo, "window_hours": reading.hours, "as_of": run_state.iso(reading.as_of)}
+            "slo": reading.slo, "window_hours": reading.hours, "as_of": run_state.iso(reading.as_of),
+            "seeded_minutes": len(reading.seeded),
+            "seeded_until": run_state.iso(reading.seeded_until) if reading.seeded else None}
 
 
 def record(state, settings, result, blocks, reading=None, reason=None, **extra):
@@ -351,6 +402,7 @@ def record(state, settings, result, blocks, reading=None, reason=None, **extra):
         "function": settings["function"], "metrics": metrics_of(settings),
         "burn_rate_last_hour": round(reading.burn_rate(), 2) if reading else None,
         "failed_last_minutes": {str(STOPPED_MINUTES): reading.failed_in_last(STOPPED_MINUTES)} if reading else None,
+        "real_failed_under_the_seed": reading.under_seed if reading else None,
         **extra,
         # The per-minute series: as ISO minutes, so the report reads without a converter.
         "series": [[run_state.iso(minute), requests, failed] for minute, requests, failed in reading.series] if reading else [],
@@ -460,11 +512,10 @@ def run_stage(state, service_name, session=None, jira=None, now=None):
         return 0
     if result == "override-asked":
         back = back_about(reading, now)
-        metrics = metrics_of(settings)
         state["override"] = True
         state.setdefault("change_details", []).extend([
             one_line(reading),
-            f"Source: CloudWatch, {metrics['requests']} and {metrics['failed']}, {settings['function']}.",
+            source_line(reading, settings),
             f"Override asked by {asked_by(state)}. While the budget is spent, only the budget's own issue releases "
             "without this approval."])
         state.setdefault("change_attachments", []).append(str(report_path()))
@@ -589,6 +640,8 @@ def status(service_name, key, option, out=print, session=None, jira=None, now=No
     out(head(reading, f"Spent: {reading.spent}%.{back_about(reading, now)}"))
     out(f"Failed in the last {STOPPED_MINUTES} minutes: {reading.failed_in_last(STOPPED_MINUTES)}. "
         f"Burn rate, last hour: {reading.burn_rate():.1f}x.")
+    if settings.get("seed"):
+        out(seeded_line(reading))
 
     def issues():
         try:

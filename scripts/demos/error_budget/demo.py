@@ -49,8 +49,8 @@ def up(now=None):
     until = datetime.datetime.fromtimestamp(now + UP_HOURS * 3600, datetime.timezone.utc)
     put_parameter(ssm_client(), TRAFFIC, until.isoformat(timespec="seconds"), secure=False)
     print(f"Traffic on since {budget.clock(now)}, Amsterdam time, until {until:%d %b %H:%M} UTC at the latest. "
-          "The takes start at least 24 hours from now, and after the rehearsal's last failure. "
-          "Note the time. The first requests come within a minute; scripts/demo.sh check error-budget confirms them.")
+          "The first requests come within a minute; scripts/demo.sh check error-budget confirms them. "
+          "The quiet day before the take is seeded: scripts/demos/error_budget/seed.py, and reset.py error-budget again.")
     return 0
 
 
@@ -96,6 +96,7 @@ def status():
     minute, requests, failed = reading.series[-1]
     print(f"The traffic's last minute, {budget.clock(minute)}: {requests} requests, {failed} failed")
     print(budget.head(reading, f"Spent: {reading.spent}%.{budget.back_about(reading, time.time())}"))
+    print(budget.seeded_line(reading))
     live, staged = live_and_staged(session)
     print(f"Live in production: {live}. Staged on main: {staged}.")
     return 0
@@ -127,12 +128,16 @@ def checks(session=None, now=None):
     found.append((on, f"traffic {'on' if on else 'off'} (error-budget/traffic-until: {until})"))
     iam = session.client("iam")
     found.append(policy_has(iam, "release-demo-evidence-reader", "read-orders-service-records", "cloudwatch:GetMetricData"))
-    found.append(policy_has(iam, "release-demo-tools-host", "error-budget-switch", "ssm:PutParameter"))
+    found.append(policy_has(iam, "release-demo-tools-host", "error-budget-switch-and-seed", "ssm:PutParameter"))
+    found.append(policy_has(iam, "release-demo-tools-host", "error-budget-switch-and-seed", "cloudwatch:PutMetricData"))
+    ci = plain_parameter("ci/orders-service") or "jenkins"
+    found.append((ci == "jenkins", f"/release orders-service starts on {ci}" + ("" if ci == "jenkins" else ": that demo's down first")))
     try:
         reading = budget.take_reading(session.client("cloudwatch"), settings, now)
         last = reading.series[-1]
         found.append((last[1] in PER_MINUTE, f"last whole minute: {last[1]} requests (60, give or take 2), {last[2]} failed"))
         found.append((True, f"window: {reading.failed:,} of {reading.requests:,} failed, allows {reading.allowed:,}, spent {reading.spent}%"))
+        found.append((True, budget.seeded_line(reading)))
     except Exception as error:
         found.append((False, f"CloudWatch not read ({error.__class__.__name__})"))
     found.append(url5xx_line(session, settings, now))
