@@ -661,6 +661,32 @@ Before each take: `scripts/reset.py database-blip [--stage 1.10.0|1.10.1] [--dry
 
 Afterwards: `scripts/demo.sh down database-blip` removes the database and its Secret by their label, after your yes, so videos 8 and 26 see the namespaces as their scripts show them. To leave the stage out, delete `scripts.blip_check` from catalog in services.yaml.
 
+## Demo on a call: an error budget refuses a feature (video 27)
+
+A release rule that reads production. With the check on, the first stage of the release pipeline, Error budget, counts orders-service production's requests and failures over a rolling 24 hours from CloudWatch. When more have failed than 99.9% allows, a feature release is refused in Slack with the number, before anything is built. The refusal opens one Jira issue, and only that issue passes, if at most 20 lines of code changed since production. Anything else needs `override`: a Normal change that only Alex can approve, with a written reason that goes on the record. `/rollback` isn't gated. The check is Jenkins only, so 14, 17 and 22 stay down while it is on. It uses no model.
+
+The traffic is a load generator: the Lambda function `release-demo-error-budget-traffic` (`scripts/demos/error_budget/traffic.py`), started every minute by EventBridge, sends 60 GETs a minute through the public function URL in a fixed rotation of 20, and one summary a minute to Grafana Cloud Logs. So the failures are real responses and the requests are generated: on a real service the same check reads real traffic, and the team sets the target. Requests are CloudWatch's UrlRequestCount and failures its Errors, because Url5xxCount never appeared on this account, though function errors answered 502 (`services.yaml`, `error_budget.metrics`).
+
+**The quiet day before a take is seeded, not measured** (Mateusz's decision, 2 November 2026, so the video can be filmed the same day). `scripts/demos/error_budget/seed.py` writes one metric of its own, `ReleaseDemo/ErrorBudget SeededRequests`, about 60 a minute. The stage and the dashboard read each minute once: a seeded minute is that count and 0 failed, any other minute what AWS/Lambda counted. `reset.py error-budget` seeds up to the minute it ends, so from then on every request and failure is real, and a failed take can be reset and taken again the same hour. Say so on a call: the day before is made up, the failures are not.
+
+| State | Jira | What changes | What happens |
+| --- | --- | --- | --- |
+| 1.26.0 | ORD-[p] | `/api/price?product=<name>`, exact names | The clean baseline |
+| 1.27.0 | ORD-[a] | Takes the name before a comma, for the old store app | Passes every gate, then one request in 20, "Sports socks, 3 pairs", answers 502 |
+| 1.27.1 | ORD-[b], opened by the budget | One changed line of code | Passes as the budget's own issue, and the failures stop |
+| 1.28.0 | ORD-[f] | 1.27.0 plus "Pickup in store: ready in 2 hours" | Refused, never built. Under ORD-[b] it is refused too: too big |
+| 1.28.1 | ORD-[f] | 1.27.1 plus the same feature | Released under `override` |
+
+Two switches, on purpose: `scripts/demo.sh up error-budget` sets the traffic (`error-budget/traffic-until`, now + 72 hours), and `scripts/reset.py error-budget` turns on the check (`error-budget/enabled`), which `scripts/demos/error_budget/switch.py off`, the main reset and `demo.sh down error-budget` turn off. With the traffic on and the check off, other orders-service videos can be filmed: their releases have no extra row and no line. A version that fails on purpose (1.4.1, video 21's flag) counts against the window, until the next `reset.py error-budget`.
+
+Once, after the merge, your applies, because they hold IAM: `scripts/demos/ai_notes/tf.sh apply` (the evidence reader gains `cloudwatch:GetMetricData`) and `scripts/demos/error_budget/tf.sh apply` (the function, its rule and role, and the tools host's right to write the check's switch and the seeded fill). Then `scripts/tf.sh apply` (two parameter names, `override` in the Slack handler's config.json), and `.venv/bin/python scripts/demos/error_budget/setup.py`: ORD-[p], ORD-[a] and ORD-[f], printed, and the dashboard "Error budget". `scripts/demo.sh check error-budget` shows ok or FAIL for all of it.
+
+Before the takes: `scripts/demo.sh up error-budget`, then `scripts/reset.py error-budget`: production on 1.26.0 (the first time a real release, about 6 minutes), 1.27.0 staged, the check on, the quiet day seeded up to now. `python scripts/demos/error_budget/budget.py status` prints the numbers, what of them is seeded and the decision, and `budget.py url --as-of HH:MM` the dashboard's address pinned to the same 24 hours as Slack's line. CloudWatch can take up to 2 hours to show data points 3 to 24 hours old, so wait until `seed.py --check` reads a full day.
+
+On the call: `/release orders-service ORD-[a] standard` and wait until the budget is spent, then `scripts/host.py stage orders-service 1.28.0` (a fresh clone: the reset's stage commit isn't in your checkout) and `/release orders-service ORD-[f]`: refused. `scripts/host.py stage orders-service 1.27.1` and `/release orders-service ORD-[b] standard`: it passes, and the failures stop. `scripts/host.py stage orders-service 1.28.1` and `/release orders-service ORD-[f] override`: Alex decides, and his comment goes in Slack and the close notes. For the chart after the fix, open `budget.py url --live`: a pinned address leaves out marks after its last minute.
+
+If something doesn't answer, it goes toward a person: without a reading from CloudWatch, `standard` becomes a Normal change and Slack says "no reading". Under 1,000 requests it is too few to judge, and passes. Afterwards: `scripts/demo.sh down error-budget`: the traffic and the check off. Running costs about USD 0.25 a day while the traffic is on, and a fraction of a cent a day while it is off.
+
 ## Layout
 
 ```

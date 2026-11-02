@@ -12,7 +12,8 @@ orders-service:
 
   slack:
     # Words allowed after the Jira key in /release orders-service ORD-12 <option>.
-    options: [standard]
+    # override (video 27): a Normal change, whichever word it replaces.
+    options: [standard, override]
 
   scripts:
     build: scripts/build.py
@@ -29,6 +30,9 @@ orders-service:
     # Video 18: the stage Cost check after Check staging, while
     # scripts/demos/cost_gate/switch.py is on.
     cost_check: scripts/demos/cost_gate/cost_check.py
+    # Video 27: the stage Error budget, first of all, while
+    # scripts/demos/error_budget/switch.py is on.
+    error_budget: scripts/demos/error_budget/budget.py
     # Demo 20's two checks, for versions with migrations only (run_state.VERSION_STAGES).
     # scripts/demos/rollback-trap/checks.py on|off adds or removes these two lines.
     migration_check: scripts/demos/rollback-trap/migration_check.py
@@ -116,6 +120,24 @@ orders-service:
     expected_month:                 # the team's own estimate; shown in the change and on screen
       page_views: 3000000
       new_orders: 60000
+
+  # Video 27: when more of production's requests have failed than the target
+  # allows, a release is refused before anything is built.
+  error_budget:
+    slo: 99.9
+    window_hours: 24                # a production policy would read 672, with 300-second periods past 15 days
+    min_requests: 1000              # below this, too few to judge: no refusal
+    fix_max_changed_lines: 20
+    issue_label: error-budget
+    function: orders-service-production
+    # AWS/Lambda, FunctionName alone. On this account Url5xxCount never appeared, though
+    # function errors answered 502: failed reads Errors until a rehearsal shows otherwise.
+    metrics: {requests: UrlRequestCount, failed: Errors}
+    # The quiet day before a take is seeded, not measured (Mateusz's decision, 2 November 2026):
+    # scripts/demos/error_budget/seed.py. A minute with a seeded count reads that count and 0 failed;
+    # any other minute reads AWS/Lambda. Leave this out and the stage reads AWS/Lambda alone.
+    seed: {namespace: ReleaseDemo/ErrorBudget, metric: SeededRequests}
+    reason_required: true           # false: an override needs Alex's name, not his comment
 
   # Video 16: /agent orders-service <Jira key> <note> hands an issue to the
   # coding agent (scripts/demos/agent_ship), and pull requests that change

@@ -28,11 +28,15 @@ def call() {
         currentBuild.displayName = "#${env.BUILD_NUMBER} ${service} ${version}"
         currentBuild.description = "${params.JIRA_KEY}${params.OPTION ? ', ' + params.OPTION : ''}, asked by ${params.REQUESTED_BY ? 'Slack' : 'the Jenkins UI'}"
         sh 'python3 scripts/jira.py fix-version'
-        // Videos 12, 13 and 18, each behind its own switch: off, nothing changes.
+        // Videos 12, 13, 18 and 27, each behind its own switch: off, nothing changes.
         env.AI_NOTES = aiNotes.on() ? 'on' : 'off'
         boolean costCheckOn = costCheck.on(cfg)
+        boolean budgetOn = errorBudget.on(cfg)
 
         try {
+            if (budgetOn) {
+                releaseStage('Error budget') { errorBudget.run(cfg) }
+            }
             releaseStage('Build') { toolchain.build(service, params.JIRA_KEY, cfg) }
             releaseStage('Test') { toolchain.test(service, cfg, 'release') }
             releaseStage('Quality gate') { toolchain.qualityGate(service, version, cfg) }
@@ -109,6 +113,9 @@ def call() {
                     withEnv(["APPROVER=${state('change.approved_by')}"]) {
                         sh 'python3 scripts/notify.py line "Approved by $APPROVER in ServiceNow."'
                     }
+                    if (budgetOn) {
+                        errorBudget.approved(cfg)
+                    }
                 }
             }
             releaseStage('Production', environment: 'production', deploy: true) {
@@ -133,6 +140,9 @@ def call() {
                         python3 scripts/change.py close successful --notes "Released $SERVICE $VERSION. Total time: $(python3 scripts/run_state.py get total). Build: $BUILD_URL"
                     '''
                 }
+            }
+            if (budgetOn) {
+                errorBudget.released(cfg)
             }
         } catch (error) {
             stopped(error)
