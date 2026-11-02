@@ -1,6 +1,7 @@
 # The evidence reader: one read-only role the tools host assumes to read what
 # AWS itself recorded about orders-service. The auditor sample (video 11), the
-# AI notes (videos 12 and 13) and the cost check (video 18) share it. Its own
+# AI notes (videos 12 and 13), the cost check (video 18) and the error budget
+# (video 27) share it. Its own
 # root and state; run it through scripts/demos/ai_notes/tf.sh, which signs in
 # with your short-lived credentials and points the backend at the state
 # bucket of infra/. infra/tools_host.tf lets the host assume the role.
@@ -53,7 +54,7 @@ data "aws_iam_policy_document" "trust" {
 }
 
 # Reads only: the functions, their versions and aliases; CloudTrail's event
-# history; the two log groups. Nothing that writes, and no function's code
+# history; the two log groups; CloudWatch's metrics. Nothing that writes, and no function's code
 # other than through GetFunction's short-lived link, which evidence.py uses to
 # read a version's own build_info.json.
 data "aws_iam_policy_document" "read" {
@@ -87,11 +88,17 @@ data "aws_iam_policy_document" "read" {
       ]
     ])
   }
+  # Video 27: production's request and failure counts. This call has no resource-level permissions.
+  statement {
+    sid       = "ReadMetrics"
+    actions   = ["cloudwatch:GetMetricData"]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role" "evidence_reader" {
   name                 = "release-demo-evidence-reader"
-  description          = "Reads orders-service's Lambda versions, CloudTrail events and logs. Writes nothing."
+  description          = "Reads orders-service's Lambda versions, CloudTrail events, logs and metrics. Writes nothing."
   assume_role_policy   = data.aws_iam_policy_document.trust.json
   max_session_duration = 3600
 }

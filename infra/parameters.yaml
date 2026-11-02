@@ -466,6 +466,16 @@ servicenow/fiona-password:
   secure: true
   help: "A password you choose for Fiona Finance in ServiceNow (video 18). You sign in as Fiona to decide as the cost approver."
 
+# Video 27, the error budget (scripts/demos/error_budget).
+error-budget/enabled:
+  source: script
+  secure: false
+  help: "on or off; unset is off. Written by scripts/demos/error_budget/switch.py. The main reset and demo.sh down error-budget turn it off, reset.py error-budget on."
+error-budget/traffic-until:
+  source: script
+  secure: false
+  help: "off, or an ISO time: until when the load generator sends one request a second to orders-service production. scripts/demo.sh up error-budget sets now + 72 hours, down sets off. No reset touches it."
+
 # Video 11, the auditor's sample (scripts/demos/auditor). Read-only identities:
 # ines in Jenkins and ServiceNow, evidence.reader in ServiceNow, evidence-reader
 # in JFrog. The AWS role is infra/demos/evidence-reader's.

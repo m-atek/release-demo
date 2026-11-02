@@ -1,0 +1,763 @@
+{
+  "uid": "release-demo-error-budget",
+  "title": "Error budget",
+  "description": "orders-service production: requests and failures over the last 24 hours from CloudWatch, against a target of 99.9%.",
+  "tags": [
+    "release-demo",
+    "orders-service",
+    "error-budget"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 0,
+  "refresh": "",
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "name": "Annotations & Alerts",
+        "type": "dashboard",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        }
+      },
+      {
+        "name": "orders-service releases",
+        "enable": true,
+        "hide": false,
+        "iconColor": "green",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "target": {
+          "type": "tags",
+          "tags": [
+            "release-demo",
+            "release",
+            "orders-service"
+          ],
+          "matchAny": false,
+          "limit": 100
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            3
+          ]
+        }
+      },
+      {
+        "name": "orders-service rollbacks",
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "target": {
+          "type": "tags",
+          "tags": [
+            "release-demo",
+            "rollback",
+            "orders-service"
+          ],
+          "matchAny": false,
+          "limit": 100
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            3
+          ]
+        }
+      },
+      {
+        "name": "orders-service overrides",
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "target": {
+          "type": "tags",
+          "tags": [
+            "release-demo",
+            "override",
+            "orders-service"
+          ],
+          "matchAny": false,
+          "limit": 100
+        },
+        "filter": {
+          "exclude": false,
+          "ids": [
+            3
+          ]
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "description": "The target this page holds the release pipeline to, and what the requests are.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Target: 99.9% of requests to orders-service production succeed, over a rolling 24 hours. The requests come from a load generator."
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "",
+      "description": "orders-service production over the dashboard's range, from CloudWatch, 60-second periods, summed. Requests: what the function URL received (UrlRequestCount). Failed: the function's errors, which the URL answered with a 502 (Errors). Allowed to fail: requests x 0.1%, rounded down, floor(requests / 1000). Budget spent: failed / (requests x 0.1%), in whole percent, rounded down, floor(failed x 100000 / requests). A release is refused when failed is above allowed. One panel, so the four stay in a row in a half-width window.",
+      "gridPos": {
+        "x": 0,
+        "y": 2,
+        "w": 24,
+        "h": 5
+      },
+      "transparent": false,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "region": "default",
+          "namespace": "AWS/Lambda",
+          "metricName": "UrlRequestCount",
+          "dimensions": {
+            "FunctionName": "orders-service-production"
+          },
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "",
+          "expression": "",
+          "label": "requests",
+          "hide": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "region": "default",
+          "namespace": "AWS/Lambda",
+          "metricName": "Errors",
+          "dimensions": {
+            "FunctionName": "orders-service-production"
+          },
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "",
+          "expression": "",
+          "label": "failed",
+          "hide": true
+        },
+        {
+          "refId": "R",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "type": "reduce",
+          "expression": "A",
+          "reducer": "sum",
+          "settings": {
+            "mode": "dropNN"
+          },
+          "hide": false
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "type": "reduce",
+          "expression": "B",
+          "reducer": "sum",
+          "settings": {
+            "mode": "dropNN"
+          },
+          "hide": false
+        },
+        {
+          "refId": "L",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "type": "math",
+          "expression": "floor($R / 1000)",
+          "hide": false
+        },
+        {
+          "refId": "S",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "type": "math",
+          "expression": "floor($F * 100000 / $R)",
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "R"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Requests"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "F"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Failed"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "L"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Allowed to fail: 0.1%"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "S"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Budget spent"
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 101
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "text": {
+          "titleSize": 16,
+          "valueSize": 44
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Failed requests, running total",
+      "description": "orders-service production's failed requests, per minute from CloudWatch (Errors, Sum, period 60), added up over the last 3 hours. Green marks are releases, red marks are rollbacks, orange marks are overrides. The dashed line is a full day's allowed number: 0.1% of 86,400 requests, rounded down. The budget stays spent until the failures leave the 24-hour window.",
+      "description_per_minute": "orders-service production's failed requests per minute over the last 3 hours, from CloudWatch (Errors, Sum, period 60). Green marks are releases, red marks are rollbacks, orange marks are overrides. The dashed line is a full day's allowed number: 0.1% of 86,400 requests, rounded down.",
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 24,
+        "h": 11
+      },
+      "timeFrom": "3h",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "region": "default",
+          "namespace": "AWS/Lambda",
+          "metricName": "Errors",
+          "dimensions": {
+            "FunctionName": "orders-service-production"
+          },
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "",
+          "expression": "",
+          "label": "failed",
+          "hide": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "region": "default",
+          "namespace": "AWS/Lambda",
+          "metricName": "UrlRequestCount",
+          "dimensions": {
+            "FunctionName": "orders-service-production"
+          },
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "",
+          "expression": "",
+          "label": "requests",
+          "hide": true
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "type": "math",
+          "expression": "$B * 0 + 86",
+          "hide": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "cumulativeFunctions",
+            "cumulative": {
+              "field": "failed",
+              "reducer": "sum"
+            },
+            "alias": "Failed requests, running total",
+            "replaceFields": true
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisSoftMin": 0,
+            "gradientMode": "none",
+            "lineInterpolation": "linear"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "C"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "budget: 86"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "tooltip": true,
+                  "viz": false,
+                  "legend": false
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Burn rate, last hour",
+      "description": "How fast the budget burns: (failed / requests in the last hour) / 0.1%, from CloudWatch. 1x would spend the budget in exactly the window. Shown only: the plain budget decides a release, not this number. After a fix it falls to 0 while the budget stays spent.",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 8,
+        "h": 5
+      },
+      "timeFrom": "1h",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "region": "default",
+          "namespace": "AWS/Lambda",
+          "metricName": "UrlRequestCount",
+          "dimensions": {
+            "FunctionName": "orders-service-production"
+          },
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "",
+          "expression": "",
+          "label": "requests",
+          "hide": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "release-demo-cloudwatch"
+          },
+          "queryMode": "Metrics",
+          "metricQueryType": 0,
+          "metricEditorMode": 0,
+          "region": "default",
+          "namespace": "AWS/Lambda",
+          "metricName": "Errors",
+          "dimensions": {
+            "FunctionName": "orders-service-production"
+          },
+          "matchExact": true,
+          "statistic": "Sum",
+          "period": "60",
+          "id": "",
+          "expression": "",
+          "label": "failed",
+          "hide": true
+        },
+        {
+          "refId": "R",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "type": "reduce",
+          "expression": "A",
+          "reducer": "sum",
+          "settings": {
+            "mode": "dropNN"
+          },
+          "hide": true
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "type": "reduce",
+          "expression": "B",
+          "reducer": "sum",
+          "settings": {
+            "mode": "dropNN"
+          },
+          "hide": true
+        },
+        {
+          "refId": "X",
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "type": "math",
+          "expression": "($F / $R) * 1000",
+          "hide": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:x",
+          "decimals": 0,
+          "noValue": "0x",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "text": {
+          "titleSize": 16,
+          "valueSize": 36
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Failed, as the load generator saw them",
+      "description": "The second count, from the caller's side: the sum of failed in the load generator's one summary line a minute (kind=traffic), over the dashboard's range. Failed means a 5xx or no answer. Compare it with Failed above: they agree within 3.",
+      "gridPos": {
+        "x": 8,
+        "y": 18,
+        "w": 8,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "queryType": "instant",
+          "editorMode": "code",
+          "expr": "sum(sum_over_time({source=\"release-demo-loadgen\", service=\"orders-service\", kind=\"traffic\"} | json failed | unwrap failed | __error__=\"\" [$__range]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "locale",
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "text": {
+          "titleSize": 16,
+          "valueSize": 36
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Overrides, last 14 days",
+      "description": "How many releases went out with the budget spent because the change's approver said yes, with a reason: the count of events with the result override-approved (kind=error_budget) in the last 14 days.",
+      "gridPos": {
+        "x": 16,
+        "y": 18,
+        "w": 8,
+        "h": 5
+      },
+      "timeFrom": "14d",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "queryType": "instant",
+          "editorMode": "code",
+          "expr": "sum(count_over_time({source=\"release-demo\", service=\"orders-service\", kind=\"error_budget\"} | json result | result=\"override-approved\" [$__range]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "text": {
+          "titleSize": 16,
+          "valueSize": 36
+        }
+      }
+    }
+  ]
+}

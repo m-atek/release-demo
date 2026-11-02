@@ -22,6 +22,11 @@ for standard, and its field Cost review says whom ServiceNow asks: "Cost
 approvers" when the option asked for a standard change, "Cost and change
 approvers" when it asked for a normal one. cost.json joins the attachments
 when it exists.
+
+With the run state force_normal (video 27's error budget without a reading),
+the change is a normal one too, with no cost field. With close_notes_extra (its
+override), those lines go in front of the notes of a change that closes
+successful.
 """
 
 import argparse
@@ -163,7 +168,7 @@ def open_change(sn, ssm, state):
                 or config["servicenow"].get("change") == "standard")
     # Video 18: a cost check above its limit, or without a measurement, makes it a normal change.
     cost_review = COST_REVIEW[standard] if state.get("cost_review") else None
-    standard = standard and not cost_review
+    standard = standard and not (cost_review or state.get("force_normal"))
     groups = {g: sn.find("sys_user_group", f"name={g}", "sys_id")["sys_id"] for g in ("Platform team",)}
     ci = sn.find("cmdb_ci_appl", f"name={config['servicenow']['cmdb_item']}", "sys_id")["sys_id"]
     asked_by = requester_user(sn, state.get("requested_by"))
@@ -277,8 +282,8 @@ def journal_text(value):
     return texts[0] if texts else ""
 
 
-def rejection_comment(sn, approval):
-    """What the approver wrote when rejecting: the approval record's comments,
+def approval_comment(sn, approval):
+    """What the approver wrote, rejecting or approving: the approval record's comments,
     or, where the API leaves that field empty, its newest journal entry."""
     record = sn.call("GET", f"/api/now/table/sysapproval_approver/{approval['sys_id']}", sysparm_fields="comments",
                      sysparm_display_value="true") or {}
@@ -297,12 +302,19 @@ def rejection_line(sn, change):
     if not rejected:
         return "Rejected in ServiceNow."
     name = first_name(sn, rejected[0]["approver"]["value"])
-    comment = rejection_comment(sn, rejected[0])
+    comment = approval_comment(sn, rejected[0])
     if not comment:
         return f"Rejected by {name} in ServiceNow."
     if len(comment) > REJECTION_COMMENT_LIMIT:
         comment = comment[:REJECTION_COMMENT_LIMIT - 3].rstrip() + "..."
     return f"Rejected by {name} in ServiceNow: {comment}"
+
+
+def approved_comment(sn, change):
+    """What the approver wrote when approving (video 27's override), "" if nothing."""
+    approved = sn.call("GET", "/api/now/table/sysapproval_approver", sysparm_query=f"sysapproval={change['sys_id']}^state=approved",
+                       sysparm_fields="sys_id,approver") or []
+    return next(filter(None, (approval_comment(sn, approval) for approval in approved)), "")
 
 
 def machine_ids(sn):
@@ -373,6 +385,8 @@ def implement(sn, state, started=None):
 
 def close(sn, state, code, notes):
     change = state["change"]
+    if code == "successful" and state.get("close_notes_extra"):
+        notes = f"{state['close_notes_extra']}\n{notes}"
     path = f"/api/sn_chg_rest/change/{change['type']}/{change['sys_id']}"
     sn.call("PATCH", path, {"state": REVIEW, "work_end": run_state.iso(run_state.now()).replace("T", " ").rstrip("Z")})
     sn.call("PATCH", path, {"state": CLOSED, "close_code": code, "close_notes": notes})

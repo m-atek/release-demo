@@ -51,6 +51,7 @@ Optional keys, each with its default where it is missing:
 | `servicenow.template_texts` | `{<template kind>: {field: text}}`, the texts `servicenow_setup.py` gives that template instead of the shared ones (demo 6). |
 | `ai_notes` | Claude's change summary and likely cause for this service while `scripts/demos/ai_notes/switch.py` is on (videos 12 and 13): `change_summary`, `likely_cause`, `model`, `effort` per task and `log_lines`. |
 | `scripts.cost_check` with `cost_check` | The stage Cost check after Check staging while `scripts/demos/cost_gate/switch.py` is on (video 18): its limit, approvers, sample and expected month. |
+| `scripts.error_budget` with `error_budget` | The stage Error budget, first of all, while `scripts/demos/error_budget/switch.py` is on (video 27): `slo`, `window_hours`, `min_requests`, `fix_max_changed_lines`, `issue_label`, `function`, `metrics` and `reason_required`. It refuses a release when the budget is spent. |
 | `tests` | With `scripts.test: scripts/tests_run.py`: `rerun_failed: 1` reruns a failed test once in place, and `quarantine: {file, after_flaky_runs, window_days, days}` names the quarantine file and when a release quarantines a flaky test. The per-test results go to Splunk and Grafana (`events.py tests`), and Slack gets the Test stage's lines (demo 15). |
 | `scripts.migration_check`, `scripts.rollback_check` | Stages only versions with `migrations/` in the service folder have (run_state.py's `VERSION_STAGES`): Migration check after SBOM and scan (after Contract check where there is one), Rollback check after Check staging (demo 20). |
 | `train` | `{departures: ["14:00"], days: [Mon, Tue, Wed, Thu, Fri]}`: the release train job releases what is new on main at these times on these days (weekdays if `days` is left out), Europe/Amsterdam (demo 21). Its runs pass several Jira keys, comma-separated, and `ROWS`, the lines under the stages. |
@@ -88,6 +89,12 @@ What else a stage script may put in the run state for the shared scripts:
 - `cost_review`: makes `change.py open` open a normal change even for a
   standard option, with the field Cost review set, so ServiceNow asks Cost
   approvers (video 18's cost check above its limit or without a measurement).
+- `force_normal`: makes `change.py open` open a normal change even for a
+  standard option (video 27's error budget without a reading).
+- `close_notes_extra`: lines `change.py close` puts in front of the notes of a
+  change that closes successful (video 27's override: the number and the reason).
+- `override`: this run lifts the error budget (video 27), so `budget.py approved`
+  reads the approver's comment and `budget.py released` adds its mark.
 
 The shared scripts (`change.py`, `notify.py`, `events.py`, `jira.py`,
 `tag.py`, `publish.py`) are the same for every service. A demo doesn't

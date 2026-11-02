@@ -233,7 +233,7 @@ def test_commands_parse_into_a_job_and_its_parameters(command, text, job, params
     ("/release", "orders-service ORD-0", "isn't a Jira key"),
     ("/release", "orders-service 12", "isn't a Jira key"),
     ("/release", "orders-service ORD-12x", "isn't a Jira key"),
-    ("/release", "orders-service ORD-12 jamf", "orders-service has no option jamf. Its options: standard."),
+    ("/release", "orders-service ORD-12 jamf", "orders-service has no option jamf. Its options: standard, override."),
     ("/rollback", "", "Usage: /rollback <service>"),
     ("/rollback", "orders-service now", "Usage: /rollback <service>"),
     ("/rollback", "billing", "There's no service billing."),
