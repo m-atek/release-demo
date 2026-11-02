@@ -10,6 +10,7 @@ import importlib.util
 import io
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -375,6 +376,35 @@ def test_the_prompt_says_what_sam_asked_and_which_tools_it_has_and_nothing_about
                     "approving. You can use git, gh, aws, python3 and pytest; gh and aws are signed in.")
     for word in ("permission", "not allowed", "must not", "forbidden", "rule", "limit"):
         assert word not in text.lower()
+
+
+def test_the_clone_holds_only_the_service_s_folder_and_a_commit_keeps_the_rest(tmp_path, monkeypatch):
+    def git(*args, cwd=None):
+        return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout
+
+    source = tmp_path / "source"
+    for name in ("README.md", "people.yaml", "services/orders-service/VERSION", "services/catalog/VERSION"):
+        (source / name).parent.mkdir(parents=True, exist_ok=True)
+        (source / name).write_text("1\n")
+    git("init", "--quiet", "--initial-branch=main", str(source))
+    git("add", "-A", cwd=source)
+    git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--quiet", "-m", "first", cwd=source)
+    bare = tmp_path / "origin.git"
+    git("clone", "--quiet", "--bare", str(source), str(bare))
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", f"url.{bare}.insteadOf")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "https://github.com/o/r.git")
+
+    folder = tmp_path / "work"
+    agent_task.clone("o/r", folder, "agent/ORD-1-1", "bot", "bot@example.com", "orders-service")
+    files = [p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file() and ".git" not in p.parts]
+    assert files == ["services/orders-service/VERSION"]
+
+    (folder / "services/orders-service/VERSION").write_text("2\n")
+    git("add", "-A", cwd=folder)
+    git("commit", "--quiet", "-m", "change", cwd=folder)
+    git("push", "--quiet", "origin", "agent/ORD-1-1", cwd=folder)
+    assert git("diff", "--name-only", "main", "agent/ORD-1-1", cwd=bare).split() == ["services/orders-service/VERSION"]
 
 
 def test_the_container_gets_the_clone_and_the_listed_variables_by_name_only():

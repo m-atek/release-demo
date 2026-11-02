@@ -78,7 +78,7 @@ def on_host(with_github):
         import agent_task
 
         author, email = agent.bot_identity(get_parameter(ssm, "github/agent-app-slug"))
-        agent_task.clone(repository, clone, f"agent/check-{stamp}", author, email)
+        agent_task.clone(repository, clone, f"agent/check-{stamp}", author, email, "orders-service")
         github_token, _ = agent.token(ssm)
         credentials, _ = access.assume()
         env = {"PATH": "/usr/bin:/bin:/usr/local/bin", "HOME": "/tmp", "GH_TOKEN": github_token, **credentials,
