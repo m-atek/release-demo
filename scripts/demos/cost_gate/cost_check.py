@@ -6,16 +6,19 @@ after Check staging, while scripts/demos/cost_gate/switch.py is on.
     python3 scripts/demos/cost_gate/cost_check.py orders-service --add-stage        the stage, in this run's Slack list
     python3 scripts/demos/cost_gate/cost_check.py orders-service --no-measurement "<reason>"
 
-1. Sample: GET staging's function URL path 50 times, 5 at a time, keeping
-   each response's x-amzn-RequestId and status. Failed requests count and
-   are listed; more than one in ten failed is no measurement.
+1. Sample: one page view on its own, which isn't counted: on an empty store,
+   five at once would each ask Claude for the same orders, and those first
+   views would read as every page view's cost. Then GET staging's function
+   URL path 50 times, 5 at a time, keeping each response's x-amzn-RequestId
+   and status. Failed requests count and are listed; more than one in ten
+   failed is no measurement.
 2. Logs: through the evidence reader role, FilterLogEvents on staging's log
    group until every REPORT line of those requests is in (up to 90
    seconds): Billed Duration and Memory Size as Lambda prints them, and the
    function's own "claude" and "store" lines.
-3. Per-order calls: if the sample made none (the messages were stored
-   already), this version's "claude" lines with "per": "order" from the
-   last 7 days of staging's log group. A version that stores messages
+3. Per-order calls: the first page view's and the sample's. If they made none
+   (the messages were stored already), this version's "claude" lines with
+   "per": "order" from the last 7 days of staging's log group. A version that stores messages
    without one anywhere is no measurement.
 4. The declared driver, checked: an order with two "order" calls in the
    sample means the store isn't working, and all of the version's calls
@@ -92,11 +95,12 @@ def events(client, group, start, end, pattern=None):
         yield from page["events"]
 
 
-def read_logs(client, group, ids, start, wait=LOG_WAIT_SECONDS, sleep=time.sleep, clock=time.time):
-    """{request id: {billed_ms, memory_mb, claude: [...], store: [...]}} for every id, waiting for its REPORT line."""
+def read_logs(client, group, ids, start, wait=LOG_WAIT_SECONDS, sleep=time.sleep, clock=time.time, also=()):
+    """{request id: {billed_ms, memory_mb, claude: [...], store: [...]}} for every id, waiting for its REPORT
+    line. Also the rows of the ids in also, without waiting for them."""
     deadline = clock() + wait
     while True:
-        rows = {request_id: {"claude": [], "store": []} for request_id in ids}
+        rows = {request_id: {"claude": [], "store": []} for request_id in [*ids, *also]}
         for event in events(client, group, start - 5, clock() + 5):
             report = costs.report_of(event["message"])
             if report and report["request_id"] in rows:
@@ -105,7 +109,7 @@ def read_logs(client, group, ids, start, wait=LOG_WAIT_SECONDS, sleep=time.sleep
             line = costs.function_line(event["message"])
             if line and line.get("request_id") in rows:
                 rows[line["request_id"]][line["event"]].append(line)
-        missing = [request_id for request_id, row in rows.items() if "billed_ms" not in row]
+        missing = [request_id for request_id in ids if "billed_ms" not in rows[request_id]]
         if not missing:
             return rows
         if clock() >= deadline:
@@ -282,8 +286,10 @@ def check(state, settings, reader, fetch=get, logs_wait=LOG_WAIT_SECONDS, jcr_to
         if reader is None:
             raise NoMeasurement("the evidence reader role isn't available")
         started = clock()
+        first_view, _ = fetch(url.rstrip("/") + plan["path"])
+        sample_started = clock()
         answers = sample(url, plan["path"], plan["page_views"], plan["concurrency"], fetch)
-        record["sample"]["seconds"] = round(clock() - started, 1)
+        record["sample"]["seconds"] = round(clock() - sample_started, 1)
         failed = [answer for answer in answers if answer["status"] != 200]
         unnamed = [answer for answer in answers if answer["status"] == 200 and not answer["request_id"]]
         record["sample"]["failed"] = failed + unnamed
@@ -295,10 +301,12 @@ def check(state, settings, reader, fetch=get, logs_wait=LOG_WAIT_SECONDS, jcr_to
         ok = [answer["request_id"] for answer in answers if answer not in failed]
         logs = reader.client("logs")
         group = f"/aws/lambda/{staging['function']}"
-        rows = read_logs(logs, group, ok, started, wait=logs_wait, sleep=sleep, clock=clock)
+        also = [first_view] if first_view else []
+        rows = read_logs(logs, group, ok, started, wait=logs_wait, sleep=sleep, clock=clock, also=also)
+        first = [rows.pop(request_id) for request_id in also]
         record["requests"] = [{"request_id": request_id, "status": 200, **rows[request_id]} for request_id in ok]
-        sampled = [line for row in rows.values() for line in row["claude"] if line.get("per") == "order"]
-        stores = [line for row in rows.values() for line in row["store"] if line.get("write_units")]
+        sampled = [line for row in [*first, *rows.values()] for line in row["claude"] if line.get("per") == "order"]
+        stores = [line for row in [*first, *rows.values()] for line in row["store"] if line.get("write_units")]
         from_lookback = False
         if not sampled and any(row["store"] for row in rows.values()):
             sampled, stores = earlier_order_calls(logs, group, state["version"], now=clock())

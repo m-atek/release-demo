@@ -1480,7 +1480,6 @@
           "unit": "locale",
           "decimals": 0,
           "min": 0,
-          "displayName": "${__field.labels.version}",
           "color": {
             "mode": "fixed",
             "fixedColor": "blue"
@@ -1500,7 +1499,7 @@
         "minVizWidth": 8,
         "maxVizHeight": 60,
         "reduceOptions": {
-          "values": false,
+          "values": true,
           "calcs": [
             "lastNotNull"
           ],

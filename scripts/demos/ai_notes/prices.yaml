@@ -6,7 +6,7 @@
 # change this date, before a price appears anywhere: in a note, a change,
 # Slack, Grafana or a video. Amounts are USD.
 
-read: 2026-10-30
+read: 2026-11-02
 
 claude:
   source: https://platform.claude.com/docs/en/about-claude/pricing

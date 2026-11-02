@@ -13,6 +13,7 @@ def search_arguments(question, settings):
     return search(
         query_text=question,
         query_type="hybrid",
+        filters={"status": "current"},
         num_results=settings["num_results"],
     )
 
