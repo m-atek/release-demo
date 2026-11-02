@@ -67,6 +67,12 @@ def test_a_range_that_could_read_as_a_link_goes_out_escaped():
     assert "\na &lt;1.0 || &gt;=2.0,&lt;2.1 · fixed in 1.0 or 2.1\n" in search.reply("CVE-1", facts, SAM, [], 1, [])
 
 
+def test_a_clear_row_counts_packages_not_the_files_they_own():
+    sbom = {"components": [{"type": "library", "name": "a"}, {"type": "operating-system", "name": "alpine"}, {"type": "file", "name": "/bin/sh"}]}
+    row = search.verdict("quote-service", "1.2.0", {"matches": []}, sbom, {"ids": {"CVE-1"}, "names": {"brotli"}})
+    assert row.kind == search.CLEAR and row.says == "quote-service 1.2.0: clear, 2 components"
+
+
 def test_the_second_reply_names_the_patched_package_and_says_0_of_3(world, six_not_searched):
     world.patched()
     text = searched()

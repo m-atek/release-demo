@@ -183,7 +183,8 @@ def verdict(service_name, version, report, sbom, facts):
         (name, held_version), *more = held
         also = f" and {len(more)} more" if more else ""
         return Row(service_name, version, HOLDS, f"{service_name} {version} holds {name} {held_version}{also}", tuple(held))
-    components = sbom.get("components") or []
+    # Packages, what Grype reads: an image's SBOM also lists each file a package owns, 866 of quote-service's 904.
+    components = [c for c in sbom.get("components") or [] if c.get("type") != "file"]
     named = [c for c in components if normalized(c.get("name")) in facts["names"]]
     if named:
         says = f"{service_name} {version}: clear, {named[0]['name']} {named[0].get('version', '')}".rstrip()
