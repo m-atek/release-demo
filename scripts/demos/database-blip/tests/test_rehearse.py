@@ -253,6 +253,16 @@ def test_the_fix_failing_is_no_video_until_fixed_exit_1(capsys):
     assert "NO VIDEO UNTIL FIXED" in capsys.readouterr().out
 
 
+def test_a_slow_way_back_fails_its_line_but_isnt_no_video_exit_2(capsys):
+    """3.25 s after the delete: over the spec's predicted 2 s, under the check's own 5 s, and no call was refused."""
+    times = {"apply": -0.4, "delete_returned": 30.0, "first_success_after_delete": 33.3, "last_failure": 33.25}
+    day = Day(fixed=[blip("1.10.1", back_at=34, times=times)] * 3)
+    assert measure(day) == 2
+    out = capsys.readouterr().out
+    assert "FAIL 5. block 1:" in out and "last failed call 33.25 s" in out
+    assert "THE VIDEO STANDS." in out and "fix these before a take" in out and "NO VIDEO UNTIL FIXED" not in out
+
+
 def test_a_block_that_isnt_enforced_fails_check_2_exit_2(capsys):
     day = Day(connection="connected 0.01")
     assert measure(day) == 2
