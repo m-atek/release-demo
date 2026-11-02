@@ -128,3 +128,15 @@ def test_the_record_step_resolves_the_incident_and_says_live_in(monkeypatch):
     assert resolved == [("inc-id", "Fixed through CHG0030094: spec.replicas 5, approved by Alex Change Manager, "
                                    "synced by Argo CD at 14:38:36.")]
     assert found["lines"][-1].startswith("Live in ") and found["result"] == "live"
+
+
+def test_a_resolve_names_its_close_code_because_the_pipeline_cant_read_the_choices():
+    calls = []
+
+    class ServiceNow:
+        def call(self, method, path, body=None, **query):
+            calls.append((method, path, body))
+
+    gitops.resolve(ServiceNow(), "inc-id", "Fixed.")
+    assert calls == [("PATCH", "/api/now/table/incident/inc-id",
+                      {"state": "6", "close_code": gitops.SOLVED_CODE, "close_notes": "Fixed."})]

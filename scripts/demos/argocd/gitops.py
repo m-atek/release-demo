@@ -31,7 +31,8 @@ MANIFEST_PATHS = {"replicas": "spec.replicas", "image.digest": "image", "image.r
                   "resources.requests.memory": "resources.requests.memory",
                   "resources.limits.memory": "resources.limits.memory"}
 RESOLVED, CLOSED, CANCELED = "6", "7", "8"
-SOLVED = ["solved (permanently)", "solved permanently", "resolved by change", "solution provided"]
+# The instance's close code for a solved incident. release.pipeline may not read sys_choice, as for rotators/records.py.
+SOLVED_CODE = "Resolved \u2013 Permanent Fix Applied"
 
 
 def settings():
@@ -129,21 +130,6 @@ def open_drift_incidents(sn):
                    sysparm_fields="sys_id,number,short_description,state", sysparm_limit=50) or []
 
 
-def solved_code(sn):
-    """The instance's own "solved" close code for incidents, read from its choices."""
-    choices = sn.call("GET", "/api/now/table/sys_choice", sysparm_query="name=incident^element=close_code^inactive=false",
-                      sysparm_fields="value,label", sysparm_limit=50) or []
-    by_label = {c["label"].lower(): c["value"] for c in choices}
-    by_value = {c["value"].lower(): c["value"] for c in choices}
-    for wanted in SOLVED:
-        if wanted in by_label or wanted in by_value:
-            return by_label.get(wanted) or by_value[wanted]
-    for label, value in by_label.items():
-        if "solv" in label:
-            return value
-    fail("ServiceNow lists no close code for incidents that means solved.")
-
-
 def resolve(sn, incident_id, notes):
     sn.call("PATCH", f"/api/now/table/incident/{incident_id}",
-            {"state": RESOLVED, "close_code": solved_code(sn), "close_notes": notes})
+            {"state": RESOLVED, "close_code": SOLVED_CODE, "close_notes": notes})
