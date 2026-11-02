@@ -126,6 +126,14 @@ def test_the_log_is_asked_about_as_the_agents_user_since_the_measurement_is_root
     assert asked == [["runuser", "-u", "jenkins-agent", "--", "test", "-w", "/var/tmp/release-demo-blip.log"]]
 
 
+def test_the_cpu_line_names_the_busiest_pod_and_how_often_the_limit_held_them():
+    before = {"a": (1_000_000, 100, 0), "b": (2_000_000, 100, 5), "gone": (9, 9, 9)}
+    after = {"a": (2_000_000, 200, 10), "b": (5_000_000, 200, 25), "new": (1, 1, 1)}
+    assert rehearse.cpu_line(before, after, 10) == ("CPU: the busiest pod used 300m on average; "
+                                                    "the limit held the pods in 30 of 200 periods")
+    assert rehearse.cpu_line({"gone": (9, 9, 9)}, {"new": (1, 1, 1)}, 10) == "CPU: no pod lasted the block"
+
+
 def test_the_ladder_changes_one_line_of_the_real_chart():
     template = (ROOT / "demo-states/catalog/1.10.0/chart/templates/deployment.yaml").read_text()
     changed, count = re.subn(r"periodSeconds: 10\b", "periodSeconds: 5", template)
@@ -245,6 +253,15 @@ def test_a_block_cut_short_is_fixed_before_the_ladder(capsys):
     assert measure(day) == 1
     out = capsys.readouterr().out
     assert "under 30" in out and "ladder 5" not in day.log
+
+
+def test_a_block_that_never_started_says_so_and_climbs_no_ladder(capsys):
+    never = blip(problem="baseline", restarted=0, block_seconds=None, pods=pods(0, not_ready=False))
+    day = Day(failing=[blip(), never, never])
+    assert measure(day) == 1
+    out = capsys.readouterr().out
+    assert "Block [2, 3] never started" in out and "the pods' CPU limit" in out
+    assert "ladder 5" not in day.log and "under 30" not in out and "THE VIDEO" not in out
 
 
 def test_the_fix_failing_is_no_video_until_fixed_exit_1(capsys):

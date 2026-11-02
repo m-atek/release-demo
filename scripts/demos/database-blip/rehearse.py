@@ -93,6 +93,17 @@ def agent_may_write(path, user="jenkins-agent"):
     return subprocess.run(["runuser", "-u", user, "--", "test", "-w", str(path)], capture_output=True).returncode == 0
 
 
+def cpu_line(before, after, seconds):
+    """What the pods used through a block, from {uid: (microseconds used, periods, periods throttled)}."""
+    kept = [uid for uid in after if uid in before]
+    if not kept:
+        return "CPU: no pod lasted the block"
+    busiest = max((after[uid][0] - before[uid][0]) / seconds / 1000 for uid in kept)
+    periods = sum(after[uid][1] - before[uid][1] for uid in kept)
+    throttled = sum(after[uid][2] - before[uid][2] for uid in kept)
+    return f"CPU: the busiest pod used {busiest:.0f}m on average; the limit held the pods in {throttled} of {periods} periods"
+
+
 def clocks(values):
     return ", ".join(clock(value) for value in sorted(value for value in values if value is not None)) or "none"
 
@@ -163,7 +174,7 @@ def verdict(failing, ladder, fixed, liveness_period=None):
         return False, [*lines, "NOT DECIDED: 1.10.1 wasn't measured."]
     if not all(fixed):
         return False, [*lines, "NO VIDEO UNTIL FIXED: \"the pods stay up and answer errors\" doesn't hold on 1.10.1.",
-                       "First suspect: CPU throttling at the 250m limit under load. Lower calls_per_second to 5 in "
+                       "First suspect: CPU throttling at the pods' limit, in the CPU lines above. Lower calls_per_second to 5 in "
                        "services.yaml, or raise the limit in both versions alike, and run this again."]
     used = failing if every else ladder
     if not all(down for _, down, *_ in used):
@@ -245,9 +256,22 @@ class Machine:
     def one_block(self):
         """blip_check.py as the pipeline runs it, without Slack, Jira or the change: what it wrote."""
         self.path.unlink(missing_ok=True)
+        before, started = self.pods_cpu(), time.monotonic()
         subprocess.run([sys.executable, str(HERE / "blip_check.py"), SERVICE, "--rehearsal"])
+        print(f"     {cpu_line(before, self.pods_cpu(), time.monotonic() - started)}", flush=True)
         blip = json.loads(self.path.read_text())
         return blip
+
+    def pods_cpu(self):
+        """Each catalog pod's CPU so far, from its cgroup, which outlives a restarted container."""
+        found = {}
+        reply = json.loads(admin("get", "pods", "-n", self.blip.namespace, "-l", "app.kubernetes.io/instance=catalog", "-o", "json"))
+        for pod in reply["items"]:
+            uid = pod["metadata"]["uid"].replace("-", "_")
+            for file in Path("/sys/fs/cgroup").glob(f"kubepods*/*/*pod{uid}*/cpu.stat"):
+                stats = dict(line.split() for line in file.read_text().splitlines())
+                found[uid] = (int(stats["usage_usec"]), int(stats["nr_periods"]), int(stats["nr_throttled"]))
+        return found
 
     def new_pods(self):
         with kube.credentials(quiet=True) as kubeconfig:
@@ -471,6 +495,11 @@ def measure(machine, args):
         result(machine.database_restarts() == "0" and machine.database_log_starts() == starts,
                f"1. through every block {POSTGRES}'s RESTARTS stayed {machine.database_restarts()} and its log shows no restart")
     if not all(ok for ok, _ in failing):
+        never = [number for number, blip in enumerate(failing_blips, 1) if blip.get("problem") == "baseline"]
+        if never:
+            print(f"== Block {never} never started: a call failed in the 5 s before it, so this says nothing about the pods. "
+                  "First suspect: the pods' CPU limit, in the CPU lines above. Fix that and run this again.", flush=True)
+            return 1
         short = [blip["block_seconds"] for blip in failing_blips if (blip["block_seconds"] or 0) < blip["seconds"]]
         if short:
             print(f"== The ladder's first step: a block lasted {short} s, under 30: the arithmetic needs the whole window. Fix the timing and run this again.", flush=True)

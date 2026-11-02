@@ -17,4 +17,6 @@ settings:
 
 resources:
   requests: { cpu: 10m, memory: 48Mi }
-  limits: { cpu: 250m, memory: 96Mi }
+  # A call that reads the database costs about 30 ms of CPU, on a new connection. While the
+  # others restart one pod can take all the calls, and at 250m (measured) it never caught up.
+  limits: { cpu: 1000m, memory: 96Mi }

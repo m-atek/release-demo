@@ -411,6 +411,7 @@ def test_the_new_setting_and_no_file_to_fall_back_on():
     values = yaml.safe_load(source("1.10.0", "chart/values.yaml"))
     assert values["settings"] == {"CATALOG_POSTGRES_URL": "postgresql://catalog@catalog-postgres:5432/catalog"}
     assert values["resources"]["requests"]["memory"] == "48Mi" and values["resources"]["limits"]["memory"] == "96Mi"
+    assert values["resources"]["limits"]["cpu"] == "1000m"  # one pod must carry a Blip check's calls: about 320m, measured
     for version in ("1.10.0", "1.10.1"):
         assert not (STATES / version / "data").exists()
         assert "CATALOG_DB_URL" not in source(version, "app.py") and "catalog.json" not in source(version, "app.py")
