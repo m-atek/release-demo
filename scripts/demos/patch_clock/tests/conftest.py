@@ -22,6 +22,19 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 SAM = "U0SAM000001"
 
 
+@pytest.fixture(autouse=True)
+def no_real_account(monkeypatch):
+    """No test here reaches a real account, whoever is signed in. common.aws_session takes your release-demo
+    profile when it finds one, so a fixture that misses one read would read a real secret from SSM."""
+    import boto3
+
+    def refused(*args, **kwargs):
+        raise AssertionError("A test reached a real AWS session: fake that call.")
+
+    monkeypatch.setattr(boto3, "Session", refused)
+    monkeypatch.setattr(boto3, "client", refused)
+
+
 def saved(name):
     return json.loads((FIXTURES / name).read_text())
 

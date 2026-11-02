@@ -404,6 +404,8 @@ def resetting(world, jira, monkeypatch, tmp_path):
     monkeypatch.setattr(reset_module, "ssm_client", lambda: None)
     monkeypatch.setattr(setup, "get_parameter", lambda ssm, name: "token")
     monkeypatch.setattr(setup, "ssm_client", lambda: None)
+    monkeypatch.setattr(backfill, "get_parameter", lambda ssm, name: "token")
+    monkeypatch.setattr(backfill, "ssm_client", lambda: None)
     setup.issues()
 
     def run_seed():
@@ -531,6 +533,13 @@ def test_the_main_reset_archives_everything_but_this_reset_keeps_the_seeds_relea
     kept = load_reset().shared_reset()
     assert not kept.after_baseline("1.12.0") and kept.after_baseline("1.12.2") and kept.after_baseline("1.4.0") and not kept.after_baseline("1.3.0")
     assert "patch-clock/enabled" not in kept.SWITCHES and "ai-notes/enabled" in kept.SWITCHES
+
+
+def test_no_test_here_can_open_a_real_aws_session():
+    from common import aws_session
+
+    with pytest.raises(AssertionError, match="real AWS session"):
+        aws_session()
 
 
 def test_reset_py_finds_this_demo():
