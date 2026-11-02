@@ -504,13 +504,15 @@ def test_at_most_three_scans_run_at_once(world, monkeypatch):
         released(world.store, f"demos-releases/{name}", "1.0.0", name.encode(), saved_bytes("sbom-empty.cdx.json"))
         world.functions.configs[f"{name}-production"] = {"Version": "1", "Description": "1.0.0", "CodeSha256": b64digest(name.encode()), "PackageType": "Zip"}
     monkeypatch.setattr(search.readers, "releases_root", lambda name: f"demos-releases/{name}", raising=True)
-    running, most, lock, barrier = [0], [0], threading.Lock(), threading.Event()
+    running, most, lock, three_at_once = [0], [0], threading.Lock(), threading.Event()
 
     def scan(sbom_file):
         with lock:
             running[0] += 1
             most[0] = max(most[0], running[0])
-        barrier.wait(0.05)
+            if running[0] == 3:
+                three_at_once.set()
+        three_at_once.wait(10)  # the first three wait for each other; if a fourth could start, most would show it
         with lock:
             running[0] -= 1
         return saved("grype-by-cve-clear.json")
