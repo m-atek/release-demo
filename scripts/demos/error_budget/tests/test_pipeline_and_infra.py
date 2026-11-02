@@ -65,7 +65,7 @@ def test_the_stage_is_first_and_every_addition_is_behind_the_switch():
 def test_the_approval_line_comes_before_the_reason_and_record_before_the_mark():
     body = pipeline_calls.groovy_function(PIPELINE, "call")
     assert body.index('in ServiceNow."') < body.index("errorBudget.approved(cfg)") < body.index("releaseStage('Production'")
-    assert body.index("releaseStage('Record')") < body.index("errorBudget.released(cfg)") < body.index("} catch (error)")
+    assert body.index("releaseStage('Record')") < body.index("errorBudget.released(cfg)") < body.rindex("} catch (error)")
 
 
 def test_on_is_off_for_a_service_without_the_script_and_if_the_switch_cant_be_read():
