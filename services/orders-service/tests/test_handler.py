@@ -62,3 +62,28 @@ def test_deploy_time_unknown_outside_lambda(monkeypatch):
     monkeypatch.delenv("DEPLOYED_AT")
     monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME", raising=False)
     assert app.deployed_at() == "unknown"
+
+
+def test_store_counts_busiest_first():
+    stores = ["Rotterdam Blaak", "Amsterdam Zuid", "Rotterdam Blaak", "Utrecht Centraal", "Amsterdam Zuid"]
+    orders = [{"store": store} for store in stores + ["Rotterdam Blaak", "Den Haag Spui"]]
+    assert app.store_counts(orders) == [
+        ("Rotterdam Blaak", 3),
+        ("Amsterdam Zuid", 2),
+        ("Den Haag Spui", 1),
+        ("Utrecht Centraal", 1),
+    ]
+
+
+def test_page_shows_order_count_per_store_under_todays_orders():
+    body = request("/")["body"]
+    counts = app.store_counts(app.todays_orders()["orders"])
+    rows = [body.index(f"<tr><td>{store}</td><td>{count}</td></tr>") for store, count in counts]
+    assert body.index("Today's orders") < body.index("Orders per store today") < rows[0]
+    assert rows == sorted(rows)
+
+
+def test_orders_api_keeps_its_shape():
+    body = json.loads(request("/api/orders")["body"])
+    assert set(body) == {"date", "orders"}
+    assert all(set(order) == {"id", "store", "items", "total_eur", "status"} for order in body["orders"])
