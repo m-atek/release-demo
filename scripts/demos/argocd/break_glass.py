@@ -115,7 +115,7 @@ The tunnel to the cluster's API stays open until Ctrl-C. In the video's terminal
   kubectl -n production get deploy catalog -w -o custom-columns=WANTED:.spec.replicas,READY:.status.readyReplicas
   kubectl -n production scale deploy/catalog --replicas=5
 
-Checks: kubectl auth can-i patch deployments/scale -n production   (yes)
+Checks: kubectl auth can-i patch deployments --subresource=scale -n production   (yes)
         kubectl auth can-i patch deployments -n production         (no)
         kubectl auth can-i patch deployments -n staging           (no)
         kubectl auth can-i get secrets -n production              (no)""", flush=True)
