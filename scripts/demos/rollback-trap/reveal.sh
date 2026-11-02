@@ -34,7 +34,7 @@ case ${1:-} in
 esac
 
 git -C "$ROOT" pull --ff-only --quiet
-git -C "$ROOT" fetch --tags --quiet
+git -C "$ROOT" fetch --tags --force --quiet  # a reset moves a tag back, and a plain fetch refuses to move it here
 cd "$ROOT/services/orders-service"
 clear
 for command in "${commands[@]}"; do
