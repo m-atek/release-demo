@@ -1,9 +1,11 @@
-import datetime
-import io
 import json
+import sys
+import types
+
+import pytest
 
 import handler as app
-from conftest import request
+from conftest import DatabaseError, FakeConnection, InterfaceError, request
 
 
 def test_health_reports_version_and_environment():
@@ -15,7 +17,13 @@ def test_health_reports_version_and_environment():
     assert body["environment"] == "staging"
 
 
-def test_page_shows_service_version_and_deploy_time(flags):
+def test_health_answers_with_the_database_unreachable(monkeypatch):
+    monkeypatch.setitem(app._database, "url", None)
+    monkeypatch.setitem(app._database, "connection", None)
+    assert request("/health")["statusCode"] == 200
+
+
+def test_page_shows_service_version_and_deploy_time(database):
     response = request("/")
     assert response["statusCode"] == 200
     assert response["headers"]["content-type"].startswith("text/html")
@@ -24,106 +32,97 @@ def test_page_shows_service_version_and_deploy_time(flags):
     assert "26 Oct 2026, 09:30 UTC" in response["body"]
 
 
-def test_page_shows_delivery_estimate_with_the_flag_off(flags):
+def test_page_shows_delivery_estimate(database):
+    assert "Delivery estimate: 2 days" in request("/")["body"]
+
+
+def test_page_lists_the_orders_with_their_delivery(database):
     body = request("/")["body"]
-    assert "Delivery estimate: 2 days</p>" in body and " with " not in body
+    assert "Open orders (3)" in body
+    assert "<td>Groningen Vismarkt</td><td>2</td><td>&euro; 99.49</td><td>received</td><td>3 days</td>" in body
+    assert database.queries == [app.PAGE_SQL]
 
 
-def test_page_shows_the_carrier_with_the_flag_on(flags):
-    flags["delivery_estimate_v2"] = {"enabled": True}
-    assert "Delivery estimate: 2 days with Polder Post</p>" in request("/")["body"]
-
-
-def test_estimate_api_is_hidden_with_the_flag_off(flags):
-    assert request("/api/estimate", query={"store": "Utrecht Centraal"})["statusCode"] == 404
-
-
-def test_estimate_api_answers_per_store_with_the_flag_on(flags):
-    flags["delivery_estimate_v2"] = {"enabled": True}
-    body = json.loads(request("/api/estimate", query={"store": "Amsterdam Zuid"})["body"])
-    assert body == {"store": "Amsterdam Zuid", "carrier": "Grachtkoerier", "days": 1}
-    assert json.loads(request("/api/estimate")["body"])["store"] == "Utrecht Centraal"
-    assert request("/api/estimate", query={"store": "Atlantis"})["statusCode"] == 404
-
-
-def test_a_missing_flag_or_no_answer_means_off(monkeypatch, capsys):
-    def no_answer():
-        raise TimeoutError("no answer")
-
-    monkeypatch.setattr(app, "_poll_flags", no_answer)
-    assert app.flag("delivery_estimate_v2") is False
-    assert "flags: no answer from AWS AppConfig (TimeoutError), every flag off" in capsys.readouterr().out
-    monkeypatch.setattr(app, "_poll_flags", lambda: app._flags.update(values={}))
-    app._flags["next_poll"] = 0.0
-    assert app.flag("delivery_estimate_v2") is False
-
-
-class FakeAppConfigData:
-    def __init__(self, contents):
-        self.contents, self.sessions, self.polls = list(contents), [], 0
-
-    def start_configuration_session(self, **kwargs):
-        self.sessions.append(kwargs)
-        return {"InitialConfigurationToken": "token-0"}
-
-    def get_latest_configuration(self, ConfigurationToken):
-        self.polls += 1
-        content = self.contents.pop(0) if self.contents else b""
-        return {"NextPollConfigurationToken": f"token-{self.polls}", "Configuration": io.BytesIO(content)}
-
-
-def test_flags_come_from_one_session_polled_at_most_every_15_seconds(monkeypatch):
-    client = FakeAppConfigData([b'{"delivery_estimate_v2": {"enabled": true}}', b""])
-    app._flags["client"] = client
-    for name, value in (("APPLICATION", "orders-service"), ("ENVIRONMENT", "production"), ("PROFILE", "flags")):
-        monkeypatch.setenv(f"APPCONFIG_{name}", value)
-    clock = [100.0]
-    monkeypatch.setattr(app.time, "monotonic", lambda: clock[0])
-    assert app.flag("delivery_estimate_v2") is True
-    clock[0] += 5
-    assert app.flag("delivery_estimate_v2") is True and client.polls == 1
-    clock[0] += 15
-    assert app.flag("delivery_estimate_v2") is True and client.polls == 2  # unchanged: an empty answer
-    assert client.sessions == [{"ApplicationIdentifier": "orders-service", "EnvironmentIdentifier": "production",
-                                "ConfigurationProfileIdentifier": "flags", "RequiredMinimumPollIntervalInSeconds": 15}]
-    assert app._flags["token"] == "token-2"
-
-
-def test_without_appconfig_settings_every_flag_is_off(monkeypatch):
-    for name in ("APPLICATION", "ENVIRONMENT", "PROFILE"):
-        monkeypatch.delenv(f"APPCONFIG_{name}", raising=False)
-    assert app.flag("delivery_estimate_v2") is False
-
-
-def test_orders_carry_their_item_count():
-    orders = app.todays_orders(datetime.date(2026, 10, 26))["orders"]
-    assert all(order["item_count"] == len(order["items"]) for order in orders)
-
-
-def test_totals_have_a_thousands_separator():
-    assert app.euros(1234.5) == "1,234.50" and app.euros(89.95) == "89.95"
-
-
-def test_page_escapes_environment_name(monkeypatch, flags):
+def test_page_escapes_environment_name(monkeypatch, database):
     monkeypatch.setenv("ENVIRONMENT", "<staging>")
     assert "<staging>" not in request("/")["body"]
 
 
-def test_orders_are_the_same_all_day():
-    day = datetime.date(2026, 10, 26)
-    first, again = app.todays_orders(day), app.todays_orders(day)
-    assert first == again
-    assert app.todays_orders(day) != app.todays_orders(day + datetime.timedelta(days=1))
-
-
-def test_orders_api_returns_todays_orders():
+def test_orders_api_returns_the_orders(database):
     body = json.loads(request("/api/orders")["body"])
-    assert body["date"] == datetime.date.today().isoformat()
-    assert 8 <= len(body["orders"]) <= 14
-    assert all(order["total_eur"] > 0 for order in body["orders"])
+    assert [order["id"] for order in body["orders"]] == ["26-1001", "26-1002", "26-1006"]
+    assert body["orders"][0] == {"id": "26-1001", "store": "Utrecht Centraal", "items": ["Running shoes", "Water bottle"],
+                                 "total_eur": 102.9, "status": "packed", "delivery_estimate": 2}
+    assert database.queries == [app.API_SQL]
 
 
-def test_unknown_path_and_method(flags):
+def test_a_database_error_is_logged_in_one_line_and_raised(monkeypatch, capsys):
+    error = DatabaseError({"S": "ERROR", "C": "42703", "M": 'column "x" does not exist'})
+    monkeypatch.setitem(app._database, "url", "postgresql://db.example/orders")
+    monkeypatch.setitem(app._database, "connection", FakeConnection(error=error))
+    with pytest.raises(DatabaseError):
+        request("/api/orders")
+    assert capsys.readouterr().out == f'{app.VERSION} database error: column "x" does not exist\n'
+    assert app._database["connection"] is None
+
+
+def test_a_dropped_connection_is_opened_again_once(monkeypatch):
+    fresh = FakeConnection()
+    monkeypatch.setitem(app._database, "url", "postgresql://db.example/orders")
+    monkeypatch.setitem(app._database, "connection", FakeConnection(error=InterfaceError("network error")))
+    monkeypatch.setattr(app, "connect", lambda url: fresh)
+    assert request("/api/orders")["statusCode"] == 200
+    assert fresh.queries == [app.API_SQL]
+
+
+def test_without_a_connection_string_the_orders_fail(monkeypatch, capsys):
+    monkeypatch.setitem(app._database, "url", None)
+    monkeypatch.setitem(app._database, "connection", None)
+    with pytest.raises(RuntimeError):
+        request("/")
+    assert "database error: no database connection string" in capsys.readouterr().out
+
+
+def test_connect_opens_a_tls_connection_from_the_url(monkeypatch):
+    made = {}
+    native = types.SimpleNamespace(Connection=lambda **kwargs: made.update(kwargs) or "connection")
+    monkeypatch.setitem(sys.modules, "pg8000", types.SimpleNamespace(native=native))
+    monkeypatch.setitem(sys.modules, "pg8000.native", native)
+    assert app.connect("postgresql://orders_app:p%40ss@ep-1.example.neon.tech/orders?sslmode=require") == "connection"
+    assert made["user"] == "orders_app" and made["password"] == "p@ss"
+    assert made["host"] == "ep-1.example.neon.tech" and made["port"] == 5432 and made["database"] == "orders"
+    assert made["ssl_context"].verify_mode.name == "CERT_REQUIRED"
+
+
+def test_the_connection_string_comes_from_ssm_in_lambda(monkeypatch):
+    calls = []
+
+    class SSM:
+        def get_parameter(self, Name, WithDecryption):
+            calls.append((Name, WithDecryption))
+            return {"Parameter": {"Value": "postgresql://db.example/orders"}}
+
+    monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=lambda name: SSM()))
+    monkeypatch.setenv("DATABASE_URL_PARAMETER", "orders-service/staging/database-url")
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "orders-service-staging")
+    assert app.database_url() == "postgresql://db.example/orders"
+    assert calls == [("/release-demo/orders-service/staging/database-url", True)]
+    monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME")
+    assert app.database_url() is None
+
+
+def test_a_missing_parameter_leaves_the_database_unset(monkeypatch, capsys):
+    def broken(name):
+        raise PermissionError("denied")
+
+    monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=broken))
+    monkeypatch.setenv("DATABASE_URL_PARAMETER", "orders-service/staging/database-url")
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "orders-service-staging")
+    assert app.database_url() is None
+    assert capsys.readouterr().out == f"{app.VERSION} database settings: PermissionError\n"
+
+
+def test_unknown_path_and_method():
     assert request("/admin")["statusCode"] == 404
     assert request("/", method="POST")["statusCode"] == 405
 
