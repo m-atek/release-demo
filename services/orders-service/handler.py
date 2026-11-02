@@ -25,7 +25,7 @@ DELIVERY_ESTIMATE_DAYS = 2
 SELECT = "SELECT id, store, items, total_eur, status, "
 FROM = " FROM orders ORDER BY id"
 PAGE_SQL = SELECT + "delivery_estimate_days" + FROM
-API_SQL = SELECT + "delivery_days" + FROM
+API_SQL = SELECT + "delivery_estimate_days" + FROM
 FIELDS = ("id", "store", "items", "total_eur", "status", "delivery_estimate")
 
 _deployed_at = None
