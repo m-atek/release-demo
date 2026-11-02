@@ -170,6 +170,23 @@ def test_the_reset_won_t_seed_while_the_traffic_is_off(monkeypatch, capsys):
     assert world.cloudwatch.written == []
 
 
+def test_with_no_seed_setting_the_reset_seeds_nothing_and_the_page_still_builds(monkeypatch, capsys):
+    world = ResetWorld(monkeypatch)
+    real = world.reset.service
+
+    def without_seed(name):
+        config = real(name)
+        config["error_budget"].pop("seed")
+        return config
+
+    monkeypatch.setattr(world.reset, "service", without_seed)
+    world.traffic = "off"  # a real fill doesn't ask: the take's own traffic is the caller's
+    assert world.reset.run(False, None) == 0
+    assert world.cloudwatch.written == [] and "names no seed" in capsys.readouterr().out
+    monkeypatch.setattr(dashboard, "service", without_seed)
+    assert dashboard.build()["uid"] == "release-demo-error-budget"
+
+
 def test_a_dry_run_only_says_the_traffic_is_off(monkeypatch, capsys):
     world = ResetWorld(monkeypatch)
     world.traffic = "2020-01-01T00:00:00+00:00"

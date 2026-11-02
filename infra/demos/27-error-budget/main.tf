@@ -177,7 +177,7 @@ data "aws_iam_policy_document" "tools_host_switch" {
     condition {
       test     = "StringEquals"
       variable = "cloudwatch:namespace"
-      values   = [local.budget.seed.namespace]
+      values   = [try(local.budget.seed.namespace, "ReleaseDemo/ErrorBudget")]
     }
   }
 }

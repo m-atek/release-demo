@@ -220,5 +220,5 @@ def test_the_tools_host_may_write_this_namespace_and_no_other():
     text = (HERE.parents[2] / "infra" / "demos" / "27-error-budget" / "main.tf").read_text()
     statement = text[text.index('sid       = "WriteTheSeededFill"'):]
     assert 'actions   = ["cloudwatch:PutMetricData"]' in statement and 'variable = "cloudwatch:namespace"' in statement
-    assert "values   = [local.budget.seed.namespace]" in statement
+    assert 'values   = [try(local.budget.seed.namespace, "ReleaseDemo/ErrorBudget")]' in statement
     assert not SETTINGS["seed"]["namespace"].startswith("AWS/")

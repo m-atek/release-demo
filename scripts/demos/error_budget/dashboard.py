@@ -44,7 +44,7 @@ def build(budget_line=BUDGET_LINE, per_minute=False, metrics=None):
         for target in panel.get("targets", []):
             if target.get("label") in metrics and target.get("namespace") == "AWS/Lambda":
                 target["metricName"] = metrics[target["label"]]
-            if target.get("label") == "seeded":
+            if target.get("label") == "seeded" and settings.get("seed"):
                 target["namespace"], target["metricName"] = settings["seed"]["namespace"], settings["seed"]["metric"]
     chart = next(panel for panel in dashboard["panels"] if panel.get("title") == CHART)
     by_ref = {target["refId"]: target for target in chart["targets"]}

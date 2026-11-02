@@ -131,13 +131,16 @@ def traffic_is_on(ssm=None, now=None):
 
 def seed_fill(reset, now=None):
     """The quiet day, up to this minute. Only with the traffic on: from here on, nothing is seeded."""
+    settings = service(SERVICE)["error_budget"]
+    if not settings.get("seed"):
+        print("  services.yaml names no seed: every minute is what AWS/Lambda counted")
+        return
     if not traffic_is_on(now=now):
         message = "the traffic is off, so the take's minutes would hold no requests: scripts/demo.sh up error-budget, then this again"
         if not reset.dry_run:
             raise RuntimeError(message)
         print(f"  {message}")
     seed = load_seed()
-    settings = service(SERVICE)["error_budget"]
     minutes = seed.minutes_to_seed(now or time.time(), settings["window_hours"])
     reset.act(seed.describe(minutes), lambda: seed.write(cloudwatch_client(), settings, minutes))
 
