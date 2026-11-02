@@ -34,7 +34,6 @@ PRODUCTS = [
     ("Sports socks, 3 pairs", 14.99),
 ]
 STATUSES = ["received", "picking", "packed", "shipped"]
-DELIVERY_ESTIMATE_DAYS = 2
 
 _deployed_at = None
 
@@ -100,14 +99,6 @@ def todays_orders(today=None):
     return {"date": today.isoformat(), "orders": orders}
 
 
-def store_counts(orders):
-    """How many orders each store has, busiest first, then by name."""
-    counts = {}
-    for order in orders:
-        counts[order["store"]] = counts.get(order["store"], 0) + 1
-    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-
-
 def _picker(seed):
     """pick(n) gives a number below n, derived from the seed and a counter: the
     same seed always gives the same numbers. For demo data, not for security."""
@@ -139,20 +130,14 @@ def page():
         f"<td>{html.escape(o['status'])}</td></tr>"
         for o in orders[:5]
     )
-    store_rows = "\n".join(
-        f"<tr><td>{html.escape(store)}</td><td>{count}</td></tr>"
-        for store, count in store_counts(orders)
-    )
     return PAGE.format(
         service=SERVICE,
         env=html.escape(env),
         version=html.escape(VERSION),
         commit=html.escape(COMMIT[:7]),
         deployed=html.escape(deployed_at()),
-        delivery_days=DELIVERY_ESTIMATE_DAYS,
         order_count=len(orders),
         rows=rows,
-        store_rows=store_rows,
     )
 
 
@@ -231,7 +216,6 @@ PAGE = """<!doctype html>
     <span class="demo">Demo system</span>
   </header>
   <div class="version">{version}</div>
-  <p class="note">Delivery estimate: {delivery_days} days</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>
@@ -242,13 +226,6 @@ PAGE = """<!doctype html>
     <thead><tr><th>Order</th><th>Store</th><th>Items</th><th>Total</th><th>Status</th></tr></thead>
     <tbody>
 {rows}
-    </tbody>
-  </table>
-  <h2>Orders per store today</h2>
-  <table>
-    <thead><tr><th>Store</th><th>Orders</th></tr></thead>
-    <tbody>
-{store_rows}
     </tbody>
   </table>
 </main>
