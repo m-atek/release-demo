@@ -539,3 +539,20 @@ def test_changed_lines_leaves_out_tests_and_version(monkeypatch):
     assert budget.changed_lines("a" * 40, "services/orders-service") == 1
     monkeypatch.setattr(evidence, "has_commit", lambda commit: False)
     assert budget.changed_lines("initial", "services/orders-service") is None
+
+
+def test_nothing_secret_in_the_lines_the_report_or_the_events(world, monkeypatch, tmp_path):
+    # Acceptance check 15: no account id, ARN or Slack member id, and the function URL never in Slack.
+    import re
+
+    monkeypatch.setattr(budget, "production_commit", lambda service, function: "a" * 40)
+    monkeypatch.setattr(budget, "changed_lines", lambda commit, path: 1)
+    seen = []
+    for key, option, issues in (("ORD-120", "", []), ("ORD-120", "override", []), ("ORD-123", "standard", [budget_issue("ORD-123")])):
+        state = release_state(key=key, option=option)
+        stage(state, window(AS_OF, extra=12, failing=(35, 1)), FakeJira(issues, next_key=200))
+        seen += [json.dumps(state["lines"]), json.dumps(state.get("change_details", [])), json.dumps(state.get("change_work_notes", [])),
+                 (run_state.REPORTS / "error-budget.json").read_text()]
+    seen.append(json.dumps(world["events"]))
+    text = "\n".join(seen)
+    assert not re.search(r"\b\d{12}\b", text) and "arn:" not in text and "lambda-url" not in text and SAM not in text
