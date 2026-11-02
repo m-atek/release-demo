@@ -1,14 +1,14 @@
 """catalog: the service the Kubernetes demo ships.
 
 A small HTTP service in a container. It serves one page with the service,
-environment, version and pod in large type, /health for the pipeline's checks,
-/ready for the probes, and /api/products with the fictional product catalog,
-searchable by name and by supplier.
+environment, version and pod in large type, /health for the liveness probe
+and the pipeline's checks, /ready for the readiness probe, and /api/products
+with the fictional product catalog, searchable by name and by supplier.
 
 The catalog comes from Postgres, named by CATALOG_POSTGRES_URL, through pg8000,
 which the build puts in /app/vendor from requirements.txt. Each query opens a
 new connection. While the database doesn't answer, the routes that need it
-answer 503 and serve no data; /health doesn't touch it.
+answer 503 and serve no data; neither probe asks it once the pod has loaded.
 """
 
 import html
@@ -18,6 +18,7 @@ import signal
 import socket
 import sys
 import threading
+import time
 import unicodedata
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -28,6 +29,7 @@ sys.path.append(str(HERE / "vendor"))
 SERVICE = "catalog"
 QUIET = {"/health", "/ready"}  # the probes would fill the log
 DATABASE_TIMEOUT_SECONDS = 0.8  # under the probes' 1 s
+LOADED = threading.Event()  # set once, when this pod's first query succeeds
 
 
 def read_package(directory):
@@ -85,6 +87,13 @@ def ask_database():
     return True
 
 
+def load():
+    """A start-up thread: until the catalog database first answers, this pod waits."""
+    while not ask_database():
+        time.sleep(1)
+    LOADED.set()
+
+
 def products():
     rows = run_query("SELECT id, name, supplier, price_eur FROM products ORDER BY id")
     return [{"id": id_, "name": name, "supplier": supplier, "price_eur": float(price)}
@@ -112,8 +121,8 @@ def health():
 
 
 def ready():
-    """Ready while the catalog database answers."""
-    return ask_database()
+    """Ready once the catalog has loaded. Never asks again."""
+    return LOADED.is_set()
 
 
 def page():
@@ -172,7 +181,8 @@ def main():
     server.daemon_threads = True
     # Kubernetes sends SIGTERM once the pod is out of the Service: finish what is in flight, then stop.
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown).start())
-    print(f"{SERVICE} {VERSION} in {environment()} on :{port}, {'ready' if ready() else 'not ready'}", flush=True)
+    threading.Thread(target=load, daemon=True).start()
+    print(f"{SERVICE} {VERSION} in {environment()} on :{port}", flush=True)
     server.serve_forever()
 
 

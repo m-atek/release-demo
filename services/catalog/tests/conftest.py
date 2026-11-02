@@ -45,6 +45,14 @@ def env(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def loaded():
+    """A pod that has loaded, unless a test says otherwise."""
+    app.LOADED.set()
+    yield
+    app.LOADED.clear()
+
+
+@pytest.fixture(autouse=True)
 def database(monkeypatch):
     fake = FakeDatabase()
     monkeypatch.setattr(app, "connect", fake.connect)

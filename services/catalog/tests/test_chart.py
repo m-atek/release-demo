@@ -51,7 +51,7 @@ def test_probes_resources_and_version_label():
     pod = deployment["spec"]["template"]
     container = pod["spec"]["containers"][0]
     assert container["readinessProbe"]["httpGet"]["path"] == "/ready"
-    assert container["livenessProbe"]["httpGet"]["path"] == "/ready"
+    assert container["livenessProbe"]["httpGet"]["path"] == "/health"
     assert set(container["resources"]) == {"requests", "limits"}
     assert pod["metadata"]["labels"]["app.kubernetes.io/version"] == app.VERSION
     # The selector can't change between releases, so it never carries the version.

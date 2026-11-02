@@ -24,17 +24,49 @@ def test_health_never_asks_the_database(database):
     assert database.queries == []
 
 
-def test_ready_while_the_database_answers():
+def test_ready_once_the_catalog_has_loaded():
     status, body = get("/ready")
     assert status == 200
     assert body["ready"] is True
 
 
-def test_not_ready_while_the_database_doesnt_answer(database):
-    database.down = True
+def test_not_ready_before_it_has_loaded():
+    app.LOADED.clear()
     status, body = get("/ready")
     assert status == 503
     assert body["ready"] is False
+
+
+def test_a_new_pod_waits_for_the_database(database, monkeypatch):
+    """The start-up thread asks until the first answer, and only then is the pod ready."""
+    app.LOADED.clear()
+    database.down = True
+    tries = []
+
+    def wait(seconds):
+        tries.append(seconds)
+        database.down = len(tries) < 3
+
+    monkeypatch.setattr(app.time, "sleep", wait)
+    app.load()
+    assert tries == [1, 1, 1]
+    assert get("/ready")[0] == 200
+
+
+def test_after_the_load_no_probe_asks_the_database(database):
+    database.down = True
+    assert get("/ready")[0] == 200
+    assert get("/health")[0] == 200
+    assert database.queries == []
+
+
+def test_a_loaded_pod_stays_up_and_serves_no_data_while_the_database_is_gone(database):
+    database.down = True
+    assert get("/ready")[0] == get("/health")[0] == 200
+    status, body = get("/api/products")
+    assert status == 503
+    assert body == {"error": "the catalog database is unavailable"}
+    assert "products" not in body
 
 
 @pytest.mark.parametrize("path", ["/", "/api/products", "/api/suppliers", "/api/products?supplier=wadden"])
@@ -47,7 +79,7 @@ def test_the_routes_that_need_the_database_answer_503_and_serve_no_data(database
 
 def test_each_query_has_a_connection_of_its_own(database):
     get("/api/products")
-    get("/ready")
+    app.ask_database()
     assert database.connections == database.closed == 2
 
 
@@ -77,7 +109,8 @@ def test_the_connection_comes_from_the_settings_with_a_time_limit_under_the_prob
 def test_no_setting_means_no_answer_not_a_crash(monkeypatch):
     monkeypatch.setattr(app, "connect", CONNECT)
     monkeypatch.delenv("CATALOG_POSTGRES_URL")
-    assert get("/ready")[0] == 503
+    assert app.ask_database() is False
+    assert get("/api/products")[0] == 503
 
 
 def test_the_catalog_has_twenty_four_products():
