@@ -97,8 +97,10 @@ class Row:
 # The words.
 
 def age_text(seconds):
-    """1h 08m below the rule's own 72 hours, then 3d 01h. Up to the next minute or hour, never down."""
+    """42m, 1h 08m below the rule's own 72 hours, then 3d 01h. Up to the next minute or hour, never down."""
     minutes = int(-(-seconds // 60))
+    if minutes < 60:
+        return f"{minutes}m"
     if minutes < 72 * 60:
         return f"{minutes // 60}h {minutes % 60:02d}m"
     hours = minutes // 60 + (1 if minutes % 60 else 0)

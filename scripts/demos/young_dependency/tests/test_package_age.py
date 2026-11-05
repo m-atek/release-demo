@@ -32,7 +32,7 @@ def stage(state, pairs, index=None, now=NOW, tmp=None):
 # The words.
 
 @pytest.mark.parametrize("seconds,text", [
-    (60, "0h 01m"), (61, "0h 02m"), (3600, "1h 00m"), (3600 + 8 * 60, "1h 08m"), (9 * HOUR + 41 * 60 - 1, "9h 41m"),
+    (60, "1m"), (61, "2m"), (42 * 60, "42m"), (3600, "1h 00m"), (3600 + 8 * 60, "1h 08m"), (9 * HOUR + 41 * 60 - 1, "9h 41m"),
     (71 * HOUR + 59 * 60, "71h 59m"), (72 * HOUR, "3d 00h"), (73 * HOUR, "3d 01h"), (73 * HOUR + 1, "3d 02h"), (978 * 24 * HOUR, "978d 00h"),
 ])
 def test_age_is_never_rounded_down(seconds, text):

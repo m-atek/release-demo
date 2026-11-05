@@ -32,7 +32,7 @@ sys.path.insert(1, str(SCRIPTS))
 
 import host  # noqa: E402
 import pick  # noqa: E402
-from common import ROOT, SSM_PREFIX, ssm_client  # noqa: E402
+from common import SSM_PREFIX, ssm_client  # noqa: E402
 
 SERVICE, BASELINE, STAGED = "orders-service", "1.3.0", pick.REFUSED_VERSION
 TAKE_VERSIONS = {pick.REFUSED_VERSION, pick.PASSING_VERSION}
@@ -69,7 +69,6 @@ def jira_step(reset, shared, jira=None):
         if reset.dry_run:
             print(f"  would make {NAME}: {SUMMARY}")
             reset.actions += 1
-            shared.DEMO_ISSUES = ["ORD-1"]
             return None
         key = jira.create("Story", SUMMARY, DESCRIPTION, labels=[LABEL])
         reset.actions += 1
