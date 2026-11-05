@@ -51,8 +51,9 @@ def test_the_switch_applies_only_to_a_service_that_names_the_check():
 def test_the_stage_is_first_and_every_addition_is_behind_the_switch():
     assert "boolean budgetOn = errorBudget.on(cfg)" in PIPELINE
     body = pipeline_calls.groovy_function(PIPELINE, "call")
+    # Video 30's Package age may sit between: it runs only for the versions services.yaml names.
     assert re.search(r"try \{\n\s+if \(budgetOn\) \{\n\s+releaseStage\('Error budget'\) \{ errorBudget\.run\(cfg\) \}\n\s+\}\n"
-                     r"\s+releaseStage\('Build'\)", body)
+                     r"(?:\s+if \(planned\('Package age'\)\) \{\n.*?\n\s+\}\n)?\s+releaseStage\('Build'\)", body, re.S)
     uses = [line.strip() for line in body.splitlines() if "errorBudget." in line]
     assert uses == ["boolean budgetOn = errorBudget.on(cfg)", "releaseStage('Error budget') { errorBudget.run(cfg) }",
                     "errorBudget.approved(cfg)", "errorBudget.released(cfg)"]
