@@ -35,6 +35,7 @@ FORECAST = "forecast"       # the namespace of the second team's service
 STAGING = "staging"         # where the hotfix goes first
 CATALOG = "catalog"
 WIDTH = 44
+HEAD_ROWS = 6       # the pod's name and the scheduler's words as v1.36.5+k3s1 says them, wrapped
 MIB = 1 << 20
 SUFFIXES = {"Ki": 1 << 10, "Mi": 1 << 20, "Gi": 1 << 30, "Ti": 1 << 40, "k": 10 ** 3, "M": 10 ** 6, "G": 10 ** 9, "T": 10 ** 12}
 SUMMARY = f"/api/v1/nodes/{NODE}/proxy/stats/summary"
@@ -167,7 +168,7 @@ def frame(reading):
         head = [f"Scheduler on {reading.pending}:", *wrapped(reading.said)]
     else:
         head = ["Scheduler: nothing waiting."]
-    head += [""] * (5 - len(head))
+    head += [""] * (HEAD_ROWS - len(head))
     return [*head, "",
             row("The node can hand out", size(reading.allocatable)),
             row("Reserved", size(reading.reserved), f"{reading.reserved_percent}%"),

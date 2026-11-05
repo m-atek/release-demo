@@ -11,7 +11,8 @@ import pytest
 import room
 from fake_node import MIB, FakeNode, pod
 
-SAID = ("0/1 nodes are available: 1 Insufficient memory. preemption: 0/1 nodes are available: "
+# As the cluster said it on 5 November, v1.36.5+k3s1.
+SAID = ("0/1 nodes are available: 1 Insufficient memory. no new claims to deallocate, preemption: 0/1 nodes are available: "
         "1 No preemption victims found for incoming pod.")
 PENDING = "catalog-79c5d6f4c8-lm2xp"
 

@@ -167,7 +167,7 @@ def read_the_node(dry_run):
     except (RuntimeError, KeyError, ValueError, OSError) as error:
         print(f"  not read: {error}. scripts/demo.sh status hotfix-room reads it with root's kubeconfig.")
         return
-    for line in room.frame(reading)[6:]:
+    for line in room.frame(reading)[room.HEAD_ROWS + 1:]:
         print(f"  {line}")
     problem = node_full(reading)
     if problem and not dry_run:
