@@ -35,10 +35,16 @@ def test_not_ready_without_the_catalog_database_setting(monkeypatch):
 
 
 def test_search_by_supplier():
-    status, body = get("/api/products?supplier=wadden")
+    status, body = get("/api/products?supplier=Wadden")
     assert status == 200
     assert body["count"] == 4
     assert {p["supplier"] for p in body["products"]} == {"Wadden Waterwerk"}
+
+
+def test_search_by_supplier_in_lower_case():
+    status, body = get("/api/products?supplier=wadden")
+    assert status == 200
+    assert body["count"] == 4
 
 
 def test_search_by_name_and_supplier():
