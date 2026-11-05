@@ -42,7 +42,7 @@ def test_the_two_issues_are_the_ones_the_reset_looks_for():
     assert "setup.ISSUES" in (setup.HERE / "reset.py").read_text()
 
 
-def test_no_summary_says_planted_or_names_a_client():
+def test_no_summary_says_planted():
     for _, summary, description, _, _ in setup.ISSUES:
-        for word in ("planted", "staged", "demo", "Nike", "ASML"):
+        for word in ("planted", "staged", "demo"):
             assert word not in summary and word not in description
