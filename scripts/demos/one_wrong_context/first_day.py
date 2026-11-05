@@ -220,7 +220,8 @@ class Check:
                        f"production holds catalog alone, {ready} of {wanted} ready, others: {others or 'none'}")
         if not ok:
             self.findings["not_ready"] = True
-            self.out("     Run scripts/reset.py one-wrong-context, or bring the other demo down.")
+            self.out("     Bring the other demo down, or put catalog back: "
+                     ".venv/bin/python scripts/demos/kubernetes/reset.py --no-stage")
         return ok
 
     def control(self):
