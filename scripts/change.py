@@ -322,6 +322,15 @@ def machine_ids(sn):
     return {user["sys_id"] for user in found if user}
 
 
+def refuse_approval(sn, state, what, rule, message):
+    """An approval the pipeline won't take. The stage's next update shows Slack the two lines, and the
+    cancelled change keeps them as its close notes."""
+    state.setdefault("lines", []).extend([what, rule])
+    run_state.save(state)
+    cancel(sn, state, f"{what} {rule}")
+    fail(message)
+
+
 def wait(sn, state, timeout, interval):
     from notify import post
 
@@ -340,16 +349,17 @@ def wait(sn, state, timeout, interval):
                             sysparm_fields="approver")
         approvers = [a["approver"]["value"] for a in approvals]
         if change["requested_by"] in approvers:
-            cancel(sn, state, "Approved by the person who asked for the release. Refused by the pipeline: "
-                              "the person who asks can't approve.")
-            fail("The change was approved by the person who asked for it. Refused.")
+            refuse_approval(sn, state, "Approved by the person who asked for the release.",
+                            "Refused by the pipeline: the person who asks can't approve.",
+                            "The change was approved by the person who asked for it. Refused.")
         if machines & set(approvers):
-            cancel(sn, state, "Approved by a machine user. Refused by the pipeline: only a person approves a change.")
-            fail("The change was approved by a machine user. Refused.")
+            refuse_approval(sn, state, "Approved by a machine user.",
+                            "Refused by the pipeline: only a person approves a change.",
+                            "The change was approved by a machine user. Refused.")
         if agents & set(approvers):
-            cancel(sn, state, "Approved by a coding agent's ServiceNow user. Refused by the pipeline: "
-                              "an agent never approves a release.")
-            fail("The change was approved by a coding agent. Refused.")
+            refuse_approval(sn, state, "Approved by a coding agent's ServiceNow user.",
+                            "Refused by the pipeline: an agent never approves a release.",
+                            "The change was approved by a coding agent. Refused.")
         if record["approval"] == "approved" and approvers:
             state["change"]["approved_by"] = names([first_name(sn, sys_id) for sys_id in dict.fromkeys(approvers)])
             run_state.save(state)

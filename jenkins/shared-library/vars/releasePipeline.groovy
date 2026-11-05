@@ -217,9 +217,10 @@ void stopped(error) {
     if (state('total')) {
         return  // the rollback already told everyone
     }
-    // The notes add their own full stop after the reason, so one it ends with goes:
-    // "fails its check too." would read "too.. Look at production now."
-    String reason = (error.message ?: error.toString()).readLines().first().replaceAll(/\.+$/, '')
+    // A stage may name the reason in the run state, as on the other CIs: a failed sh step's own
+    // message is only its exit code. The notes add their own full stop after the reason, so one
+    // it ends with goes: "fails its check too." would read "too.. Look at production now."
+    String reason = (state('stop_reason') ?: error.message ?: error.toString()).readLines().first().replaceAll(/\.+$/, '')
     withEnv(["REASON=${reason}"]) {
         sh(returnStatus: true, script: 'python3 scripts/notify.py finish failed')
         if (state('change.closed')) {
