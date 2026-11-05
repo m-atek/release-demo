@@ -86,6 +86,9 @@ What else a stage script may put in the run state for the shared scripts:
 - `rows`: lines Slack's message shows under the stages (demo 1's waves).
 - `change.closed`: the deploy script closed the change itself (demo 1's stop rule), so the pipeline's stop leaves it alone. Post Slack's last line first (`notify.py finish failed`, which sets `total`) and give that `total` in the close notes, so the change and Slack name the same time; with `total` set, the pipeline's stop leaves Slack alone too.
 - `check.notes`: what the change's close notes start with after a rollback.
+- `stop_reason`: why the run stopped, for the change's close notes, where a failed
+  step's own message says only its exit code (video 28: a package that changed after
+  it was published). Jenkins reads it as the other CIs do.
 - `change_work_notes`: lines for one work note right after the change opens
   (video 18's cost lines within its limit).
 - `cost_review`: makes `change.py open` open a normal change even for a

@@ -27,6 +27,8 @@ import run_state
 from common import aws_session, fail, get_parameter, service, ssm_client
 from publish import download
 
+CHANGED_PACKAGE = "Not deploying a package that changed after it was published."
+
 
 def lambda_client(service_name):
     session = aws_session()
@@ -73,6 +75,17 @@ def previous_release(client, function):
     fail(f"{function} has no earlier release to roll back to.")
 
 
+def refuse_changed_package(state, actual):
+    """The log keeps the whole line. The stage's next update shows Slack the short one, and the pipeline's stop gives
+    the change stop_reason as its close notes. Nothing is left in production's run state, so Slack's last line
+    says nothing reached production."""
+    recorded = state["package"]["sha256"]
+    state.setdefault("lines", []).extend([CHANGED_PACKAGE, f"Stored SHA-256 {actual[:8]}. The build recorded {recorded[:8]}."])
+    state["stop_reason"] = f"{CHANGED_PACKAGE} Stored SHA-256 {actual}, the build recorded {recorded}"
+    run_state.save(state)
+    fail(f"{state['package']['path']} has SHA-256 {actual}, but the build recorded {recorded}. {CHANGED_PACKAGE}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("service")
@@ -107,8 +120,7 @@ def main():
     package = download(token, state["package"]["path"])
     actual = hashlib.sha256(package).hexdigest()
     if actual != state["package"]["sha256"]:
-        fail(f"{state['package']['path']} has SHA-256 {actual}, but the build recorded {state['package']['sha256']}. "
-             f"Not deploying a package that changed after it was published.")
+        refuse_changed_package(state, actual)
     print(f"SHA-256 verified: {actual}")
 
     previous_number = alias_version(client, function)
