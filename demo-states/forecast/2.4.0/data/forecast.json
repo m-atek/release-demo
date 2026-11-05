@@ -1,0 +1,9 @@
+{
+  "note": "A fictional forecast for the release demo.",
+  "weeks": [
+    {"week": "2026-W46", "units": {"Running shoes": 410, "Water bottle": 950, "Rain jacket": 260}},
+    {"week": "2026-W47", "units": {"Running shoes": 430, "Water bottle": 910, "Rain jacket": 310}},
+    {"week": "2026-W48", "units": {"Running shoes": 620, "Water bottle": 1240, "Rain jacket": 480}},
+    {"week": "2026-W49", "units": {"Running shoes": 390, "Water bottle": 880, "Rain jacket": 350}}
+  ]
+}
