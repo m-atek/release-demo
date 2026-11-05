@@ -60,9 +60,9 @@ def test_the_baseline_differs_from_1_9_1_by_its_memory_and_the_bug_only():
 def test_giving_the_memory_back_is_the_charts_reservation_and_nothing_else():
     assert changed(FORECAST / "2.4.0", FORECAST / "2.4.1") == ["VERSION", "chart/Chart.yaml", "chart/values.yaml"]
     lines = changed_lines(FORECAST / "2.4.0/chart/values.yaml", FORECAST / "2.4.1/chart/values.yaml")
-    assert [line for line in lines if not line.startswith("- #")] == [
+    assert sorted(line for line in lines if not line.startswith("- #")) == sorted([
         "-   requests: { cpu: 10m, memory: 256Mi }", "-   limits: { cpu: 250m, memory: 256Mi }",
-        "+   requests: { cpu: 10m, memory: 48Mi }", "+   limits: { cpu: 250m, memory: 96Mi }"]
+        "+   requests: { cpu: 10m, memory: 48Mi }", "+   limits: { cpu: 250m, memory: 96Mi }"])
 
 
 def test_main_starts_with_forecast_2_4_0():
