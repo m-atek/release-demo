@@ -21,7 +21,7 @@ os.environ.pop("AWS_PROFILE", None)
 # The shared host first, and this folder's reset, as the entry points load them.
 import host  # noqa: E402,F401
 import reset  # noqa: E402,F401
-import check  # noqa: E402,F401
+import first_day  # noqa: E402,F401
 import calls  # noqa: E402,F401
 import contexts  # noqa: E402,F401
 import demo  # noqa: E402,F401

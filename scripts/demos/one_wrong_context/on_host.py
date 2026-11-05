@@ -26,7 +26,8 @@ OTHER_TEAM = "forecast"  # video 33's namespace
 def kubectl(*args, check=True):
     result = subprocess.run(["kubectl", *args], capture_output=True, text=True, env={**os.environ, "KUBECONFIG": ADMIN})
     if check and result.returncode != 0:
-        raise SystemExit(f"kubectl {' '.join(args[:3])} failed: {result.stderr.strip()}")
+        raise SystemExit(f"kubectl {' '.join(args[:3])} failed: {result.stderr.strip()} "
+                         "Is the cluster up? scripts/demo.sh up kubernetes")
     return result.stdout
 
 

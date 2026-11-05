@@ -5,7 +5,8 @@
 
 From the Mac it hands itself over to the tools host, like reset.py. It refuses
 while production runs anything but catalog, or while video 33's forecast fills
-the node: it reads those and leaves them alone. Steps:
+the node: it reads those and leaves them alone. As root, for k3s's admin
+kubeconfig, so not from the Jenkins reset job. Steps:
 
 1. the take's release and rollback runs stopped;
 2. the ValidatingAdmissionPolicyBinding no-zero and the ValidatingAdmissionPolicy

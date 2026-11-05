@@ -7,7 +7,7 @@ import re
 import pytest
 import yaml
 
-import check
+import first_day as check
 
 
 class Clock:

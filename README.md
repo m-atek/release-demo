@@ -722,7 +722,7 @@ Before the call:
 
 On the call, in `scripts/demos/one_wrong_context/`: `kubectl config use-context production`, `kubectl scale deploy --all --replicas=0`. The pods go, and failed calls climb. `kubectl describe deploy | grep -o 'Scaled down.*' | tail -1` says from 3 to 0, then `kubectl scale deploy --all --replicas=3`. Then `kubectl apply -f no-zero.yaml`, wait a few seconds, and the same scale: `Error from server (Forbidden)`, and no pod moves. `/release catalog ORD-90` still goes through.
 
-To test it without a call: `.venv/bin/python scripts/demos/one_wrong_context/check.py`, about 5 minutes, one PASS or FAIL line per check and a verdict. It takes production to zero once, off camera, and leaves things as it found them.
+To test it without a call: `.venv/bin/python scripts/demos/one_wrong_context/first_day.py`, about 5 minutes, one PASS or FAIL line per check and a verdict. It takes production to zero once, off camera, and leaves things as it found them.
 
 After the call: `scripts/demo.sh down one-wrong-context` says what it deletes and asks: the policy, its binding, and the kubeconfig copy on the Mac. A policy left on harms no other video, which never scale production to zero. `scripts/demo.sh status one-wrong-context` shows what's on.
 

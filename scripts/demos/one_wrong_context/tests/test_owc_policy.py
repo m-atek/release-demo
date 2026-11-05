@@ -1,7 +1,7 @@
 """The file on screen: what it says, that it fits, and what Kubernetes' source says it does.
 
 Two small models here restate v1.36.5's source, so a change to the file can't quietly undo what
-the source reading found. They aren't the API server: check.py asks the real one on the first day.
+the source reading found. They aren't the API server: first_day.py asks the real one.
 """
 
 import re

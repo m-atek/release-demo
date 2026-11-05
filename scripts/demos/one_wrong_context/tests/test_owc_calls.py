@@ -180,7 +180,7 @@ def test_it_never_runs_past_the_give_up_time():
     assert len(figures) == calls.GIVE_UP_SECONDS
 
 
-def test_the_summary_is_what_check_py_reads():
+def test_the_summary_is_what_first_day_reads():
     tally, _ = fake_run(lambda second: not 2 <= second < 3, seconds=5)
     line = calls.summary(tally)
     assert line.startswith("== summary ")

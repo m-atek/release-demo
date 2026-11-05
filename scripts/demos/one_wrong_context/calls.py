@@ -126,7 +126,7 @@ def run(seconds=None, out=sys.stdout, caller=call, clock=time.monotonic, wall=ti
 
 
 def summary(tally):
-    """The last line of a timed run, for check.py: times are the host's clock, in seconds."""
+    """The last line of a timed run, for first_day.py: times are the host's clock, in seconds."""
     return "== summary " + json.dumps({"answered": tally.answered, "failed": tally.failed,
                                        "first_failed": tally.first_failed, "last_failed": tally.last_failed})
 

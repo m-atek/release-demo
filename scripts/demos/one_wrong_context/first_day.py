@@ -1,6 +1,6 @@
 """Video 32's first-day check: does the policy really refuse kubectl scale on this cluster?
 
-    ~/Code/release-demo/.venv/bin/python scripts/demos/one_wrong_context/check.py    about 5 minutes
+    ~/Code/release-demo/.venv/bin/python scripts/demos/one_wrong_context/first_day.py    about 5 minutes
 
 From the Mac, with the same kubectl, certificate and tunnel the video films: start
 video 8's connect.py in another terminal first. It needs no merge: it runs from a

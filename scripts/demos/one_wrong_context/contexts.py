@@ -7,9 +7,8 @@ release-demo:presenters, cluster admin, for 8 hours, and holds the tunnels. This
 copies that file to ~/.kube/release-demo/one-wrong-context, mode 600, with the
 contexts staging and production, each with its namespace, and staging current. A
 context here is a default namespace, because this demo's staging and production
-share one cluster. It calls nothing and prints no key. scripts/demo.sh down
-one-wrong-context removes the copy, which its certificate outlives by no more
-than the 8 hours.
+share one cluster. It calls nothing and prints no key. The certificate lasts what
+connect.py's does. scripts/demo.sh down one-wrong-context removes the copy.
 """
 
 import json

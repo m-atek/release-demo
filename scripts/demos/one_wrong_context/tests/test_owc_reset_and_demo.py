@@ -3,6 +3,9 @@
 import base64
 import contextlib
 import io
+import os
+import subprocess
+import sys
 import tarfile
 from argparse import Namespace
 from pathlib import Path
@@ -166,6 +169,28 @@ def test_the_versions_are_ones_that_exist_and_no_new_one():
     assert reset.BASELINE == "1.8.2" and reset.TAKE == "1.9.1"
 
 
+def test_the_shared_reset_loads_from_this_folder_as_the_real_run_loads_it():
+    """scripts/reset.py imports check, host, history and others by name, with this folder first on the path:
+    a check.py here once shadowed scripts/check.py, and the reset would have stopped at its first import."""
+    code = ("import sys; sys.path.insert(0, sys.argv[1]);"
+            "import runpy; module = runpy.run_path(sys.argv[1] + '/reset.py', run_name='not_main');"
+            "shared = module['shared_reset']();"
+            "assert shared.SERVICE == 'catalog' and shared.BASELINE == '1.8.2';"
+            "assert callable(shared.wait_for_version) and callable(shared.cancel_changes) and callable(shared.stop_runs);"
+            "assert callable(shared.warm_slack_handler); print('loaded')")
+    result = subprocess.run([sys.executable, "-c", code, str(HERE)], capture_output=True, text=True, cwd=ROOT,
+                            env={**os.environ, "AWS_CONFIG_FILE": os.devnull, "AWS_SHARED_CREDENTIALS_FILE": os.devnull,
+                                 "AWS_EC2_METADATA_DISABLED": "true"})
+    assert result.returncode == 0 and "loaded" in result.stdout, result.stderr
+
+
+def test_no_file_here_shadows_what_the_shared_reset_imports():
+    scripts = {path.stem for path in (ROOT / "scripts").glob("*.py")}
+    demo_8 = {path.stem for path in (ROOT / "scripts" / "demos" / "kubernetes").glob("*.py")}
+    own = {path.stem for path in HERE.glob("*.py")}
+    assert own & (scripts | demo_8) == {"reset"}  # reset loads the shared one by path, under its own name
+
+
 def test_it_never_archives_other_videos_tags_or_jira_versions():
     text = Path(reset.__file__).read_text()
     assert "github_takes" not in text and "jfrog_takes" not in text and "jira_versions" not in text
@@ -280,7 +305,7 @@ def test_the_bundle_stays_under_ssms_limit_and_holds_its_two_files():
     assert len(files) < remote.host.LIMIT
     names = tarfile.open(fileobj=io.BytesIO(base64.b64decode(files))).getnames()
     assert set(remote.FILES) <= set(names)
-    assert "scripts/demos/one_wrong_context/check.py" not in names  # the Mac's scripts stay on the Mac
+    assert "scripts/demos/one_wrong_context/first_day.py" not in names  # the Mac's scripts stay on the Mac
     # This demo adds little to what video 8's commands already send, so it costs the next video no room.
     assert len(files) - len(remote.host.bundle()) < 6_000
 
