@@ -113,6 +113,16 @@ def _picker(seed):
     return pick
 
 
+def aws_sdk():
+    """The version of boto3 in this function's own package: the pin, not the copy Lambda ships."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("boto3")
+    except PackageNotFoundError:
+        return "unknown"
+
+
 def health():
     return {
         "status": "ok",
@@ -120,6 +130,7 @@ def health():
         "environment": environment(),
         "version": VERSION,
         "commit": COMMIT,
+        "aws_sdk": aws_sdk(),
     }
 
 

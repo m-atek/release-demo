@@ -14,6 +14,23 @@ def test_health_reports_version_and_environment():
     assert body["environment"] == "staging"
 
 
+def test_health_names_the_sdk_in_its_own_package(monkeypatch):
+    import importlib.metadata
+
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: {"boto3": "1.43.121"}[name])
+    assert json.loads(request("/health")["body"])["aws_sdk"] == "1.43.121"
+
+
+def test_health_says_so_when_the_package_holds_no_sdk(monkeypatch):
+    import importlib.metadata
+
+    def missing(name):
+        raise importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(importlib.metadata, "version", missing)
+    assert json.loads(request("/health")["body"])["aws_sdk"] == "unknown"
+
+
 def test_page_shows_service_version_and_deploy_time():
     response = request("/")
     assert response["statusCode"] == 200

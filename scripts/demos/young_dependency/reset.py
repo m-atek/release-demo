@@ -36,8 +36,8 @@ from common import SSM_PREFIX, ssm_client  # noqa: E402
 
 SERVICE, BASELINE, STAGED = "orders-service", "1.3.0", pick.REFUSED_VERSION
 TAKE_VERSIONS = {pick.REFUSED_VERSION, pick.PASSING_VERSION}
-SUMMARY = "Update the packages orders-service pins"
-DESCRIPTION = "Move orders-service's pinned packages to current versions."
+SUMMARY = "Pin the packages of orders-service at current versions"
+DESCRIPTION = "Pin the AWS SDK and what it brings, instead of taking the copy Lambda ships."
 LABEL = "package-age"
 NAME = "ORD-[u]"   # as the script calls it
 
