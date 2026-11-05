@@ -4,6 +4,7 @@
     python scripts/demos/kubernetes/reset.py --no-stage   the cluster only
     python scripts/demos/kubernetes/reset.py --here       on the tools host: what the Mac's run calls there
     python scripts/demos/kubernetes/reset.py --here --baseline 1.9.1   another version: what video 25's reset calls
+    python scripts/demos/kubernetes/reset.py --here --service forecast --baseline 2.4.0   another service: video 33's
 
 The 1.8.2 package comes from demos-releases/catalog/1.8.2 in JCR. The first time,
 when it isn't there yet, it is built from demo-states/catalog/1.8.2 and stored
@@ -117,7 +118,8 @@ def here(commit):
     for environment in config["environments"]:
         workspace = tempfile.mkdtemp(prefix=f"reset-{environment}-")
         children[environment] = subprocess.Popen(
-            [sys.executable, __file__, "--here", "--only", environment, "--commit", commit, "--baseline", BASELINE],
+            [sys.executable, __file__, "--here", "--only", environment, "--commit", commit, "--baseline", BASELINE,
+             "--service", SERVICE],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env={**os.environ, "WORKSPACE": workspace})
 
     def relay(environment, stream):
@@ -133,19 +135,20 @@ def here(commit):
     took = kube.clock(time.monotonic() - started)
     if any(codes.values()):
         fail(f"Reset failed after {took}: {', '.join(e for e, c in codes.items() if c)}")
-    print(f"Cluster reset in {took}: staging and production on {BASELINE}")
+    print(f"Cluster reset in {took}: {' and '.join(children)} on {SERVICE} {BASELINE}")
 
 
 def main():
-    global BASELINE
+    global BASELINE, SERVICE
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--here", action="store_true", help="run on the tools host")
     parser.add_argument("--baseline", default=BASELINE, help="the version to put the cluster on")
+    parser.add_argument("--service", default=SERVICE, help="the service, with --here")
     parser.add_argument("--only", help=argparse.SUPPRESS)
     parser.add_argument("--commit", default="", help=argparse.SUPPRESS)
     parser.add_argument("--no-stage", action="store_true", help=f"don't stage {TAKE} on main")
     args = parser.parse_args()
-    BASELINE = args.baseline
+    BASELINE, SERVICE = args.baseline, args.service
 
     if args.here and args.only:
         sys.exit(reset_environment(args.only, args.commit))
