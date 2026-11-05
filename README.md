@@ -707,6 +707,25 @@ On the call: `/sbom CVE-2026-111497`, `/release orders-service ORD-[f] standard`
 
 After the call: `.venv/bin/python scripts/reset.py`. It puts production and staging back on 1.3.0 and the switch off, so brotli 1.2.0 isn't left live. `scripts/demo.sh status patch-clock` warns while it is.
 
+## Demo on a call: one wrong context (video 32)
+
+The cluster's admin means staging, and the terminal is on production: `kubectl scale deploy --all --replicas=0`, and catalog's pods go. Then a ValidatingAdmissionPolicy, one short file, and the same command is refused by the API server, in the policy's own words. A release still goes through. It runs on demo 8's cluster and costs nothing beyond the tools host. No new version, no account, no secret, no Terraform: catalog 1.8.2, then 1.9.1, as in videos 8 and 26.
+
+The file is `scripts/demos/one_wrong_context/no-zero.yaml`. Its rule lists `deployments/scale`, because `kubectl scale` goes through that subresource and a rule with only `deployments` doesn't match it. Its expression reads `object.spec.?replicas.orValue(0) > 0`, because a scale to zero reaches the policy as a Scale with no `replicas` field at all. It refuses a scale to zero in production and nothing else: not `kubectl delete`, not a scale to one, not staging. An admin can still delete the policy.
+
+Before the call:
+
+1. `scripts/tools.sh up`, then `scripts/demo.sh up kubernetes`. Video 25's Postgres and video 33's forecast down, and the reset refuses if not: it reads them, and leaves them alone.
+2. `.venv/bin/python scripts/reset.py one-wrong-context`: no policy, both namespaces on 1.8.2, 1.9.1 staged. Under two minutes, safe to run twice; `--dry-run` lists the steps. It ends "Ready for a take."
+3. `.venv/bin/python scripts/demos/kubernetes/connect.py` in a terminal of its own, then `.venv/bin/python scripts/demos/one_wrong_context/contexts.py` and `export KUBECONFIG=~/.kube/release-demo/one-wrong-context`: the contexts staging and production.
+4. Beside it, `scripts/demos/one_wrong_context/pods.sh` and `.venv/bin/python scripts/demos/one_wrong_context/window.py`: production's pods, and ten calls a second to production from the tools host, as running totals.
+
+On the call, in `scripts/demos/one_wrong_context/`: `kubectl config use-context production`, `kubectl scale deploy --all --replicas=0`. The pods go, and failed calls climb. `kubectl describe deploy | grep -o 'Scaled down.*' | tail -1` says from 3 to 0, then `kubectl scale deploy --all --replicas=3`. Then `kubectl apply -f no-zero.yaml`, wait a few seconds, and the same scale: `Error from server (Forbidden)`, and no pod moves. `/release catalog ORD-90` still goes through.
+
+To test it without a call: `.venv/bin/python scripts/demos/one_wrong_context/check.py`, about 5 minutes, one PASS or FAIL line per check and a verdict. It takes production to zero once, off camera, and leaves things as it found them.
+
+After the call: `scripts/demo.sh down one-wrong-context` says what it deletes and asks: the policy, its binding, and the kubeconfig copy on the Mac. A policy left on harms no other video, which never scale production to zero. `scripts/demo.sh status one-wrong-context` shows what's on.
+
 ## Layout
 
 ```

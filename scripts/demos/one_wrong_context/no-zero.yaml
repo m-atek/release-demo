@@ -1,0 +1,25 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata: { name: no-zero }
+spec:
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [apps]
+        apiVersions: [v1]
+        operations: [UPDATE]
+        resources: [deployments, deployments/scale]
+  validations:
+    - expression: object.spec.?replicas.orValue(0) > 0
+      reason: Forbidden
+      message: Production doesn't go to zero.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata: { name: no-zero }
+spec:
+  policyName: no-zero
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: production
