@@ -35,6 +35,8 @@ orders-service:
     # Video 27: the stage Error budget, first of all, while
     # scripts/demos/error_budget/switch.py is on.
     error_budget: scripts/demos/error_budget/budget.py
+    # Video 30: the stage Package age, first of all, for the versions package_age names.
+    package_age: scripts/demos/young_dependency/package_age.py
     # Demo 20's two checks, for versions with migrations only (run_state.VERSION_STAGES).
     # scripts/demos/rollback-trap/checks.py on|off adds or removes these two lines.
     migration_check: scripts/demos/rollback-trap/migration_check.py
@@ -122,6 +124,12 @@ orders-service:
     expected_month:                 # the team's own estimate; shown in the change and on screen
       page_views: 3000000
       new_orders: 60000
+
+  # Video 30: a package younger than this on PyPI, in what the zip would hold,
+  # refuses a release before anything is built. No other version has the stage.
+  package_age:
+    min_hours: 72
+    versions: ["1.32.0", "1.32.1"]
 
   # Video 27: when more of production's requests have failed than the target
   # allows, a release is refused before anything is built.

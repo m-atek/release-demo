@@ -175,9 +175,11 @@ def follow(host, unit, log, offset, skip_partial=False, interval=3):
             time.sleep(interval)
 
 
-def stage(service_name, version):
+def stage(service_name, version, wrapper=None):
     """Put a demo state on main with stage.py, from a fresh clone of main,
-    pushing with the GitHub App's token. Prints stage.py's output."""
+    pushing with the GitHub App's token. Prints stage.py's output. wrapper, a
+    script and its arguments relative to the clone, runs instead of stage.py
+    (video 30 pins that day's packages in the same commit)."""
     token, repository, _ = github_app_token(ssm_client())
     env = {**os.environ, **IDENTITY, "STAGE_TOKEN": token, "GIT_TERMINAL_PROMPT": "0"}
     with tempfile.TemporaryDirectory(prefix="release-demo-stage-") as temp:
@@ -188,7 +190,7 @@ def stage(service_name, version):
             result = subprocess.run(command, env=env, capture_output=True, text=True)
             if result.returncode != 0:
                 fail(f"{' '.join(command[:2])} failed: {result.stderr.strip()}")
-        result = subprocess.run([sys.executable, "scripts/stage.py", service_name, version], cwd=clone, env=env,
+        result = subprocess.run([sys.executable, *(wrapper or ["scripts/stage.py", service_name, version])], cwd=clone, env=env,
                                 capture_output=True, text=True)
         for line in (result.stdout + result.stderr).strip().splitlines():
             print(f"  {line}")

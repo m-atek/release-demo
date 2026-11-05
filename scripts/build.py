@@ -36,14 +36,17 @@ def current_commit():
     return head.stdout.strip() + ("-dirty" if dirty else "")
 
 
+def wheel_flags(runtime):
+    """pip's flags for Lambda's Linux runtime, wheels only. Video 30's stage resolves with the same ones."""
+    return ["--platform", "manylinux2014_x86_64", "--implementation", "cp",
+            "--python-version", runtime.removeprefix("python"), "--only-binary=:all:"]
+
+
 def install_requirements(requirements, target, runtime):
     """Vendor dependencies as Lambda's Linux runtime needs them, wheels only."""
-    python_version = runtime.removeprefix("python")
     subprocess.run(
         [sys.executable, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "--no-compile",
-         "--requirement", str(requirements), "--target", str(target),
-         "--platform", "manylinux2014_x86_64", "--implementation", "cp",
-         "--python-version", python_version, "--only-binary=:all:"],
+         "--requirement", str(requirements), "--target", str(target), *wheel_flags(runtime)],
         check=True,
     )
 

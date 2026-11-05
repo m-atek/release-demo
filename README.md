@@ -687,6 +687,23 @@ On the call: `/release orders-service ORD-[a] standard` and wait until the budge
 
 If something doesn't answer, it goes toward a person: without a reading from CloudWatch, `standard` becomes a Normal change and Slack says "no reading". Under 1,000 requests it is too few to judge, and passes. Afterwards: `scripts/demo.sh down error-budget`: the traffic and the check off. Running costs about USD 0.25 a day while the traffic is on, and a fraction of a cent a day while it is off.
 
+## Demo on a call: a young dependency (video 30)
+
+A release rule about time, not about what is known. The first stage of the release pipeline, Package age, asks pip what the build would install, with the build's own flags and nothing installed, and PyPI when each of those exact files was uploaded, read at that moment. A package younger than the rule, `package_age.min_hours` in services.yaml, 72 here, refuses the release before anything is built. The scan can't do this: it looks up what has been reported, and a new version has had nobody to report it. It says nothing about whether a package is good. It uses no model, no AWS right of its own, no switch and no new account: only the versions `package_age.versions` names have the stage.
+
+A version's age can't be planned, so the pins are written on the day. `scripts/demos/young_dependency/pick.py show` reads the watch list from PyPI: boto3 first, which the handler really imports and AWS uploads most weekdays at about 20:20 Amsterdam, then small packages that are only declared. `pick.py stage 1.32.0` puts the first that qualifies on main at its newest version, in one commit. If nothing qualifies it says so and stages nothing: the take waits. Nothing here makes a package young.
+
+| State | Jira | What changes | What happens |
+| --- | --- | --- | --- |
+| 1.32.0 | ORD-[u] | 1.4.0's code without the "Demo system" label, and the AWS SDK with everything it brings pinned in requirements.txt, at that day's newest | Refused at Package age, never built |
+| 1.32.1 | ORD-[u] | Each pin that was too young moves to the newest version that passes, what Slack's refusal names. Nothing else moves | Passes, and goes live as a standard change with the ages on it |
+
+Before the takes: `scripts/tools.sh up`, then `scripts/reset.py young-dependency`, under 2 minutes, safe to run twice: production on 1.3.0, 1.32.0 on main with today's pins, ORD-[u] made or reopened. It refuses while another CI holds `/release`.
+
+On the call: `/release orders-service ORD-[u] standard` is refused in seconds, with the age and the newest version that passes. `.venv/bin/python scripts/demos/young_dependency/pick.py stage 1.32.1`, then the same command goes live. `/release orders-service ORD-[u] override` on 1.32.0 asks Alex instead: a Normal change, and an approval with no comment stops it, for the security fix that can't wait.
+
+If pip or PyPI doesn't answer, it goes toward a person: "no reading", `standard` becomes a Normal change, and Alex decides. Afterwards: `scripts/reset.py`, which puts production back on 1.3.0.
+
 ## Demo on a call: the patch clock (video 24)
 
 `/sbom <CVE or GHSA id>` searches the SBOMs of what is live and names the service that holds it. The next release is refused by the scan, one line moves the package to the fixed version, the release goes live, its change closes, and a clock that started at the search stops. The same search then finds nothing. Anyone in `people.yaml` with Slack may search; only releasers may release. No Claude, no new account, nothing that bills beyond the tools host.
