@@ -441,6 +441,62 @@ catalog:
         timeout_seconds: 60
         paths: [/ready, /api/products]
 
+# Video 33: a second team's service on the same node. Its padded reservation in
+# 2.4.0 stops catalog's hotfix; 2.4.1 gives the memory back through this pipeline,
+# as a normal change Alex decides. One environment, in its own namespace, so no
+# staging. See scripts/demos/hotfix_room/.
+forecast:
+  platform: kubernetes
+  path: services/forecast
+  runtime: python3.13
+  toolchain: jenkins/toolchain/kubernetes.Dockerfile
+
+  jira:
+    project: ORD
+
+  slack:
+    options: []
+
+  jcr: { shared: true }
+
+  scripts:
+    build: scripts/demos/kubernetes/build.py
+    publish: scripts/publish.py
+    plan: scripts/demos/hotfix_room/plan.py
+    deploy: scripts/demos/kubernetes/deploy.py
+    check: scripts/demos/kubernetes/check.py
+
+  servicenow:
+    cmdb_item: forecast-production
+    templates:
+      rollback: Rollback of forecast
+    backout_plan: >-
+      Automatic: Helm releases with --rollback-on-failure and waits up to 3 minutes
+      for the new pods to be ready. If they aren't, Helm rolls back to the previous
+      revision by itself, and the pipeline closes this change as unsuccessful with
+      the rollback in its notes.
+
+  sonarqube:
+    project_key: m-atek_release-demo_forecast
+
+  kubernetes:
+    image: artifactory-demo.es.nl/docker-local/forecast
+    chart: helm-local/forecast
+    registry: http://127.0.0.1:8082
+    release: forecast
+
+  environments:
+    production:
+      namespace: forecast
+      cmdb_item: forecast-production
+      replicas: 3
+      node_port: 30083
+      helm_timeout: 3m
+      settings: {}
+      check:
+        timeout_seconds: 60
+        paths: [/ready, /api/forecast]
+
 network-stack:
   platform: terraform
   # Changes arrive as pull requests, not as releases from Slack: the Jenkins

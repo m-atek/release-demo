@@ -1,0 +1,11 @@
+{
+  "comment": "How scripts/demos/kubernetes/build.py assembles the image: the pinned base, then one layer with this folder under /app.",
+  "base": "docker.io/library/python:3.13.18-alpine3.24@sha256:7984cf56ceaddebe4fefeb75d64000b9f45d8b77b11a09b24524da6cdc3af0c8",
+  "platform": "linux/amd64",
+  "workdir": "/app",
+  "user": "10001:10001",
+  "cmd": ["python3", "/app/app.py"],
+  "env": ["PYTHONDONTWRITEBYTECODE=1", "PYTHONUNBUFFERED=1", "PORT=8080"],
+  "ports": ["8080/tcp"],
+  "include": ["app.py", "VERSION", "data"]
+}

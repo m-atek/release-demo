@@ -791,6 +791,22 @@ To test it without a call: `.venv/bin/python scripts/demos/one_wrong_context/fir
 
 After the call: `scripts/demo.sh down one-wrong-context` says what it deletes and asks: the policy, its binding, and the kubeconfig copy on the Mac. A policy left on harms no other video, which never scale production to zero. `scripts/demo.sh status one-wrong-context` shows what's on.
 
+## Demo on a call: the hotfix the cluster had no room for (video 33)
+
+A second team's service, `forecast`, runs in its own namespace on video 8's one node, and has reserved most of what the scheduler can hand out: 3 pods at 256 MiB each, using a small part of it. catalog's one-line fix passes every gate, and its new pod stays Pending in staging on the scheduler's own event, "0/1 nodes are available: 1 Insufficient memory." Helm waits 3 minutes and rolls back, and Slack says why. Nobody edits a pod by hand, because a hand edit wouldn't survive forecast's next release: forecast's chart comes down in its own release, a normal change that carries the numbers, read from the node, and Alex decides. Then the same hotfix goes live. It needs no new Terraform and no new secret. The Slack handler's service list comes from services.yaml, so the main root's apply is needed once.
+
+| State | Jira | What changes | Where it stops |
+| --- | --- | --- | --- |
+| catalog 1.12.0, forecast 2.4.0 | | Both namespaces and forecast's before a take: 1,158 of the node's 1,180 MiB reserved | |
+| catalog 1.12.1 | ORD-[h] | One line of supplier search. The chart asks for 48 MiB a pod, as 1.12.0's does | First try: Staging, then Check staging, nothing in production. Second try: live |
+| forecast 2.4.1 | ORD-[r] | Its requests, 256 MiB down to 48 MiB a pod, and nothing else | Live, after Alex's approval, with the numbers in the change's description |
+
+Once, after the merge: the main root's apply (`scripts/tf.sh plan`, then `apply`: the Slack handler's package, for `/release forecast`), `scripts/tools.sh up`, `scripts/demo.sh up kubernetes`, `scripts/demo.sh up hotfix-room` (prints "Ready"), and `.venv/bin/python scripts/demos/hotfix_room/setup.py`, which makes ORD-[h] and ORD-[r], forecast's CMDB item and its SonarQube Cloud project, and prints the keys. Then the first-day measurement, `.venv/bin/python scripts/demos/hotfix_room/rehearse.py`, about 12 minutes, no Slack, ServiceNow or Jira, ending where a take starts. It prints PASS or FAIL per check and a verdict, and its exit code says it: 0 the video stands, 1 it doesn't, 2 it stands and another check needs fixing first.
+
+Before each take: `scripts/reset.py hotfix-room [--dry-run]`, or the reset job with DEMO=hotfix-room. Safe to run twice; it refuses while video 25's Postgres is up, and it says so if the node isn't full. On the call: `/release catalog ORD-[h]`, then `/release forecast ORD-[r]` and Alex's approval, then `/release catalog ORD-[h]` again. `connect.py` holds the tunnels for `scripts/demos/hotfix_room/pods.sh` (the top window) and `room.py --watch` (the bottom one: reserved, used and what the scheduler said); `reveal.sh` shows the chart's four changed lines.
+
+Afterwards, and before any other video's catalog release, because the node has no room for one while forecast 2.4.0 runs: `scripts/demo.sh down hotfix-room` removes the namespace, after your yes. To see it read the node at any time: `scripts/demo.sh status hotfix-room`.
+
 ## Layout
 
 ```

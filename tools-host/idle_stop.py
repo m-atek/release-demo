@@ -32,7 +32,7 @@ NOT_ACTIVITY = {"pull-requests"}
 SCANS = ("MultiBranchProject", "BranchIndexing", "OrganizationFolder", "FolderComputation")
 # Runs handed over through SSM (scripts/host.py) that last long and start no build: video 25's
 # first-day measurement takes about 20 minutes with nothing else to show that the host is in use.
-LONG_RUNS = ("release-demo-blip-rehearse",)
+LONG_RUNS = ("release-demo-blip-rehearse", "release-demo-hotfix-rehearse")
 
 
 def jenkins_busy(secrets):

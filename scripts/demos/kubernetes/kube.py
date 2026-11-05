@@ -160,6 +160,21 @@ class Api:
         return self.get(f"/apis/apps/v1/namespaces/{namespace}/deployments/{name}")
 
 
+def scheduler_said(api, namespace, pods):
+    """The first sentence of what the scheduler last said when it wouldn't place one of these
+    pods, in its own words, or None. A pod that was placed has no such event, whatever else
+    went wrong with it. A missed read never stops a deploy."""
+    try:
+        reply = api.get(f"/api/v1/namespaces/{namespace}/events?fieldSelector=reason%3DFailedScheduling") or {}
+    except Exception:
+        return None
+    refused = [event for event in reply.get("items", []) if event.get("involvedObject", {}).get("name") in pods]
+    if not refused:
+        return None
+    newest = max(refused, key=lambda event: event["metadata"].get("creationTimestamp", ""))
+    return newest.get("message", "").split(". ")[0].rstrip(".") + "."
+
+
 def pod_summary(pod):
     """(version label, ready, deleting, image digest or None) of one pod."""
     statuses = pod.get("status", {}).get("containerStatuses") or [{}]
