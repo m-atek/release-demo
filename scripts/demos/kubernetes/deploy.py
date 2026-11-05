@@ -153,6 +153,13 @@ def note(state, text):
         subprocess.run([sys.executable, str(ROOT / "scripts" / "change.py"), "note", text], check=False)
 
 
+def slack_line(state, text):
+    """A line in the release's Slack message, once the run has one. Last of what this step does: notify.py
+    writes the run state too. A rehearsal or a reset has no message."""
+    if state.get("slack"):
+        subprocess.run([sys.executable, str(ROOT / "scripts" / "notify.py"), "line", text], check=False)
+
+
 def upgrade(config, environment, release, chart_file, folder, kubeconfig, state):
     env = config["environments"][environment]
     name, namespace = config["kubernetes"]["release"], env["namespace"]
@@ -227,6 +234,11 @@ def upgrade(config, environment, release, chart_file, folder, kubeconfig, state)
             f"New pods started: {len(watch.new_pods)}. Ready pods never fewer than {watch.lowest_ready} of "
             f"{env['replicas']}: the {previous['app_version']} pods kept running throughout."),
     })
+    # Video 33: pods the scheduler refused never ran, and Helm can't say why. Nothing else has this event.
+    said = kube.scheduler_said(kube.Api(kubeconfig), namespace, watch.new_pods)
+    if said:
+        record["scheduler_said"] = said
+        record["rollback_notes"] += f" The scheduler: {said}"
     deploys[environment] = record
     run_state.save(state)
     print(f"{namespace}: {reason} Helm gave up after {kube.clock(took)} and rolled back to revision "
@@ -235,6 +247,9 @@ def upgrade(config, environment, release, chart_file, folder, kubeconfig, state)
           f"{release['version']} pods started: {len(watch.new_pods)}.")
     print(f"{release['version']} isn't live: the check fails, and the pipeline records the rollback.")
     note(state, record["rollback_notes"])
+    if said:
+        print(f"The scheduler: {said}")
+        slack_line(state, f"{reason} The scheduler: {said}")
     return 0
 
 
