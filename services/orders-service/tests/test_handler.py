@@ -32,6 +32,10 @@ def test_page_shows_the_returns_policy():
     assert "Free returns within 30 days" in request("/")["body"]
 
 
+def test_page_shows_the_order_cut_off():
+    assert "Order by 20:00, shipped today" in request("/")["body"]
+
+
 def test_page_escapes_environment_name(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "<staging>")
     assert "<staging>" not in request("/")["body"]
