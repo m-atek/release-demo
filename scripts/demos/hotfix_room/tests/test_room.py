@@ -1,5 +1,11 @@
 """The bottom window: every figure from the node's own answers, in 44 columns, and the scheduler's words unchanged."""
 
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 import room
@@ -159,3 +165,41 @@ def test_kubectl_failure_says_kubectls_words(monkeypatch):
 def test_it_prints_no_secret_and_needs_no_token_of_its_own():
     source = (room.Path(room.__file__)).read_text()
     assert "get secret" not in source and "token" not in source.lower()
+
+
+def test_the_script_as_it_runs_with_a_real_process_and_a_fake_kubectl(tmp_path):
+    """room.py once, through its own kubectl calls: the arguments, the JSON, and what it prints."""
+    node = FakeNode(pending=PENDING, said=SAID)
+    answers = {"get node tools-host -o json": node.get("get", "node"), "get pods -A -o json": node.get("get", "pods"),
+               f"get --raw {room.SUMMARY}": node.get("get", "--raw"),
+               "get events -n staging --field-selector reason=FailedScheduling -o json": node.get("get", "events", "reason=FailedScheduling"),
+               "get deployment catalog -n staging -o json": node.get("get", "deployment")}
+    (tmp_path / "answers.json").write_text(json.dumps(answers))
+    kubectl = tmp_path / "kubectl"
+    kubectl.write_text(f"#!{sys.executable}\nimport json, sys\nprint(json.dumps(json.load(open({str(tmp_path / 'answers.json')!r}))[' '.join(sys.argv[1:])]))\n")
+    kubectl.chmod(0o755)
+    reply = subprocess.run([sys.executable, str(Path(room.__file__))], capture_output=True, text=True,
+                           env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", "KUBECONFIG": "/dev/null"})
+    assert reply.returncode == 0, reply.stderr
+    assert f"Scheduler on {PENDING}:" in reply.stdout
+    assert "Reserved                   98%    1,158 MiB" in reply.stdout
+    assert "Free to reserve                      22 MiB" in reply.stdout
+
+
+def test_presenter_kubeconfig_is_used_when_none_is_set(monkeypatch, tmp_path):
+    seen = {}
+
+    class Done:
+        returncode, stdout, stderr = 0, "{}", ""
+
+    def fake_run(command, **kwargs):
+        seen["env"] = kwargs["env"]
+        return Done()
+
+    presenter = tmp_path / "config"
+    presenter.write_text("")
+    monkeypatch.delenv("KUBECONFIG", raising=False)
+    monkeypatch.setattr(room, "PRESENTER", presenter)
+    monkeypatch.setattr(room.subprocess, "run", fake_run)
+    assert room.kubectl_json("get", "node", "tools-host") == {}
+    assert seen["env"]["KUBECONFIG"] == str(presenter)

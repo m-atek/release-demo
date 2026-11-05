@@ -223,10 +223,6 @@ def test_a_second_try_that_fails_is_no_video_until_fixed(day, capsys):
     assert "the same hotfix didn't go through" in capsys.readouterr().out
 
 
-class WatchThatSees(rehearse.Watch):
-    pass
-
-
 def test_the_watch_keeps_the_pending_reading_and_survives_a_missed_read(monkeypatch):
     answers = iter([RuntimeError("no answer"), reading(pending="catalog-new", said=SAID), reading(free=22)])
 
@@ -242,3 +238,20 @@ def test_the_watch_keeps_the_pending_reading_and_survives_a_missed_read(monkeypa
     watch.run()
     assert (watch.pod, watch.said, watch.pending_seen) == ("catalog-new", SAID, 1)
     assert watch.reading.pending == "catalog-new"
+
+
+@pytest.mark.parametrize("failure", [RuntimeError("Error from server (ServiceUnavailable): the kubelet's summary"),
+                                     rehearse.subprocess.CalledProcessError(1, "reset.py")])
+def test_a_read_or_a_step_that_fails_is_no_verdict_and_the_cluster_still_goes_back(failure, monkeypatch, capsys):
+    class Failing(FakeMachine):
+        def __init__(self, commit):
+            super().__init__()
+
+    monkeypatch.setattr(rehearse, "Machine", Failing)
+    monkeypatch.setattr(rehearse, "measure", lambda machine: (_ for _ in ()).throw(failure))
+    monkeypatch.setattr(rehearse, "loaded", lambda name, path: SimpleNamespace(on_host=lambda: True))
+    monkeypatch.setattr(rehearse, "git", lambda *args, check=True: SimpleNamespace(stdout="abc\n"))
+    monkeypatch.setattr(rehearse.sys, "argv", ["rehearse.py", "--here"])
+    assert rehearse.main() == 1
+    out = capsys.readouterr().out
+    assert "NO VERDICT" in out and "== Back where a take starts" in out

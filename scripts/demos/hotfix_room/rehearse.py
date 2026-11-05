@@ -417,7 +417,7 @@ def main():
     machine = Machine(commit)
     try:
         code = measure(machine)
-    except RuntimeError as error:   # kubectl's own words: a read the check needs, refused or not answered
+    except (RuntimeError, subprocess.CalledProcessError) as error:   # a read the check needs refused, or a step that failed
         print(f"NO VERDICT: {error}", flush=True)
         code = 1
     finally:
