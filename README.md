@@ -522,6 +522,25 @@ Once, after the merge: Mateusz applies `infra/demos/21-release-train-flags` (`sc
 
 Before the train: `scripts/demo.sh up release-train` (the tools host starts 30 minutes before the departure), then `scripts/reset.py release-train`. A rehearsal: the job `release-train` by hand with REHEARSAL. Before the switch: `scripts/demo.sh traffic release-train`, about 2 requests a second to /api/estimate over the six stores. Afterwards: `scripts/demo.sh down release-train`.
 
+## Demo on a call: where a release waits (video 31)
+
+One release, split: how long it waited for approval, and how long everything else took. Nothing breaks. **The wait is chosen:** whoever plays Alex approves when they decide, and the video says so. Every time on screen comes from the run's own records: Slack's rows, the events in Grafana and Splunk, the change's work notes and close notes.
+
+| State | Jira | What changes | What happens |
+| --- | --- | --- | --- |
+| 1.33.0 | ORD-[a] | One line on 1.26.0's page: "Free returns within 30 days" | A normal change that may wait up to 10 hours for Alex. Slack ends "Live in [total].", then "Waited for approval: [wait]." and "Everything else: [rest].", which add up to the total exactly |
+| 1.33.1 | ORD-[b] | One more line: "Order by 20:00, shipped today" | A standard change, pre-approved, with the same gates. It waits as any other version does |
+
+`approval_wait` in `services.yaml` names 1.33.0, and only that version: `change.py wait` may run 10 hours instead of 30 minutes, the change's planned window is as long, and a ServiceNow that sleeps or doesn't answer gives a line in the job's log and another look 15 seconds later, where any other version's wait stops. Everything else the wait touches is shared and unchanged. So a sleeping PDI costs the time it takes you to wake it, not the day.
+
+**While it waits, nothing else can release.** The `release` job runs one build at a time, for every service, so any other `/release` queues behind it, and **every demo's reset stops it**, this one's too. `/rollback` is its own job and still runs. The tools host stays on while the build runs, at USD 0.19 an hour, because `idle_stop.py` counts it. No machine, role, secret or Slack word is new, so there is no apply, and no `demo.sh up` or `down`.
+
+Once, after the merge: `.venv/bin/python scripts/demos/release_wait/setup.py` makes ORD-[a] and ORD-[b] and the dashboard "Where a release waits": one bar per stage of one run, in the pipeline's order, on one scale, from the events `scripts/events.py` already sends. `.venv/bin/python scripts/demos/release_wait/dashboard.py --url <build>` prints the page for a run; it reads any run in the last 14 days, which is as long as Grafana Cloud Logs keeps them. If its `ceil` won't draw, `dashboard.py --plain` reads the seconds as sent, rounded down where Slack rounds up.
+
+Before a call or a take: `scripts/tools.sh up`, then `.venv/bin/python scripts/reset.py release-wait`: 1.26.0 in staging and production, 1.33.0 on main, every demo's switch off. Then `/release orders-service ORD-[a]`, approve as Alex when you choose, `scripts/host.py stage orders-service 1.33.1`, and `/release orders-service ORD-[b] standard`.
+
+After: `.venv/bin/python scripts/reset.py`.
+
 ## Demo on a call: GitHub Actions (demo 14)
 
 The main release, orders-service 1.4.0 for ORD-12, run from `.github/workflows/release.yml` instead of Jenkins: the same stage scripts in the same order (`scripts/tests/test_github_actions.py` holds the workflow to `releasePipeline.groovy`), the same JFrog repositories and the same ServiceNow change. A squash merge to main that changes the service, with the Jira key at the start of its subject, starts it; the pull request's label `standard` asks for a standard change. The production environment has no reviewers and no admin bypass: its only protection rule is the GitHub App, which the approval bridge (`bridge/handler.py`) answers once Alex approves the change in ServiceNow. GitHub stores no secrets. Each job signs in to AWS with GitHub's OIDC token as a role that trusts only its own job (`infra/demos/14-github-actions`), and masks every value it reads from SSM; the run state passes from job to job encrypted, since a public repository's artifacts are public. Publish attests the package with signed provenance, and `.github/workflows/actions.lock` locks every action to a commit. GitHub's runners reach JFrog on the tools host through Cloudflare Access, so the tools host must be up.

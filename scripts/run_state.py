@@ -88,8 +88,10 @@ def iso(seconds):
 
 
 def duration(seconds):
-    """Minutes and seconds, never rounded down: 6m 42s."""
+    """Minutes and seconds, never rounded down: 6m 42s. From an hour on, 5h 44m 12s (video 31)."""
     seconds = int(-(-seconds // 1))
+    if seconds >= 3600:
+        return f"{seconds // 3600}h {seconds % 3600 // 60:02d}m {seconds % 60:02d}s"
     return f"{seconds // 60}m {seconds % 60:02d}s" if seconds >= 60 else f"{seconds}s"
 
 

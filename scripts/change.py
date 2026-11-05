@@ -2,7 +2,7 @@
 
     python scripts/change.py open                  a normal change, moved to Assess; with option standard, a pre-approved one
     python scripts/change.py note "Staging: ok"    a work note, once the change exists
-    python scripts/change.py wait                  poll the approval every 15 seconds, up to 30 minutes
+    python scripts/change.py wait                  poll the approval every 15 seconds, up to 30 minutes, or as services.yaml's approval_wait says
     python scripts/change.py implement
     python scripts/change.py close successful|unsuccessful --notes "..."
     python scripts/change.py cancel --notes "..."
@@ -27,9 +27,16 @@ With the run state force_normal (video 27's error budget without a reading),
 the change is a normal one too, with no cost field. With close_notes_extra (its
 override), those lines go in front of the notes of a change that closes
 successful.
+
+With approval_wait in services.yaml naming this run's version (video 31), the
+wait for approval may last that many hours instead of 30 minutes, the planned
+window on the change is as long, a ServiceNow that sleeps or doesn't answer for
+a while doesn't end it, and the run state's long_wait tells notify.py to say how
+the total splits. Every other version waits as it always has.
 """
 
 import argparse
+import http.client
 import mimetypes
 import re
 import sys
@@ -39,7 +46,7 @@ import urllib.request
 from pathlib import Path
 
 import run_state
-from common import ROOT, fail, get_parameter, people, service, ssm_client
+from common import ROOT, fail, get_parameter, people, service, services, ssm_client
 from servicenow_setup import ServiceNow
 
 ASSESS, SCHEDULED, IMPLEMENT, REVIEW, CLOSED, CANCELED = "-4", "-2", "-1", "0", "3", "4"
@@ -52,6 +59,18 @@ MACHINE_USERS = ["release.pipeline", "ai.notes", "evidence.reader"]
 # u_cost_review's values (servicenow_setup.py), by whether a standard change was asked for.
 COST_REVIEW = {True: "cost_approvers", False: "cost_and_change_approvers"}
 REJECTION_COMMENT_LIMIT = 120
+APPROVAL_LIMIT = 30 * 60  # seconds a release waits for approval, unless approval_wait names its version
+
+
+def long_wait(state):
+    """services.yaml's approval_wait if it names this run's version (video 31), else None."""
+    settings = (services().get(state.get("service")) or {}).get("approval_wait") or {}
+    return settings if state.get("version") in settings.get("versions", []) else None
+
+
+def approval_limit(state):
+    settings = long_wait(state)
+    return int(settings["hours"] * 3600) if settings else APPROVAL_LIMIT
 
 
 def connect():
@@ -190,7 +209,7 @@ def open_change(sn, ssm, state):
             "previous version, checks it, and closes this change as unsuccessful with the rollback in its notes."),
         "test_plan": "Before this change:\n" + stage_summary(state),
         "start_date": run_state.iso(started).replace("T", " ").rstrip("Z"),
-        "end_date": run_state.iso(started + 1800).replace("T", " ").rstrip("Z"),
+        "end_date": run_state.iso(started + approval_limit(state)).replace("T", " ").rstrip("Z"),
     }
     # The approval bridge (bridge/handler.py) finds the change of a GitHub Actions or Azure Pipelines run by this.
     if state.get("ci", {}).get("correlation_id"):
@@ -370,6 +389,50 @@ def wait(sn, state, timeout, interval):
     fail("No approval in time.")
 
 
+class NoAnswer(Exception):
+    """ServiceNow asleep or not answering, during a long wait."""
+
+
+class Steady:
+    """ServiceNow for a long wait: a call that fails raises NoAnswer, where it would end the stage. fail() on the
+    hibernation page is a SystemExit. The refusals in wait() aren't calls, so they stop the release as ever."""
+
+    def __init__(self, sn):
+        self.sn = sn
+
+    def __getattr__(self, name):
+        return getattr(self.sn, name)
+
+    def _steadily(self, read, *args, **kwargs):
+        try:
+            return read(*args, **kwargs)
+        except (SystemExit, OSError, ValueError, KeyError, http.client.HTTPException) as error:
+            raise NoAnswer(error.__class__.__name__) from error
+
+    def call(self, *args, **kwargs):
+        return self._steadily(self.sn.call, *args, **kwargs)
+
+    def find(self, *args, **kwargs):
+        return self._steadily(self.sn.find, *args, **kwargs)
+
+
+def wait_long(sn, state, timeout, interval):
+    """wait(), for a version approval_wait names. ServiceNow asleep or not answering gives another look 15 seconds
+    later, up to the limit, and the approval sets long_wait for notify.py."""
+    deadline = time.time() + timeout
+    while True:
+        try:
+            wait(Steady(sn), state, max(int(deadline - time.time()), 0), interval)
+            break
+        except NoAnswer as error:
+            print(f"{time.strftime('%H:%M:%S')} ServiceNow didn't answer ({error}): looking again.", flush=True)
+            if time.time() >= deadline:
+                fail("No approval in time, and ServiceNow isn't answering.")
+            time.sleep(interval)
+    state["long_wait"] = True
+    run_state.save(state)
+
+
 def agent_users(sn):
     """The ServiceNow users of people.yaml's agent: true entries. The coding agent has none
     today, so this guards the day one gets an account."""
@@ -469,7 +532,7 @@ def main():
     noter = sub.add_parser("note")
     noter.add_argument("text")
     waiter = sub.add_parser("wait")
-    waiter.add_argument("--timeout", type=int, default=1800)
+    waiter.add_argument("--timeout", type=int, help="seconds; by default 30 minutes, or approval_wait's hours for its versions")
     waiter.add_argument("--interval", type=int, default=15)
     sub.add_parser("implement")
     closer = sub.add_parser("close")
@@ -491,7 +554,7 @@ def main():
     elif args.command == "note":
         note(sn, state, args.text)
     elif args.command == "wait":
-        wait(sn, state, args.timeout, args.interval)
+        (wait_long if long_wait(state) else wait)(sn, state, args.timeout or approval_limit(state), args.interval)
     elif args.command == "implement":
         implement(sn, state)
     elif args.command == "close":

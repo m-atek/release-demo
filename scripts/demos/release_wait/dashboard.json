@@ -1,0 +1,263 @@
+{
+  "uid": "release-demo-release-wait",
+  "title": "Where a release waits",
+  "description": "One release run of orders-service, stage by stage, from the pipeline's own events in Grafana Cloud Logs, which keeps 14 days. Open it with var-build set to the run's build number.",
+  "tags": [
+    "release-demo",
+    "orders-service",
+    "release-wait"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 0,
+  "refresh": "",
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-14d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "links": [],
+  "annotations": {
+    "list": []
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "build",
+        "label": "Build",
+        "type": "textbox",
+        "query": "",
+        "skipUrlSync": false,
+        "hide": 0,
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "description": "What this page shows, and what in it is chosen.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 2
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "One release run, from the pipeline's own events. Every bar is measured. How long Approval takes is up to whoever plays the approver."
+      }
+    },
+    {
+      "id": 2,
+      "type": "bargauge",
+      "title": "Build #$build: time per stage",
+      "description": "The seconds each stage of this run took, rounded up as Slack rounds them, from events.py's events. Bars share one scale.",
+      "gridPos": {
+        "x": 0,
+        "y": 2,
+        "w": 24,
+        "h": 17
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "last_over_time({source=\"release-demo\", service=\"orders-service\"} | json | job!=\"tests\" | build=\"$build\" and stage=\"Build\" and result=\"ok\" | label_format seconds=`{{ ceil .duration_seconds }}` | unwrap seconds | __error__=\"\" [$__range]) by (stage)",
+          "queryType": "instant",
+          "legendFormat": "Build",
+          "editorMode": "code"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "last_over_time({source=\"release-demo\", service=\"orders-service\"} | json | job!=\"tests\" | build=\"$build\" and stage=\"Test\" and result=\"ok\" | label_format seconds=`{{ ceil .duration_seconds }}` | unwrap seconds | __error__=\"\" [$__range]) by (stage)",
+          "queryType": "instant",
+          "legendFormat": "Test",
+          "editorMode": "code"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "last_over_time({source=\"release-demo\", service=\"orders-service\"} | json | job!=\"tests\" | build=\"$build\" and stage=\"Quality gate\" and result=\"ok\" | label_format seconds=`{{ ceil .duration_seconds }}` | unwrap seconds | __error__=\"\" [$__range]) by (stage)",
+          "queryType": "instant",
+          "legendFormat": "Quality gate",
+          "editorMode": "code"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "last_over_time({source=\"release-demo\", service=\"orders-service\"} | json | job!=\"tests\" | build=\"$build\" and stage=\"SBOM and scan\" and result=\"ok\" | label_format seconds=`{{ ceil .duration_seconds }}` | unwrap seconds | __error__=\"\" [$__range]) by (stage)",
+          "queryType": "instant",
+          "legendFormat": "SBOM and scan",
+          "editorMode": "code"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "last_over_time({source=\"release-demo\", service=\"orders-service\"} | json | job!=\"tests\" | build=\"$build\" and stage=\"Publish\" and result=\"ok\" | label_format seconds=`{{ ceil .duration_seconds }}` | unwrap seconds | __error__=\"\" [$__range]) by (stage)",
+          "queryType": "instant",
+          "legendFormat": "Publish",
+          "editorMode": "code"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "last_over_time({source=\"release-demo\", service=\"orders-service\"} | json | job!=\"tests\" | build=\"$build\" and stage=\"Staging\" and result=\"ok\" | label_format seconds=`{{ ceil .duration_seconds }}` | unwrap seconds | __error__=\"\" [$__range]) by (stage)",
+          "queryType": "instant",
+          "legendFormat": "Staging",
+          "editorMode": "code"
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "last_over_time({source=\"release-demo\", service=\"orders-service\"} | json | job!=\"tests\" | build=\"$build\" and stage=\"Check staging\" and result=\"ok\" | label_format seconds=`{{ ceil .duration_seconds }}` | unwrap seconds | __error__=\"\" [$__range]) by (stage)",
+          "queryType": "instant",
+          "legendFormat": "Check staging",
+          "editorMode": "code"
+        },
+        {
+          "refId": "H",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "last_over_time({source=\"release-demo\", service=\"orders-service\"} | json | job!=\"tests\" | build=\"$build\" and stage=\"Change\" and result=\"ok\" | label_format seconds=`{{ ceil .duration_seconds }}` | unwrap seconds | __error__=\"\" [$__range]) by (stage)",
+          "queryType": "instant",
+          "legendFormat": "Change",
+          "editorMode": "code"
+        },
+        {
+          "refId": "I",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "last_over_time({source=\"release-demo\", service=\"orders-service\"} | json | job!=\"tests\" | build=\"$build\" and stage=\"Approval\" and result=\"ok\" | label_format seconds=`{{ ceil .duration_seconds }}` | unwrap seconds | __error__=\"\" [$__range]) by (stage)",
+          "queryType": "instant",
+          "legendFormat": "Approval",
+          "editorMode": "code"
+        },
+        {
+          "refId": "J",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "last_over_time({source=\"release-demo\", service=\"orders-service\"} | json | job!=\"tests\" | build=\"$build\" and stage=\"Production\" and result=\"ok\" | label_format seconds=`{{ ceil .duration_seconds }}` | unwrap seconds | __error__=\"\" [$__range]) by (stage)",
+          "queryType": "instant",
+          "legendFormat": "Production",
+          "editorMode": "code"
+        },
+        {
+          "refId": "K",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "last_over_time({source=\"release-demo\", service=\"orders-service\"} | json | job!=\"tests\" | build=\"$build\" and stage=\"Check production\" and result=\"ok\" | label_format seconds=`{{ ceil .duration_seconds }}` | unwrap seconds | __error__=\"\" [$__range]) by (stage)",
+          "queryType": "instant",
+          "legendFormat": "Check production",
+          "editorMode": "code"
+        },
+        {
+          "refId": "L",
+          "datasource": {
+            "type": "loki",
+            "uid": "grafanacloud-logs"
+          },
+          "expr": "last_over_time({source=\"release-demo\", service=\"orders-service\"} | json | job!=\"tests\" | build=\"$build\" and stage=\"Record\" and result=\"ok\" | label_format seconds=`{{ ceil .duration_seconds }}` | unwrap seconds | __error__=\"\" [$__range]) by (stage)",
+          "queryType": "instant",
+          "legendFormat": "Record",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dthms",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#10aced"
+          },
+          "noValue": "No run: open this page with var-build set to its build number"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "I"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ff9900"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "valueMode": "text",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizHeight": 24,
+        "minVizWidth": 8,
+        "maxVizHeight": 60,
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "text": {
+          "titleSize": 18,
+          "valueSize": 22
+        },
+        "legend": {
+          "showLegend": false
+        }
+      }
+    }
+  ]
+}

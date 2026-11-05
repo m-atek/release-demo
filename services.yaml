@@ -56,6 +56,12 @@ orders-service:
     departures: ["14:00"]
     days: [Mon, Tue, Wed, Thu, Fri]
 
+  # Video 31: this version may wait hours for its approval, where change.py gives up after 30 minutes.
+  # It names versions, so every other release of this service waits as it always has.
+  approval_wait:
+    versions: [1.33.0]
+    hours: 10
+
   # Demo 21: feature flags in AWS AppConfig (infra/demos/21-release-train-flags),
   # read from 1.8.0 on and named, with the issue each hides, in the version's
   # flags.yaml. /flag in Slack switches one of these, in production only.
