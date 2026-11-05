@@ -26,6 +26,10 @@ class Reset:
         if not self.dry_run:
             do()
 
+    def step(self, title, body):
+        print(title)
+        body()
+
 
 def test_the_setting_at_its_baseline_needs_nothing():
     client, reset = FakeAppConfig(), Reset()
@@ -164,3 +168,96 @@ class _Runner:
         except Exception as error:
             self.failed.append(title)
             print(error)
+
+
+def test_production_has_the_baseline_only_with_a_lambda_version_of_it(monkeypatch):
+    import deploy
+
+    class Client:
+        def __init__(self, descriptions):
+            self.descriptions = descriptions
+
+        def get_paginator(self, name):
+            assert name == "list_versions_by_function"
+            return self
+
+        def paginate(self, FunctionName):
+            assert FunctionName == "orders-service-production"
+            return [{"Versions": [{"Description": text} for text in self.descriptions]}]
+
+    monkeypatch.setattr(deploy, "lambda_client", lambda service_name: Client(["1.3.0", "1.31.0"]))
+    assert reset_py.has_baseline() is True
+    monkeypatch.setattr(deploy, "lambda_client", lambda service_name: Client(["1.3.0"]))
+    assert reset_py.has_baseline() is False
+
+
+@pytest.fixture
+def first_release(monkeypatch):
+    import history
+    import release_job
+
+    started = []
+    monkeypatch.setattr(release_job.ReleaseJob, "as_release_bot", classmethod(lambda cls, job="release": "the job"))
+    monkeypatch.setattr(reset_py, "get_parameter", lambda client, name: f"id of {name}")
+    monkeypatch.setattr(reset_py, "ssm_client", lambda: None)
+    monkeypatch.setattr(history, "release", lambda job, version, key, requester: started.append((job, version, key, requester)) or 41)
+    monkeypatch.setattr(history, "watch", lambda job, number, label: {"result": "SUCCESS"})
+    return started
+
+
+def test_the_first_release_is_a_real_one_with_sam_as_the_requester(first_release):
+    reset = Reset()
+    reset_py.release_baseline(reset, "ORD-120")
+    assert first_release == [("the job", "1.31.0", "ORD-120", "id of slack/member-id/sam")]
+    assert reset.actions == 1
+
+
+def test_a_first_release_that_fails_stops_the_reset(first_release, monkeypatch):
+    import history
+
+    monkeypatch.setattr(history, "watch", lambda job, number, label: {"result": "FAILURE"})
+    with pytest.raises(SystemExit):
+        reset_py.release_baseline(Reset(), "ORD-120")
+
+
+def test_a_dry_run_releases_nothing(first_release):
+    reset = Reset(dry_run=True)
+    reset_py.release_baseline(reset, "ORD-120")
+    assert first_release == [] and reset.actions == 1
+
+
+def test_main_gets_the_baseline_only_when_it_has_another(monkeypatch):
+    staged = []
+    monkeypatch.setattr(reset_py.host, "stage", lambda service, version: staged.append(version))
+    monkeypatch.setattr(reset_py.host, "main_version", lambda path: "1.31.0")
+    reset_py.stage(Reset())
+    assert staged == []
+    monkeypatch.setattr(reset_py.host, "main_version", lambda path: "1.3.0")
+    reset_py.stage(Reset())
+    assert staged == ["1.31.0"]
+
+
+def test_a_first_time_dry_run_skips_the_aliases_because_the_version_isnt_there(monkeypatch, capsys):
+    shared = SimpleNamespace(
+        Reset=lambda dry_run: Reset(dry_run), stop_runs=lambda reset, jobs: None, release_jobs=lambda: [], cancel_changes=lambda reset: None,
+        switches_off=lambda reset: None, HistoryRunning=RuntimeError, lambda_aliases=lambda reset: pytest.fail("no version yet"),
+        warm_slack_handler=lambda reset, url: None)
+    monkeypatch.setattr(reset_py, "shared_reset", lambda: shared)
+    monkeypatch.setattr(reset_py, "story_key", lambda reset: "ORD-?")
+    monkeypatch.setattr(reset_py, "has_baseline", lambda: False)
+    monkeypatch.setattr(reset_py, "stage", lambda reset: None)
+    monkeypatch.setattr(reset_py, "settings_at_baseline", lambda reset: None)
+    monkeypatch.setattr(reset_py, "release_baseline", lambda reset, key: None)
+    assert reset_py.run(True, None) == 0
+    out = capsys.readouterr().out
+    assert "skipped in a dry run" in out and "Dry run in" in out
+
+
+def test_from_the_mac_it_hands_itself_over_to_the_tools_host(monkeypatch):
+    handed = []
+    monkeypatch.setattr(reset_py.host, "on_host", lambda: False)
+    monkeypatch.setattr(reset_py.host, "hand_over", lambda name, script, args, title=None: handed.append((name, script, args, title)) or 0)
+    monkeypatch.setattr(reset_py, "shared_reset", lambda: SimpleNamespace(slack_handler_url=lambda: "https://handler.example/"))
+    monkeypatch.setattr("sys.argv", ["reset.py", "--dry-run"])
+    assert reset_py.main() == 0
+    assert handed == [("reset", "demos/settings/reset.py", ["--dry-run", "--slack-handler-url", "https://handler.example/"], "reset.py settings --dry-run")]

@@ -15,7 +15,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(1, str(HERE.parents[1]))
 
 import setting  # noqa: E402
-from common import aws_session, http_get, service  # noqa: E402
+from common import aws_session, service  # noqa: E402
 
 SERVICE = "orders-service"
 
@@ -30,7 +30,7 @@ def status():
         print(f"{environment}: version {number} of the file: {json.dumps(content)}"
               f"{f', deployment {going} still running' if going else ''}")
         url = functions.get_function_url_config(FunctionName=config["function"], Qualifier="live")["FunctionUrl"].rstrip("/")
-        health = setting.live_health(url, http_get)
+        health = setting.live_health(url)
         print(f"{environment}: {config['function']} runs {health.get('version', 'nothing that answers')}, and serves "
               f"{json.dumps(health.get('settings', 'no settings'))}")
 

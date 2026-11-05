@@ -449,3 +449,68 @@ def test_the_events_of_a_setting_stay_out_of_the_release_views(stage):
                                  recovery_seconds=None, job=None))()
     event = events.event(args, state)
     assert event["service"] == "orders-service-settings" and "deploy" not in event
+
+
+# The command line, and where the addresses come from.
+
+def base_state():
+    return {"service": "orders-service", "version": "1.3.0", "jira_key": "", "jira_keys": [], "requested_by": SAM,
+            "slack": {"channel": "C1", "ts": "1.1"}, "build": {"number": "7", "url": "u"}, "started_at": 1000.0, "stages": {}}
+
+
+def test_init_takes_the_key_and_value_from_the_environment_only(monkeypatch, slack):
+    run_state.save(base_state())
+    monkeypatch.setenv("SETTING", KEY)
+    monkeypatch.setenv("VALUE", "2026-11-30; rm -rf /")
+    monkeypatch.setattr("sys.argv", ["setting.py", "init"])
+    assert steps.main() == 0
+    assert run_state.load()["setting"] == {"key": KEY, "value": "2026-11-30; rm -rf /"}
+
+
+def test_a_refusal_is_exit_3_and_the_state_is_kept(monkeypatch, slack):
+    run_state.save({**base_state(), "setting": {"key": KEY, "value": "x"}})
+
+    def refuse(state):
+        state["setting"]["before"] = BASELINE
+        return steps.REFUSED
+
+    monkeypatch.setattr(steps, "validate", refuse)
+    monkeypatch.setattr("sys.argv", ["setting.py", "validate"])
+    assert steps.main() == steps.REFUSED
+    assert run_state.load()["setting"]["before"] == BASELINE
+
+
+def test_the_address_comes_from_the_deploy_role_once(monkeypatch):
+    import deploy
+
+    calls = []
+
+    class Client:
+        def get_function_url_config(self, FunctionName, Qualifier):
+            calls.append((FunctionName, Qualifier))
+            return {"FunctionUrl": "https://staging.example/"}
+
+    monkeypatch.setattr(deploy, "lambda_client", lambda service_name: Client())
+    state = {**base_state(), "setting": {"key": KEY, "value": "x"}}
+    assert steps.function_url(state, "staging") == "https://staging.example"
+    assert steps.function_url(state, "staging") == "https://staging.example"
+    assert calls == [("orders-service-staging", "live")]
+
+
+def test_status_says_what_each_environment_has_and_serves(aws, monkeypatch, capsys):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("settings_demo", steps.HERE / "demo.py")
+    demo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(demo)
+
+    class Functions:
+        def get_function_url_config(self, FunctionName, Qualifier):
+            return {"FunctionUrl": f"https://{FunctionName.split('-')[-1]}.example/"}
+
+    monkeypatch.setattr(steps, "appconfig", lambda: aws.appconfig)
+    monkeypatch.setattr(demo, "aws_session", lambda: type("Session", (), {"client": lambda self, name: Functions()})())
+    demo.status()
+    out = capsys.readouterr().out
+    assert f'staging: version 1 of the file: {{"free_delivery_until": "{BASELINE}"}}' in out
+    assert "orders-service-production runs 1.31.0" in out
