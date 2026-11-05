@@ -37,6 +37,10 @@ def call() {
             if (budgetOn) {
                 releaseStage('Error budget') { errorBudget.run(cfg) }
             }
+            if (planned('Package age')) {
+                // Video 30: how old each package going into the zip is on PyPI, before anything is built.
+                releaseStage('Package age') { packageAge.run(cfg) }
+            }
             releaseStage('Build') { toolchain.build(service, params.JIRA_KEY, cfg) }
             releaseStage('Test') { toolchain.test(service, cfg, 'release') }
             releaseStage('Quality gate') { toolchain.qualityGate(service, version, cfg) }
@@ -123,6 +127,9 @@ def call() {
                     }
                     if (budgetOn) {
                         errorBudget.approved(cfg)
+                    }
+                    if (planned('Package age')) {
+                        packageAge.approved(cfg)
                     }
                 }
             }

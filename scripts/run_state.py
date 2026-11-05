@@ -45,6 +45,10 @@ def stages_for(config):
     for key, name, after, folder in VERSION_STAGES:
         if config.get("scripts", {}).get(key) and config.get("dir") and (Path(config["dir"]) / folder).is_dir():
             stages.insert(max(stages.index(stage) for stage in after if stage in stages) + 1, name)
+    # Video 30: the stage Package age, first of all, only for the versions services.yaml names.
+    if (config.get("scripts", {}).get("package_age") and config.get("dir") and (Path(config["dir"]) / "VERSION").exists()
+            and version_of(config["dir"]) in (config.get("package_age") or {}).get("versions", [])):
+        stages.insert(0, "Package age")
     return stages
 
 

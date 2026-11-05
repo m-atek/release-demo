@@ -47,9 +47,10 @@ TOOLCHAIN = {
 # version (demo 20's Migration check and Rollback check), the cost check's
 # switch (video 18), an evaluation script (demo 23's runbook-assistant), a
 # database in catalog's version (video 25's Blip check), the error budget's
-# switch (video 27). The other CIs release 1.4.0, which has none of them.
+# switch (video 27), the versions services.yaml names for Package age (video
+# 30). The other CIs release 1.4.0, which has none of them.
 NOT_ON_OTHER_CIS = ("Contract check", "Plan", "Migration check", "Rollback check", "Cost check", "Evaluation",
-                    "Blip check", "Error budget")
+                    "Blip check", "Error budget", "Package age")
 # Calls only Jenkins' release makes: the scan's line in its Slack message (video 24).
 JENKINS_ONLY = ("scan_line.py",)
 # The calls a stage wrapper makes, compared on their own.
