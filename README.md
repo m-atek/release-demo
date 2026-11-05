@@ -707,6 +707,25 @@ On the call: `/sbom CVE-2026-111497`, `/release orders-service ORD-[f] standard`
 
 After the call: `.venv/bin/python scripts/reset.py`. It puts production and staging back on 1.3.0 and the switch off, so brotli 1.2.0 isn't left live. `scripts/demo.sh status patch-clock` warns while it is.
 
+## Demo on a call: where a release waits (video 31)
+
+One release, split: how long it waited for approval, and how long everything else took. Nothing breaks. **The wait is chosen:** whoever plays Alex approves when they decide, and the video says so. Every time on screen comes from the run's own records: Slack's rows, the events in Grafana and Splunk, the change's work notes and close notes.
+
+| State | Jira | What changes | What happens |
+| --- | --- | --- | --- |
+| 1.33.0 | ORD-[a] | One line on 1.26.0's page: "Free returns within 30 days" | A normal change that may wait up to 10 hours for Alex. Slack ends "Live in [total].", then "Waited for approval: [wait]." and "Everything else: [rest].", which add up to the total exactly |
+| 1.33.1 | ORD-[b] | One more line: "Order by 20:00, shipped today" | A standard change, pre-approved, with the same gates. It waits as any other version does |
+
+`approval_wait` in `services.yaml` names 1.33.0, and only that version: `change.py wait` may run 10 hours instead of 30 minutes, the change's planned window is as long, and a ServiceNow that sleeps or doesn't answer gives a line in the job's log and another look 15 seconds later, where any other version's wait stops. Everything else the wait touches is shared and unchanged. So a sleeping PDI costs the time it takes you to wake it, not the day.
+
+**While it waits, nothing else can release.** The `release` job runs one build at a time, for every service, so any other `/release` queues behind it, and **every demo's reset stops it**, this one's too. `/rollback` is its own job and still runs. The tools host stays on while the build runs, at USD 0.19 an hour, because `idle_stop.py` counts it. No machine, role, secret or Slack word is new, so there is no apply, and no `demo.sh up` or `down`.
+
+Once, after the merge: `.venv/bin/python scripts/demos/release_wait/setup.py` makes ORD-[a] and ORD-[b] and the dashboard "Where a release waits": one bar per stage of one run, in the pipeline's order, on one scale, from the events `scripts/events.py` already sends. `.venv/bin/python scripts/demos/release_wait/dashboard.py --url <build>` prints the page for a run; it reads any run in the last 14 days, which is as long as Grafana Cloud Logs keeps them. If its `ceil` won't draw, `dashboard.py --plain` reads the seconds as sent, rounded down where Slack rounds up.
+
+Before a call or a take: `scripts/tools.sh up`, then `.venv/bin/python scripts/reset.py release-wait`: 1.26.0 in staging and production, 1.33.0 on main, every demo's switch off. Then `/release orders-service ORD-[a]`, approve as Alex when you choose, `scripts/host.py stage orders-service 1.33.1`, and `/release orders-service ORD-[b] standard`.
+
+After: `.venv/bin/python scripts/reset.py`.
+
 ## Layout
 
 ```
