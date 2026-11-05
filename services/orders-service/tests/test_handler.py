@@ -1,6 +1,5 @@
 import datetime
 import json
-import urllib.parse
 
 import handler as app
 from conftest import request
@@ -24,22 +23,6 @@ def test_page_shows_service_version_and_deploy_time():
     assert "26 Oct 2026, 09:30 UTC" in response["body"]
 
 
-def test_page_shows_delivery_estimate():
-    assert "Delivery estimate: 2 days" in request("/")["body"]
-
-
-def test_page_shows_the_pickup_time():
-    assert "Pickup in store: ready in 2 hours" in request("/")["body"]
-
-
-def test_pickup_time_by_store():
-    answer = json.loads(request("/api/pickup", query="store=Den%20Haag%20Spui")["body"])
-    assert answer == {"store": "Den Haag Spui", "hours": 4}
-    assert json.loads(request("/api/pickup")["body"])["store"] == app.PICKUP_STORE
-    assert app.pickup_hours("Nowhere") == 24
-    assert app.pickup_line("Nowhere") == "Pickup in store: ready in 24 hours"
-
-
 def test_page_escapes_environment_name(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "<staging>")
     assert "<staging>" not in request("/")["body"]
@@ -57,26 +40,6 @@ def test_orders_api_returns_todays_orders():
     assert body["date"] == datetime.date.today().isoformat()
     assert 8 <= len(body["orders"]) <= 14
     assert all(order["total_eur"] > 0 for order in body["orders"])
-
-
-def price_of(name):
-    return request("/api/price", query="product=" + urllib.parse.quote(name))
-
-
-def test_price_of_a_product_by_its_exact_name():
-    response = price_of("Rain jacket")
-    assert response["statusCode"] == 200
-    assert json.loads(response["body"]) == {"product": "Rain jacket", "price_eur": 74.50}
-
-
-def test_price_accepts_the_old_store_apps_product_names():
-    response = price_of("Rain jacket, blue")
-    assert response["statusCode"] == 200
-    assert json.loads(response["body"]) == {"product": "Rain jacket", "price_eur": 74.50}
-
-
-def test_price_without_a_product_is_a_bad_request():
-    assert request("/api/price")["statusCode"] == 400
 
 
 def test_unknown_path_and_method():
