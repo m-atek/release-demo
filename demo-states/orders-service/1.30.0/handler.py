@@ -38,7 +38,7 @@ PRODUCTS = [
 PRICES = dict(PRODUCTS)
 STATUSES = ["received", "picking", "packed", "shipped"]
 DELIVERY_ESTIMATE_DAYS = 2
-RETURN_WINDOW_DAYS = 30
+GIFT_WRAP_EUR = 3.50
 
 _deployed_at = None
 
@@ -142,7 +142,7 @@ def page():
         commit=html.escape(COMMIT[:7]),
         deployed=html.escape(deployed_at()),
         delivery_days=DELIVERY_ESTIMATE_DAYS,
-        return_days=RETURN_WINDOW_DAYS,
+        gift_wrap=f"{GIFT_WRAP_EUR:.2f}",
         order_count=len(orders),
         rows=rows,
     )
@@ -233,7 +233,7 @@ PAGE = """<!doctype html>
   </header>
   <div class="version">{version}</div>
   <p class="note">Delivery estimate: {delivery_days} days</p>
-  <p class="note">Free returns within {return_days} days</p>
+  <p class="note">Gift wrap on any order: &euro; {gift_wrap}</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>

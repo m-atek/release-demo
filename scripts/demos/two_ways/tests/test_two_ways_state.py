@@ -41,10 +41,10 @@ def test_1_30_0_is_1_26_0_with_three_lines_of_code_and_a_test():
     old = (STATES / "1.26.0" / "handler.py").read_text().splitlines()
     new = (STATES / "1.30.0" / "handler.py").read_text().splitlines()
     assert [line for line in new if line not in old] == [
-        "RETURN_WINDOW_DAYS = 30", "        return_days=RETURN_WINDOW_DAYS,", '  <p class="note">Free returns within {return_days} days</p>']
+        "GIFT_WRAP_EUR = 3.50", '        gift_wrap=f"{GIFT_WRAP_EUR:.2f}",', '  <p class="note">Gift wrap on any order: &euro; {gift_wrap}</p>']
     assert [line for line in old if line not in new] == []
     tests = (STATES / "1.30.0" / "tests" / "test_handler.py").read_text()
-    assert "def test_page_shows_the_return_window():" in tests
+    assert "def test_page_offers_gift_wrap():" in tests
 
 
 @pytest.mark.parametrize("version", ["1.26.0", "1.30.0"])
@@ -59,8 +59,8 @@ def test_each_passes_both_checks_and_its_page_has_no_demo_label(version, monkeyp
 
 
 def test_only_1_30_0_shows_the_new_line(monkeypatch):
-    assert "Free returns" not in answers(load("1.26.0", monkeypatch), "/")["body"]
-    assert "Free returns within 30 days" in answers(load("1.30.0", monkeypatch), "/")["body"]
+    assert "Gift wrap" not in answers(load("1.26.0", monkeypatch), "/")["body"]
+    assert "Gift wrap on any order: &euro; 3.50" in answers(load("1.30.0", monkeypatch), "/")["body"]
 
 
 def test_why_the_baseline_isn_t_the_main_video_s_its_page_carries_the_label(monkeypatch):
@@ -96,7 +96,7 @@ def test_the_swapped_package_built_from_the_real_state_still_runs_and_says_the_s
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     page = answers(module, "/")
-    assert page["statusCode"] == 200 and "1.30.0" in page["body"] and "Free returns within 30 days" in page["body"]
+    assert page["statusCode"] == 200 and "1.30.0" in page["body"] and "Gift wrap on any order" in page["body"]
 
 
 def test_the_helpers_and_the_reset_name_the_same_version():

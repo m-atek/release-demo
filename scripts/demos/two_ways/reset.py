@@ -35,8 +35,8 @@ from common import service  # noqa: E402
 
 SERVICE, BASELINE, STAGED = "orders-service", "1.26.0", "1.30.0"
 TAKE_VERSIONS = {STAGED}
-STORY = "Show the return window on the order page"
-STORY_TEXT = "The order page says how long a customer can return an order for free."
+STORY = "Offer gift wrap on the order page"
+STORY_TEXT = "One line on the order page: gift wrap on any order, for a fixed price."
 SCRIPT = "demos/two_ways/reset.py"
 
 

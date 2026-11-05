@@ -13,7 +13,7 @@ class Jira:
         self.found, self.made = found, []
 
     def search(self, jql, fields=None):
-        assert "Show the return window on the order page" in jql
+        assert "Offer gift wrap on the order page" in jql
         return self.found or []
 
     def create(self, kind, summary, description, labels=(), due=None, fix_version=None):
@@ -72,16 +72,16 @@ def test_a_reset_runs_every_step_in_order_and_makes_the_story_once(module, monke
     assert code == 0
     assert recorder.order == ["release_jobs", "stop_runs", "cancel_changes", "github_takes", "jfrog_takes",
                               "switches_off", "lambda_aliases", "warm_slack_handler"]
-    assert jira.made == [("Story", "Show the return window on the order page", ["orders-service"], "orders-service 1.30.0")]
+    assert jira.made == [("Story", "Offer gift wrap on the order page", ["orders-service"], "orders-service 1.30.0")]
     assert stages == [("orders-service", "1.30.0")]
     out = capsys.readouterr().out
-    assert "ORD-[s] is ORD-201: Show the return window on the order page (made now)" in out
+    assert "ORD-[s] is ORD-201: Offer gift wrap on the order page (made now)" in out
     assert "Ready for a take: production on 1.26.0, 1.30.0 on main, ORD-[s] is ORD-201." in out
 
 
 def test_a_second_reset_finds_the_story_and_main_and_turns_nothing_on(module, monkeypatch, capsys):
     recorder = Recorder(module.shared_reset())
-    found = {"key": "ORD-201", "fields": {"summary": "Show the return window on the order page", "status": {"name": "Backlog"}}}
+    found = {"key": "ORD-201", "fields": {"summary": "Offer gift wrap on the order page", "status": {"name": "Backlog"}}}
     jira = Jira([found])
     code, stages = run_with(module, monkeypatch, recorder, jira, main_version="1.30.0")
     assert code == 0 and stages == [] and jira.made == []
@@ -91,7 +91,7 @@ def test_a_second_reset_finds_the_story_and_main_and_turns_nothing_on(module, mo
 
 
 def test_a_similar_summary_isn_t_the_story(module):
-    close = {"key": "ORD-9", "fields": {"summary": "Show the return window on the order page, later", "status": {"name": "Backlog"}}}
+    close = {"key": "ORD-9", "fields": {"summary": "Offer gift wrap on the order page, later", "status": {"name": "Backlog"}}}
     assert module.find_story(Jira([close])) is None
 
 

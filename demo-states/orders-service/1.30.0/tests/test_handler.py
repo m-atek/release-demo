@@ -28,8 +28,8 @@ def test_page_shows_delivery_estimate():
     assert "Delivery estimate: 2 days" in request("/")["body"]
 
 
-def test_page_shows_the_return_window():
-    assert "Free returns within 30 days" in request("/")["body"]
+def test_page_offers_gift_wrap():
+    assert "Gift wrap on any order: &euro; 3.50" in request("/")["body"]
 
 
 def test_page_escapes_environment_name(monkeypatch):
