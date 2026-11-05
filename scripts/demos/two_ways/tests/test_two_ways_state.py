@@ -76,6 +76,29 @@ def test_1_30_0_needs_no_other_stage_and_goes_through_the_deploy_script_as_it_is
     assert service("orders-service")["scripts"]["deploy"] == "scripts/demos/rollback-trap/deploy.py"
 
 
+def test_the_swapped_package_built_from_the_real_state_still_runs_and_says_the_same(tmp_path, monkeypatch):
+    """What "nothing in it could hurt" rests on: the real build's zip, with cheat.py's one file added, serves the same page."""
+    import io
+    import zipfile
+
+    import build
+
+    package = tmp_path / "package.zip"
+    build.write_zip(STATES / "1.30.0", package)
+    swapped = cheat.with_one_more_file(package.read_bytes())
+    assert swapped != package.read_bytes()
+    unpacked = tmp_path / "unpacked"
+    zipfile.ZipFile(io.BytesIO(swapped)).extractall(unpacked)
+    assert {path.name for path in unpacked.iterdir()} == {cheat.EXTRA_FILE, "VERSION", "handler.py"}
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DEPLOYED_AT", "5 Nov 2026, 15:00 UTC")
+    spec = importlib.util.spec_from_file_location("swapped_handler", unpacked / "handler.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    page = answers(module, "/")
+    assert page["statusCode"] == 200 and "1.30.0" in page["body"] and "Free returns within 30 days" in page["body"]
+
+
 def test_the_helpers_and_the_reset_name_the_same_version():
     reset = by_path("two_ways_reset_for_version", HERE / "reset.py")
     assert cheat.VERSION == reset.STAGED == "1.30.0"
