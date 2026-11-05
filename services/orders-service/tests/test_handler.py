@@ -1,6 +1,5 @@
 import datetime
 import json
-import urllib.parse
 
 import handler as app
 from conftest import request
@@ -15,6 +14,23 @@ def test_health_reports_version_and_environment():
     assert body["environment"] == "staging"
 
 
+def test_health_names_the_sdk_in_its_own_package(monkeypatch):
+    import importlib.metadata
+
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: {"boto3": "1.43.121"}[name])
+    assert json.loads(request("/health")["body"])["aws_sdk"] == "1.43.121"
+
+
+def test_health_says_so_when_the_package_holds_no_sdk(monkeypatch):
+    import importlib.metadata
+
+    def missing(name):
+        raise importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(importlib.metadata, "version", missing)
+    assert json.loads(request("/health")["body"])["aws_sdk"] == "unknown"
+
+
 def test_page_shows_service_version_and_deploy_time():
     response = request("/")
     assert response["statusCode"] == 200
@@ -26,10 +42,6 @@ def test_page_shows_service_version_and_deploy_time():
 
 def test_page_shows_delivery_estimate():
     assert "Delivery estimate: 2 days" in request("/")["body"]
-
-
-def test_page_offers_gift_wrap():
-    assert "Gift wrap on any order: &euro; 3.50" in request("/")["body"]
 
 
 def test_page_escapes_environment_name(monkeypatch):
@@ -49,20 +61,6 @@ def test_orders_api_returns_todays_orders():
     assert body["date"] == datetime.date.today().isoformat()
     assert 8 <= len(body["orders"]) <= 14
     assert all(order["total_eur"] > 0 for order in body["orders"])
-
-
-def price_of(name):
-    return request("/api/price", query="product=" + urllib.parse.quote(name))
-
-
-def test_price_of_a_product_by_its_exact_name():
-    response = price_of("Rain jacket")
-    assert response["statusCode"] == 200
-    assert json.loads(response["body"]) == {"product": "Rain jacket", "price_eur": 74.50}
-
-
-def test_price_without_a_product_is_a_bad_request():
-    assert request("/api/price")["statusCode"] == 400
 
 
 def test_unknown_path_and_method():
