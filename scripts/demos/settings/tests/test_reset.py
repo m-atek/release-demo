@@ -48,6 +48,34 @@ def test_a_changed_setting_goes_back_with_no_bake_and_only_where_it_differs():
     assert again.actions == 0
 
 
+def test_after_a_move_it_waits_for_the_containers_to_read_the_file(monkeypatch):
+    waited = []
+    monkeypatch.setattr(steps, "pause", waited.append)
+    client = FakeAppConfig()
+    client.versions[2] = json.dumps({"free_delivery_until": "2026-11-31"}).encode()
+    client.deployments["env-s"].insert(0, client.done(2, 2))
+    reset_py.settings_at_baseline(Reset(), client, KNOWN)
+    assert waited == [reset_py.FILE_READ_SECONDS]
+    reset_py.settings_at_baseline(Reset(), client, KNOWN)
+    assert waited == [reset_py.FILE_READ_SECONDS], "nothing moved, so nothing to wait for"
+
+
+def test_the_setting_goes_back_before_anything_calls_the_page(monkeypatch):
+    """A take that died in staging leaves a date that breaks the page, and the aliases' step fails on a page that doesn't answer."""
+    order = []
+    shared = SimpleNamespace(
+        Reset=lambda dry_run: _Runner(), stop_runs=lambda reset, jobs: None, release_jobs=lambda: [], cancel_changes=lambda reset: None,
+        switches_off=lambda reset: None, HistoryRunning=RuntimeError, lambda_aliases=lambda reset: order.append("aliases"),
+        warm_slack_handler=lambda reset, url: order.append("slack"))
+    monkeypatch.setattr(reset_py, "shared_reset", lambda: shared)
+    monkeypatch.setattr(reset_py, "story_key", lambda reset: "ORD-120")
+    monkeypatch.setattr(reset_py, "has_baseline", lambda: True)
+    monkeypatch.setattr(reset_py, "stage", lambda reset: order.append("stage"))
+    monkeypatch.setattr(reset_py, "settings_at_baseline", lambda reset: order.append("setting"))
+    assert reset_py.run(False, None) == 0
+    assert order == ["stage", "setting", "aliases", "slack"]
+
+
 def test_a_running_deployment_is_stopped_first():
     client = FakeAppConfig()
     client.versions[2] = json.dumps({"free_delivery_until": "2026-11-30"}).encode()

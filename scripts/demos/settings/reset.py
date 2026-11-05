@@ -8,9 +8,10 @@
 3. ORD-[s], the one Jira story, made if it doesn't exist, and printed;
 4. the first time, a real release of 1.31.0 under ORD-[s] as a standard change (about 4 minutes);
 5. 1.31.0 on main;
-6. both aliases on the newest published 1.31.0, and both functions called once;
-7. the setting at its baseline in both environments: a running deployment stopped first, and a
-   deployment, all at once with no bake time, only where the value differs;
+6. the setting at its baseline in both environments: a running deployment stopped first, and a
+   deployment, all at once with no bake time, only where the value differs. This comes before the
+   call in step 7, because a take that died in staging leaves a date there that breaks the page;
+7. both aliases on the newest published 1.31.0, and both functions called once;
 8. the Slack handler warmed.
 
 Under 2 minutes after the first time, safe to run twice. A refused version stays in AWS AppConfig's
@@ -37,6 +38,7 @@ SERVICE, BASELINE = "orders-service", "1.31.0"
 STORY = "Show the free delivery date on the order page"
 STORY_TEXT = "The order page says until when delivery is free, from a setting that changes without a release."
 DESCRIPTION = "reset.py before the next take"
+FILE_READ_SECONDS = 16      # a container reads the file at most every 15 seconds
 
 
 def shared_reset():
@@ -118,6 +120,7 @@ def put_at_baseline(client, known, environment, content, baseline):
 def settings_at_baseline(reset, client=None, known=None):
     client, known = client or setting.appconfig(), known or setting.ids(SERVICE)
     baseline = setting.settings_of(SERVICE)["baseline"]
+    moved = False
     for environment in ("staging", "production"):
         going = setting.flags.running(client, known, environment)
         if going:
@@ -129,6 +132,9 @@ def settings_at_baseline(reset, client=None, known=None):
             continue
         reset.act(f"put {environment} back on {baseline} (all at once, no bake time)",
                   lambda environment=environment, content=content: put_at_baseline(client, known, environment, content, baseline))
+        moved = True
+    if moved and not reset.dry_run:
+        setting.pause(FILE_READ_SECONDS)
 
 
 def run(dry_run, slack_url):
@@ -163,11 +169,11 @@ def run(dry_run, slack_url):
         print(f"Stopped: {'; '.join(reset.failed)}.")
         return 1
     reset.step(f"6. {SERVICE} {BASELINE} on main", lambda: stage(reset))
+    reset.step("7. The setting in AWS AppConfig", lambda: settings_at_baseline(reset))
     if first_time and dry_run:
-        print("7. Lambda aliases, and one call each\n  skipped in a dry run: the release would make the version first")
+        print("8. Lambda aliases, and one call each\n  skipped in a dry run: the release would make the version first")
     else:
-        reset.step("7. Lambda aliases, and one call each", lambda: shared.lambda_aliases(reset))
-    reset.step("8. The setting in AWS AppConfig", lambda: settings_at_baseline(reset))
+        reset.step("8. Lambda aliases, and one call each", lambda: shared.lambda_aliases(reset))
     reset.step("9. The Slack handler, one call", lambda: shared.warm_slack_handler(reset, slack_url))
     took = time.monotonic() - started
     if reset.failed:
