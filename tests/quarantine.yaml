@@ -12,5 +12,11 @@ quarantine:
     test: tests/test_handler.py::test_delivery_estimate_timeout
     issue: ORD-101
     since: 2026-11-01
-    until: 2026-11-04
+    until: 2026-11-05
     reason: 9 of 78 runs in 14 days failed, then passed on rerun.
+  - service: orders-service
+    test: tests/test_handler.py::test_not_in_this_version
+    issue: ORD-101
+    since: 2026-11-01
+    until: 2026-11-04
+    reason: 'Check 7 of demo 15: a test this version doesn''t have.'
