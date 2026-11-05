@@ -30,6 +30,7 @@ sys.path.insert(1, str(SCRIPTS))
 
 import host  # noqa: E402
 import publish  # noqa: E402
+from change import MACHINE_USERS  # noqa: E402
 from common import aws_session, fail, get_parameter, service, ssm_client  # noqa: E402
 from servicenow_setup import SETUP_USER, ServiceNow, raw  # noqa: E402
 
@@ -57,6 +58,8 @@ def approve(sn, number):
     person = sn.find("sys_user", f"sys_id={requester}", "name,user_name") if requester else None
     if not person:
         fail(f"{number} names nobody as Requested by.")
+    if person["user_name"] in MACHINE_USERS:
+        fail(f"{number} was asked by {person['user_name']}, not a person: this run didn't start from Sam's Slack.")
     query = f"sysapproval={change['sys_id']}^approver={requester}"
     row = sn.find("sysapproval_approver", query, "sys_id,state")
     if not row:

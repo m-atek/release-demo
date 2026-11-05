@@ -72,6 +72,15 @@ def test_approve_refuses_what_isn_t_a_waiting_change_with_a_requester(number, ch
     assert len(sn.rows) == 1
 
 
+def test_a_run_no_person_asked_for_is_refused_before_anything_is_written(capsys):
+    """A run started without Sam's Slack id names release.pipeline: that row would prove nothing."""
+    sn = Now(requested_by="pipeline-id")
+    with pytest.raises(SystemExit):
+        cheat.approve(sn, "CHG0030120")
+    assert "not a person" in capsys.readouterr().err
+    assert len(sn.rows) == 1
+
+
 def test_approve_signs_in_as_the_setup_user_from_where_you_are(monkeypatch):
     read = []
     monkeypatch.setattr(cheat, "ssm_client", lambda: None)
