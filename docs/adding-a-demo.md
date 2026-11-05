@@ -49,6 +49,7 @@ Optional keys, each with its default where it is missing:
 | `servicenow.standard_options` | The Slack options that make a standard change; default `[standard]` (demo 7: `[stores]`). |
 | `servicenow.servers` | CI names, of any class, added to the change as affected items when it opens (demo 3). |
 | `servicenow.template_texts` | `{<template kind>: {field: text}}`, the texts `servicenow_setup.py` gives that template instead of the shared ones (demo 6). |
+| `approval_wait` | `{versions: [<version>], hours: <n>}`: those versions may wait that many hours for their approval instead of 30 minutes (video 31). `change.py wait` then outlasts a ServiceNow that sleeps or doesn't answer, the change's planned window is as long, and Slack and the close notes say how the total splits. Every other version waits as it always has. |
 | `ai_notes` | Claude's change summary and likely cause for this service while `scripts/demos/ai_notes/switch.py` is on (videos 12 and 13): `change_summary`, `likely_cause`, `model`, `effort` per task and `log_lines`. |
 | `scripts.cost_check` with `cost_check` | The stage Cost check after Check staging while `scripts/demos/cost_gate/switch.py` is on (video 18): its limit, approvers, sample and expected month. |
 | `scripts.error_budget` with `error_budget` | The stage Error budget, first of all, while `scripts/demos/error_budget/switch.py` is on (video 27): `slo`, `window_hours`, `min_requests`, `fix_max_changed_lines`, `issue_label`, `function`, `metrics`, `seed` and `reason_required`. It refuses a release when the budget is spent. |
@@ -58,7 +59,6 @@ Optional keys, each with its default where it is missing:
 | `train` | `{departures: ["14:00"], days: [Mon, Tue, Wed, Thu, Fri]}`: the release train job releases what is new on main at these times on these days (weekdays if `days` is left out), Europe/Amsterdam (demo 21). Its runs pass several Jira keys, comma-separated, and `ROWS`, the lines under the stages. |
 | `flags` | `{application, profile, strategy, environments, names}`: feature flags in AWS AppConfig that `/flag` may switch in production (demo 21). |
 | `live` | `{reader: lambda-alias, function: <its production function>}`: how `/sbom` reads what runs in production (video 24; `reader` names a function in `scripts/demos/patch_clock/live.py`). A service without it is listed as not searched. |
-| `approval_wait` | `{versions: [<version>], hours: <n>}`: those versions may wait that many hours for their approval instead of 30 minutes (video 31). `change.py wait` then outlasts a ServiceNow that sleeps or doesn't answer, the change's planned window is as long, and Slack and the close notes say how the total splits. Every other version waits as it always has. |
 
 ## 2. The stage scripts
 
@@ -89,6 +89,9 @@ What else a stage script may put in the run state for the shared scripts:
 - `check.notes`: what the change's close notes start with after a rollback.
 - `change_work_notes`: lines for one work note right after the change opens
   (video 18's cost lines within its limit).
+- `long_wait`: `change.py wait` sets it when `approval_wait` names this version and
+  the approval came, so `notify.py finish live` adds "Waited for approval: [wait]."
+  and "Everything else: [rest]." to Slack and to `close_notes_extra` (video 31).
 - `cost_review`: makes `change.py open` open a normal change even for a
   standard option, with the field Cost review set, so ServiceNow asks Cost
   approvers (video 18's cost check above its limit or without a measurement).
@@ -98,9 +101,6 @@ What else a stage script may put in the run state for the shared scripts:
   change that closes successful (video 27's override: the number and the reason).
 - `override`: this run lifts the error budget (video 27), so `budget.py approved`
   reads the approver's comment and `budget.py released` adds its mark.
-- `long_wait`: `change.py wait` sets it when `approval_wait` names this version and
-  the approval came, so `notify.py finish live` adds "Waited for approval: [wait]."
-  and "Everything else: [rest]." to Slack and to `close_notes_extra` (video 31).
 
 The shared scripts (`change.py`, `notify.py`, `events.py`, `jira.py`,
 `tag.py`, `publish.py`) are the same for every service. A demo doesn't

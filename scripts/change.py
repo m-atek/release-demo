@@ -60,7 +60,6 @@ MACHINE_USERS = ["release.pipeline", "ai.notes", "evidence.reader"]
 COST_REVIEW = {True: "cost_approvers", False: "cost_and_change_approvers"}
 REJECTION_COMMENT_LIMIT = 120
 APPROVAL_LIMIT = 30 * 60  # seconds a release waits for approval, unless approval_wait names its version
-NO_ANSWER = object()  # what a read gives during a long wait when ServiceNow doesn't answer
 
 
 def long_wait(state):
@@ -342,43 +341,22 @@ def machine_ids(sn):
     return {user["sys_id"] for user in found if user}
 
 
-def patiently(patient, read):
-    """One read during the wait. In a long wait, ServiceNow asleep (fail() on its hibernation page) or not
-    answering gives NO_ANSWER, and the next look tries again. Any other wait stops as it always has."""
-    try:
-        return read()
-    except (SystemExit, OSError, ValueError, KeyError, http.client.HTTPException) as error:
-        if not patient:
-            raise
-        print(f"{time.strftime('%H:%M:%S')} ServiceNow didn't answer ({error.__class__.__name__}): looking again.", flush=True)
-        return NO_ANSWER
-
-
 def wait(sn, state, timeout, interval):
     from notify import post
 
     change = state["change"]
-    patient = long_wait(state)
     machines, agents = machine_ids(sn), agent_users(sn)
     deadline = time.time() + timeout
     while time.time() < deadline:
-        record = patiently(patient, lambda: sn.call(
-            "GET", f"/api/now/table/change_request/{change['sys_id']}", sysparm_fields="approval,state"))
-        if record is NO_ANSWER:
-            time.sleep(interval)
-            continue
+        record = sn.call("GET", f"/api/now/table/change_request/{change['sys_id']}", sysparm_fields="approval,state")
         if record["approval"] == "rejected":
             state.setdefault("lines", []).append(rejection_line(sn, change))
             run_state.save(state)
             post(state)
             cancel(sn, state, "Rejected in ServiceNow. The release stopped before production.")
             fail("The change was rejected.")
-        approvals = patiently(patient, lambda: sn.call(
-            "GET", "/api/now/table/sysapproval_approver", sysparm_query=f"sysapproval={change['sys_id']}^state=approved",
-            sysparm_fields="approver"))
-        if approvals is NO_ANSWER:
-            time.sleep(interval)
-            continue
+        approvals = sn.call("GET", "/api/now/table/sysapproval_approver", sysparm_query=f"sysapproval={change['sys_id']}^state=approved",
+                            sysparm_fields="approver")
         approvers = [a["approver"]["value"] for a in approvals]
         if change["requested_by"] in approvers:
             cancel(sn, state, "Approved by the person who asked for the release. Refused by the pipeline: "
@@ -392,19 +370,57 @@ def wait(sn, state, timeout, interval):
                               "an agent never approves a release.")
             fail("The change was approved by a coding agent. Refused.")
         if record["approval"] == "approved" and approvers:
-            approved_by = patiently(patient, lambda: names([first_name(sn, sys_id) for sys_id in dict.fromkeys(approvers)]))
-            if approved_by is NO_ANSWER:
-                time.sleep(interval)
-                continue
-            state["change"]["approved_by"] = approved_by
-            if patient:
-                state["long_wait"] = True
+            state["change"]["approved_by"] = names([first_name(sn, sys_id) for sys_id in dict.fromkeys(approvers)])
             run_state.save(state)
             print(f"Approved by {state['change']['approved_by']} in ServiceNow.")
             return
         time.sleep(interval)
     cancel(sn, state, f"No approval within {timeout // 60} minutes. The release stopped before production.")
     fail("No approval in time.")
+
+
+class NoAnswer(Exception):
+    """ServiceNow asleep or not answering, during a long wait."""
+
+
+class Steady:
+    """ServiceNow for a long wait: a call that fails raises NoAnswer, where it would end the stage. fail() on the
+    hibernation page is a SystemExit. The refusals in wait() aren't calls, so they stop the release as ever."""
+
+    def __init__(self, sn):
+        self.sn = sn
+
+    def __getattr__(self, name):
+        return getattr(self.sn, name)
+
+    def _steadily(self, read, *args, **kwargs):
+        try:
+            return read(*args, **kwargs)
+        except (SystemExit, OSError, ValueError, KeyError, http.client.HTTPException) as error:
+            raise NoAnswer(error.__class__.__name__) from error
+
+    def call(self, *args, **kwargs):
+        return self._steadily(self.sn.call, *args, **kwargs)
+
+    def find(self, *args, **kwargs):
+        return self._steadily(self.sn.find, *args, **kwargs)
+
+
+def wait_long(sn, state, timeout, interval):
+    """wait(), for a version approval_wait names. ServiceNow asleep or not answering gives another look 15 seconds
+    later, up to the limit, and the approval sets long_wait for notify.py."""
+    deadline = time.time() + timeout
+    while True:
+        try:
+            wait(Steady(sn), state, max(int(deadline - time.time()), 0), interval)
+            break
+        except NoAnswer as error:
+            print(f"{time.strftime('%H:%M:%S')} ServiceNow didn't answer ({error}): looking again.", flush=True)
+            if time.time() >= deadline:
+                fail("No approval in time, and ServiceNow isn't answering.")
+            time.sleep(interval)
+    state["long_wait"] = True
+    run_state.save(state)
 
 
 def agent_users(sn):
@@ -528,7 +544,7 @@ def main():
     elif args.command == "note":
         note(sn, state, args.text)
     elif args.command == "wait":
-        wait(sn, state, args.timeout or approval_limit(state), args.interval)
+        (wait_long if long_wait(state) else wait)(sn, state, args.timeout or approval_limit(state), args.interval)
     elif args.command == "implement":
         implement(sn, state)
     elif args.command == "close":
