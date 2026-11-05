@@ -58,6 +58,7 @@ Optional keys, each with its default where it is missing:
 | `train` | `{departures: ["14:00"], days: [Mon, Tue, Wed, Thu, Fri]}`: the release train job releases what is new on main at these times on these days (weekdays if `days` is left out), Europe/Amsterdam (demo 21). Its runs pass several Jira keys, comma-separated, and `ROWS`, the lines under the stages. |
 | `flags` | `{application, profile, strategy, environments, names}`: feature flags in AWS AppConfig that `/flag` may switch in production (demo 21). |
 | `live` | `{reader: lambda-alias, function: <its production function>}`: how `/sbom` reads what runs in production (video 24; `reader` names a function in `scripts/demos/patch_clock/live.py`). A service without it is listed as not searched. |
+| `approval_wait` | `{versions: [<version>], hours: <n>}`: those versions may wait that many hours for their approval instead of 30 minutes (video 31). `change.py wait` then outlasts a ServiceNow that sleeps or doesn't answer, the change's planned window is as long, and Slack and the close notes say how the total splits. Every other version waits as it always has. |
 
 ## 2. The stage scripts
 
@@ -97,6 +98,9 @@ What else a stage script may put in the run state for the shared scripts:
   change that closes successful (video 27's override: the number and the reason).
 - `override`: this run lifts the error budget (video 27), so `budget.py approved`
   reads the approver's comment and `budget.py released` adds its mark.
+- `long_wait`: `change.py wait` sets it when `approval_wait` names this version and
+  the approval came, so `notify.py finish live` adds "Waited for approval: [wait]."
+  and "Everything else: [rest]." to Slack and to `close_notes_extra` (video 31).
 
 The shared scripts (`change.py`, `notify.py`, `events.py`, `jira.py`,
 `tag.py`, `publish.py`) are the same for every service. A demo doesn't

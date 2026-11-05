@@ -79,6 +79,14 @@ def post(state):
             run_state.save(state)
 
 
+def wait_lines(state, elapsed):
+    """Video 31, after a long wait for approval (change.py sets long_wait): how "Live in" splits. Whole
+    seconds, rounded up as every time here is, so the two add up to the total exactly."""
+    total = int(-(-elapsed // 1))
+    waited = int(-(-float(state["stages"].get("Approval", {}).get("seconds") or 0) // 1))
+    return f"Waited for approval: {run_state.duration(waited)}.\nEverything else: {run_state.duration(total - waited)}."
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -103,7 +111,8 @@ def main():
     elif args.command == "line":
         state.setdefault("lines", []).append(args.text)
     else:
-        total = run_state.duration(run_state.now() - state["started_at"])
+        elapsed = run_state.now() - state["started_at"]
+        total = run_state.duration(elapsed)
         state["total"] = total
         text = {"live": f"Live in {total}.",
                 # A demo's deploy script may set finish_line in the run state for how
@@ -114,6 +123,9 @@ def main():
                 "rolled-back": f"Production check failed. Rolled back to {args.previous}.",
                 "cancelled": f"Cancelled after {total}."}[args.result]
         state.setdefault("lines", []).append(text)
+        if args.result == "live" and state.get("long_wait"):
+            state["close_notes_extra"] = wait_lines(state, elapsed)
+            state["lines"].append(state["close_notes_extra"])
     run_state.save(state)
     post(state)
 

@@ -2,7 +2,7 @@
 
     python scripts/change.py open                  a normal change, moved to Assess; with option standard, a pre-approved one
     python scripts/change.py note "Staging: ok"    a work note, once the change exists
-    python scripts/change.py wait                  poll the approval every 15 seconds, up to 30 minutes
+    python scripts/change.py wait                  poll the approval every 15 seconds, up to 30 minutes, or as services.yaml's approval_wait says
     python scripts/change.py implement
     python scripts/change.py close successful|unsuccessful --notes "..."
     python scripts/change.py cancel --notes "..."
@@ -27,9 +27,16 @@ With the run state force_normal (video 27's error budget without a reading),
 the change is a normal one too, with no cost field. With close_notes_extra (its
 override), those lines go in front of the notes of a change that closes
 successful.
+
+With approval_wait in services.yaml naming this run's version (video 31), the
+wait for approval may last that many hours instead of 30 minutes, the planned
+window on the change is as long, a ServiceNow that sleeps or doesn't answer for
+a while doesn't end it, and the run state's long_wait tells notify.py to say how
+the total splits. Every other version waits as it always has.
 """
 
 import argparse
+import http.client
 import mimetypes
 import re
 import sys
@@ -39,7 +46,7 @@ import urllib.request
 from pathlib import Path
 
 import run_state
-from common import ROOT, fail, get_parameter, people, service, ssm_client
+from common import ROOT, fail, get_parameter, people, service, services, ssm_client
 from servicenow_setup import ServiceNow
 
 ASSESS, SCHEDULED, IMPLEMENT, REVIEW, CLOSED, CANCELED = "-4", "-2", "-1", "0", "3", "4"
@@ -52,6 +59,19 @@ MACHINE_USERS = ["release.pipeline", "ai.notes", "evidence.reader"]
 # u_cost_review's values (servicenow_setup.py), by whether a standard change was asked for.
 COST_REVIEW = {True: "cost_approvers", False: "cost_and_change_approvers"}
 REJECTION_COMMENT_LIMIT = 120
+APPROVAL_LIMIT = 30 * 60  # seconds a release waits for approval, unless approval_wait names its version
+NO_ANSWER = object()  # what a read gives during a long wait when ServiceNow doesn't answer
+
+
+def long_wait(state):
+    """services.yaml's approval_wait if it names this run's version (video 31), else None."""
+    settings = (services().get(state.get("service")) or {}).get("approval_wait") or {}
+    return settings if state.get("version") in settings.get("versions", []) else None
+
+
+def approval_limit(state):
+    settings = long_wait(state)
+    return int(settings["hours"] * 3600) if settings else APPROVAL_LIMIT
 
 
 def connect():
@@ -190,7 +210,7 @@ def open_change(sn, ssm, state):
             "previous version, checks it, and closes this change as unsuccessful with the rollback in its notes."),
         "test_plan": "Before this change:\n" + stage_summary(state),
         "start_date": run_state.iso(started).replace("T", " ").rstrip("Z"),
-        "end_date": run_state.iso(started + 1800).replace("T", " ").rstrip("Z"),
+        "end_date": run_state.iso(started + approval_limit(state)).replace("T", " ").rstrip("Z"),
     }
     # The approval bridge (bridge/handler.py) finds the change of a GitHub Actions or Azure Pipelines run by this.
     if state.get("ci", {}).get("correlation_id"):
@@ -322,22 +342,43 @@ def machine_ids(sn):
     return {user["sys_id"] for user in found if user}
 
 
+def patiently(patient, read):
+    """One read during the wait. In a long wait, ServiceNow asleep (fail() on its hibernation page) or not
+    answering gives NO_ANSWER, and the next look tries again. Any other wait stops as it always has."""
+    try:
+        return read()
+    except (SystemExit, OSError, ValueError, KeyError, http.client.HTTPException) as error:
+        if not patient:
+            raise
+        print(f"{time.strftime('%H:%M:%S')} ServiceNow didn't answer ({error.__class__.__name__}): looking again.", flush=True)
+        return NO_ANSWER
+
+
 def wait(sn, state, timeout, interval):
     from notify import post
 
     change = state["change"]
+    patient = long_wait(state)
     machines, agents = machine_ids(sn), agent_users(sn)
     deadline = time.time() + timeout
     while time.time() < deadline:
-        record = sn.call("GET", f"/api/now/table/change_request/{change['sys_id']}", sysparm_fields="approval,state")
+        record = patiently(patient, lambda: sn.call(
+            "GET", f"/api/now/table/change_request/{change['sys_id']}", sysparm_fields="approval,state"))
+        if record is NO_ANSWER:
+            time.sleep(interval)
+            continue
         if record["approval"] == "rejected":
             state.setdefault("lines", []).append(rejection_line(sn, change))
             run_state.save(state)
             post(state)
             cancel(sn, state, "Rejected in ServiceNow. The release stopped before production.")
             fail("The change was rejected.")
-        approvals = sn.call("GET", "/api/now/table/sysapproval_approver", sysparm_query=f"sysapproval={change['sys_id']}^state=approved",
-                            sysparm_fields="approver")
+        approvals = patiently(patient, lambda: sn.call(
+            "GET", "/api/now/table/sysapproval_approver", sysparm_query=f"sysapproval={change['sys_id']}^state=approved",
+            sysparm_fields="approver"))
+        if approvals is NO_ANSWER:
+            time.sleep(interval)
+            continue
         approvers = [a["approver"]["value"] for a in approvals]
         if change["requested_by"] in approvers:
             cancel(sn, state, "Approved by the person who asked for the release. Refused by the pipeline: "
@@ -351,7 +392,13 @@ def wait(sn, state, timeout, interval):
                               "an agent never approves a release.")
             fail("The change was approved by a coding agent. Refused.")
         if record["approval"] == "approved" and approvers:
-            state["change"]["approved_by"] = names([first_name(sn, sys_id) for sys_id in dict.fromkeys(approvers)])
+            approved_by = patiently(patient, lambda: names([first_name(sn, sys_id) for sys_id in dict.fromkeys(approvers)]))
+            if approved_by is NO_ANSWER:
+                time.sleep(interval)
+                continue
+            state["change"]["approved_by"] = approved_by
+            if patient:
+                state["long_wait"] = True
             run_state.save(state)
             print(f"Approved by {state['change']['approved_by']} in ServiceNow.")
             return
@@ -459,7 +506,7 @@ def main():
     noter = sub.add_parser("note")
     noter.add_argument("text")
     waiter = sub.add_parser("wait")
-    waiter.add_argument("--timeout", type=int, default=1800)
+    waiter.add_argument("--timeout", type=int, help="seconds; by default 30 minutes, or approval_wait's hours for its versions")
     waiter.add_argument("--interval", type=int, default=15)
     sub.add_parser("implement")
     closer = sub.add_parser("close")
@@ -481,7 +528,7 @@ def main():
     elif args.command == "note":
         note(sn, state, args.text)
     elif args.command == "wait":
-        wait(sn, state, args.timeout, args.interval)
+        wait(sn, state, args.timeout or approval_limit(state), args.interval)
     elif args.command == "implement":
         implement(sn, state)
     elif args.command == "close":
