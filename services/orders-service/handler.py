@@ -232,7 +232,6 @@ PAGE = """<!doctype html>
   <div class="version">{version}</div>
   <p class="note">Delivery estimate: {delivery_days} days</p>
   <p class="note">Free returns within 30 days</p>
-  <p class="note">Order by 20:00, shipped today</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>
