@@ -50,7 +50,8 @@ def send(url, body, headers):
 def event(args, state):
     body = {
         "build": state["build"]["number"], "build_url": state["build"].get("url"),
-        "service": state["service"], "version": state["version"], "environment": args.environment,
+        # events_service: a run that isn't a release keeps out of the release views (video 29's setting change).
+        "service": state.get("events_service") or state["service"], "version": state["version"], "environment": args.environment,
         "change": state.get("change", {}).get("number"), "jira_key": state["jira_key"],
         "stage": args.stage, "result": args.result, "duration_seconds": args.seconds,
         "requested_by": state.get("requested_by"), "option": state.get("option"),

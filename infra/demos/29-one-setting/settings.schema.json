@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "orders-service settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["free_delivery_until"],
+  "properties": {
+    "free_delivery_until": {
+      "description": "The last day of free delivery on the order page: year, month, day.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+    }
+  }
+}

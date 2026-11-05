@@ -265,6 +265,25 @@ pipelineJob('release-train') {
     definition fromRepository('jenkins/jobs/release-train.Jenkinsfile')
 }
 
+// Video 29: /setting in Slack. One value in a service's settings file, through AWS
+// AppConfig's validator, staging and production, with no build. The Slack handler
+// starts it as release-bot.
+pipelineJob('setting') {
+    description('Video 29: changes one value in a service\'s settings file in AWS AppConfig, through its validator and staging to production, with no build. Started by /setting in Slack as release-bot.')
+    parameters {
+        stringParam('SERVICE', 'orders-service', 'A service from services.yaml with app_settings.')
+        stringParam('SETTING', '', 'A key in app_settings.keys.')
+        stringParam('VALUE', '', 'Its new value.')
+        stringParam('REQUESTED_BY', '', 'Slack user id of who asked.')
+        stringParam('SLACK_CHANNEL', '', 'Channel of the Slack status message.')
+        stringParam('SLACK_TS', '', 'Timestamp of the Slack status message.')
+        stringParam('REQUESTED_AT', '', 'Epoch seconds of the Slack command, where the total time starts.')
+    }
+    properties { disableConcurrentBuilds() }
+    logRotator { numToKeep(100) }
+    definition fromRepository('jenkins/setting.Jenkinsfile')
+}
+
 // Views next to All: a release dashboard with the latest builds and test
 // trends, and a monitor with one big tile per job for a second screen.
 List<String> demoJobs = ['release', 'rollback', 'ci', 'tools-smoke']

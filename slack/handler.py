@@ -1,4 +1,4 @@
-"""The Slack handler: /release, /rollback, /agent, /ask and /sbom, from Slack to Jenkins, and /flag, to AWS AppConfig.
+"""The Slack handler: /release, /rollback, /agent, /ask, /sbom and /setting, from Slack to Jenkins, and /flag, to AWS AppConfig.
 
 Slack posts each slash command to this function's URL and wants an answer
 within 3 seconds. So the first call only checks the request (Slack's
@@ -21,6 +21,10 @@ production: a new version of the service's AppConfig flags profile with that
 flag changed, deployed with the strategy services.yaml names. It answers at
 once and needs neither Jenkins nor the tools host; the event bridge records
 the switch as a change (bridge/appconfig.py).
+
+/setting <service> <setting> <value> (video 29) changes one value in the
+service's settings file in AWS AppConfig. It starts the Jenkins job setting,
+which takes it through AWS's validator and staging to production, with no build.
 
 Standard library and boto3 only, both in Lambda's Python runtime, so the
 package is this file plus config.json, which Terraform writes from
@@ -79,6 +83,9 @@ AZURE_INPUTS = {"SERVICE": "service", "JIRA_KEY": "jiraKey", "OPTION": "option",
 AZURE_DEVOPS_SCOPE = "499b84ac-1321-427f-aa17-267ca6975798/.default"  # Azure DevOps, as Entra names it
 TOKEN_EXCHANGE = "api://AzureADTokenExchange"
 CIS = ("jenkins", "gitlab-ci", "azure-pipelines")
+# Video 29: a value for the settings file. AWS's validator and staging judge it, not this handler.
+SETTING_USAGE = "Usage: /setting <service> <setting> <value>, for example /setting orders-service free_delivery_until 2026-11-30"
+SETTING_VALUE_LIMIT = 100
 
 
 class Refusal(Exception):
@@ -235,6 +242,8 @@ def parse(command, text, services):
         return parse_agent(words, text, services)
     if command == "/flag":
         return "flag", flag_request(words, services)
+    if command == "/setting":
+        return "setting", setting_request(words, text, services)
     raise Refusal(f"This app knows /release, /rollback, /agent and /flag, not {command or 'that'}.")
 
 
@@ -276,6 +285,23 @@ def flag_request(words, services):
     if len(words) > 3:
         raise Refusal(f"/flag switches flags in production only: /flag {name} {flag} {state}")
     return {"SERVICE": name, "FLAG": flag, "STATE": state}
+
+
+def setting_request(words, text, services):
+    """/setting <service> <setting> <value>, in production only (video 29). The value is the rest of the line."""
+    if len(words) < 3:
+        raise Refusal(SETTING_USAGE)
+    name, key = words[0].lower(), words[1]
+    settings = known(name, services)
+    keys = settings.get("settings") or []
+    if not keys:
+        raise Refusal(f"{name} has no settings.")
+    if key not in keys:
+        raise Refusal(f"{name} has no setting {key}. Its settings: {', '.join(keys)}.")
+    value = text.strip().split(None, 2)[2].strip()
+    if len(value) > SETTING_VALUE_LIMIT:
+        raise Refusal(f"Keep the value to {SETTING_VALUE_LIMIT} characters; this one has {len(value)}.")
+    return {"SERVICE": name, "SETTING": key, "VALUE": value}
 
 
 def known(name, services):
@@ -555,6 +581,8 @@ def status_message(work, line=STARTING_ON_JENKINS):
     elif work["job"] == "agent-task":
         # agent-task adds the issue's summary once it has read it from Jira.
         head = f"*Coding agent on {p['JIRA_KEY']}* · asked by <@{p['REQUESTED_BY']}>\n> {p['NOTE']}"
+    elif work["job"] == "setting":
+        head = f"*Setting change: {p['SETTING']}* · {p['SERVICE']} production · requested by <@{p['REQUESTED_BY']}>"
     else:
         head = f"*Rollback {p['SERVICE']}* · production · requested by <@{p['REQUESTED_BY']}>"
     return f"{head}\n\n{line}"

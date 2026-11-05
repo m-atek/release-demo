@@ -57,6 +57,7 @@ Optional keys, each with its default where it is missing:
 | `scripts.blip_check` with `blip_check` | A stage only versions with `database/` in the service folder have (run_state.py's `VERSION_STAGES`), after Check staging and before the change: `{environment, seconds, calls_per_second, data_route, alive_route, recover_seconds}` say which database it cuts off with a NetworkPolicy, for how long, and what it calls meanwhile (video 25). |
 | `train` | `{departures: ["14:00"], days: [Mon, Tue, Wed, Thu, Fri]}`: the release train job releases what is new on main at these times on these days (weekdays if `days` is left out), Europe/Amsterdam (demo 21). Its runs pass several Jira keys, comma-separated, and `ROWS`, the lines under the stages. |
 | `flags` | `{application, profile, strategy, environments, names}`: feature flags in AWS AppConfig that `/flag` may switch in production (demo 21). |
+| `app_settings` | `{application, profile, keys, baseline, check_paths, bake_minutes, alarm}`: a settings file in AWS AppConfig that `/setting` may change, one key at a time, through AWS's validator and staging to production, with no build (video 29). `servicenow.templates.setting` names its pre-approved change. |
 | `live` | `{reader: lambda-alias, function: <its production function>}`: how `/sbom` reads what runs in production (video 24; `reader` names a function in `scripts/demos/patch_clock/live.py`). A service without it is listed as not searched. |
 
 ## 2. The stage scripts
@@ -100,6 +101,9 @@ What else a stage script may put in the run state for the shared scripts:
   change that closes successful (video 27's override: the number and the reason).
 - `override`: this run lifts the error budget (video 27), so `budget.py approved`
   reads the approver's comment and `budget.py released` adds its mark.
+- `head`: the first lines of the run's Slack message, for a run that isn't a
+  release (video 29's setting change). `events_service`: the service its events
+  carry, so a run that isn't a release stays off the release views.
 
 The shared scripts (`change.py`, `notify.py`, `events.py`, `jira.py`,
 `tag.py`, `publish.py`) are the same for every service. A demo doesn't

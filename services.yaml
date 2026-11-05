@@ -64,6 +64,18 @@ orders-service:
     environments: [production]
     names: [delivery_estimate_v2]
 
+  # Video 29: a settings file in AWS AppConfig (infra/demos/29-one-setting), read from
+  # 1.31.0 on. /setting in Slack changes one of these keys through AWS's validator, staging
+  # and production, with no build. The baseline is where reset.py settings puts them.
+  app_settings:
+    application: orders-service-settings
+    profile: settings
+    keys: [free_delivery_until]
+    baseline: {free_delivery_until: "2026-11-27"}
+    check_paths: [/, /api/orders]
+    bake_minutes: 2
+    alarm: orders-service-production-errors
+
   servicenow:
     cmdb_item: orders-service
     assignment_group: Platform team
@@ -75,6 +87,8 @@ orders-service:
       rollback: Rollback of orders-service
       # Demo 21: a flag switched in production, recorded by the event bridge (bridge/appconfig.py).
       flag: Feature flag change of orders-service
+      # Video 29: a setting changed in production, recorded by the job setting.
+      setting: Setting change of orders-service
     template_texts:
       flag:
         short_description: Feature flag change of orders-service
@@ -96,6 +110,24 @@ orders-service:
         justification: Turning finished work on, or unfinished work off, without a deploy.
         risk_impact_analysis: >-
           Low: one flag changes, the alarm watches it, and AWS AppConfig switches it back by itself.
+      setting:
+        short_description: Setting change of orders-service
+        description: >-
+          Changes one value in orders-service's settings file in AWS AppConfig, started from Slack
+          with /setting. The code doesn't change: no build, no new version.
+        implementation_plan: >-
+          The job setting makes a new version of the file, runs AWS AppConfig's validator on it, and
+          deploys it to staging. If staging's check passes it deploys the same version to production
+          with the strategy release-demo-settings: all at once, then 2 minutes of bake time.
+        backout_plan: >-
+          Automatic: if the production check fails, or the alarm orders-service-production-errors
+          goes into ALARM during the bake time, AWS AppConfig puts the version before it back.
+        test_plan: >-
+          AWS AppConfig's JSON Schema validator on the file. In staging and in production: /health
+          must report the new value, then the order page and /api/orders must answer 200.
+        justification: A setting changes what production does, so it goes through its own checks and on the record.
+        risk_impact_analysis: >-
+          Low: one value changes, staging has run it first, and AWS AppConfig puts it back by itself.
 
   sonarqube:
     # A monorepo project in the organization m-atek: one project per service.
