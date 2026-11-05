@@ -4,7 +4,7 @@
     python scripts/demos/hotfix_room/setup.py --dry-run   says what it would make, and reads nothing but what is there
 
 ORD-[h] is the hotfix catalog 1.12.1 goes out under, ORD-[r] forecast 2.4.1's
-reservation. Each is made once. Safe to run again.
+reservation. Each is made once, here or by reset.py hotfix-room. Safe to run again.
 """
 
 import argparse

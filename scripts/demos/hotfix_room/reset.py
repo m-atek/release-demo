@@ -64,15 +64,14 @@ def shared_reset(name):
     return module
 
 
-def take_issues():
+def take_issues(dry_run):
+    """{service: its issue}, made if they aren't there yet: the allow rule covers this reset, not setup.py."""
+    import setup
     from jira import Jira
-    from setup import HOTFIX_SUMMARY, ROOM_SUMMARY, found_issue
 
     jira = Jira()
-    found = {CATALOG: found_issue(jira, HOTFIX_SUMMARY), FORECAST: found_issue(jira, ROOM_SUMMARY)}
-    if not all(found.values()):
-        raise RuntimeError("No Jira issues for the takes yet: run scripts/demos/hotfix_room/setup.py once.")
-    return found
+    return {service_name: setup.issue(jira, kind, summary, description, service_name, dry_run)[0]
+            for kind, summary, description, service_name, _ in setup.ISSUES}
 
 
 def namespaces(config):
@@ -208,14 +207,14 @@ def run(args):
             module.jira_versions(reset)
 
         issues = {}
-        reset.step("2. The Jira issues", lambda: issues.update(take_issues()))
+        reset.step("2. The Jira issues", lambda: issues.update(take_issues(args.dry_run)))
         for name, module in shared.items():
             reset.step(f"2. {name}: open changes in ServiceNow", lambda module=module: module.cancel_changes(reset))
             reset.step(f"2. {name}: tags and GitHub releases after {BASELINES[name]}",
                        lambda module=module: module.github_takes(reset))
             reset.step(f"2. {name}: release copies in JFrog after {BASELINES[name]}",
                        lambda module=module: module.jfrog_takes(reset))
-            if issues:
+            if issues.get(name, "").startswith("ORD-") and not issues[name].endswith("?"):
                 reset.step(f"2. {name}: Jira versions after {BASELINES[name]}, and {issues[name]}, its comments kept",
                            lambda module=module, key=issues[name]: jira(module, key))
         reset.step("3 and 4. The cluster: catalog, then forecast", lambda: cluster(reset, kubeconfig, api))

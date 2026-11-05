@@ -74,7 +74,7 @@ def world(monkeypatch, capsys):
         main[f"services/{name}"] = version
 
     monkeypatch.setattr(host, "stage", stage)
-    monkeypatch.setattr(reset, "take_issues", lambda: {"catalog": "ORD-120", "forecast": "ORD-121"})
+    monkeypatch.setattr(reset, "take_issues", lambda dry_run: {"catalog": "ORD-120", "forecast": "ORD-121"})
     node = {"reading": reading()}
     monkeypatch.setattr(reset.room, "read", lambda get: node["reading"])
     steps = []
@@ -211,6 +211,32 @@ def test_a_node_it_may_not_read_doesnt_stop_the_reset_job(world, monkeypatch):
     monkeypatch.setattr(reset.room, "read", refused)
     assert reset.run(args()) == 0
     assert "not read: permission denied" in world.capsys.readouterr().out
+
+
+def test_the_issues_are_made_by_the_reset_if_they_arent_there(monkeypatch):
+    """The allow rule covers the reset and not setup.py, so nothing about a take waits on setup.py for its issues."""
+    import jira as jira_module
+    import setup
+
+    made = []
+
+    class Jira:
+        def search(self, jql, fields="summary"):
+            return []
+
+        def create(self, kind, summary, description, labels=()):
+            made.append(summary)
+            return f"ORD-{120 + len(made)}"
+
+    monkeypatch.setattr(jira_module, "Jira", Jira)
+    assert reset.take_issues(False) == {"catalog": "ORD-121", "forecast": "ORD-122"}
+    assert made == [setup.HOTFIX_SUMMARY, setup.ROOM_SUMMARY]
+
+
+def test_a_dry_run_makes_no_issue_and_reopens_none(world, monkeypatch):
+    monkeypatch.setattr(reset, "take_issues", lambda dry_run: {"catalog": "ORD-?", "forecast": "ORD-?"})
+    assert reset.run(args(dry_run=True)) == 0
+    assert not [step for step in world.steps if step[0] == "jira_versions"]
 
 
 def test_the_cluster_step_uses_videos_8s_reset_with_the_service_and_version(monkeypatch):

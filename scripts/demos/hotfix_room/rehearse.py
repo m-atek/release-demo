@@ -417,6 +417,9 @@ def main():
     machine = Machine(commit)
     try:
         code = measure(machine)
+    except RuntimeError as error:   # kubectl's own words: a read the check needs, refused or not answered
+        print(f"NO VERDICT: {error}", flush=True)
+        code = 1
     finally:
         machine.sampling.set()
     print("== Back where a take starts", flush=True)

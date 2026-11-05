@@ -38,8 +38,8 @@ def test_a_summary_that_only_resembles_isnt_the_issue():
 
 def test_the_two_issues_are_the_ones_the_reset_looks_for():
     assert [item[1] for item in setup.ISSUES] == [setup.HOTFIX_SUMMARY, setup.ROOM_SUMMARY]
-    source = (setup.HERE / "reset.py").read_text()
-    assert "from setup import HOTFIX_SUMMARY, ROOM_SUMMARY, found_issue" in source
+    assert [item[3] for item in setup.ISSUES] == ["catalog", "forecast"]     # the reset goes by these
+    assert "setup.ISSUES" in (setup.HERE / "reset.py").read_text()
 
 
 def test_no_summary_says_planted_or_names_a_client():

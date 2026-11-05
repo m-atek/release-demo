@@ -96,9 +96,9 @@ def lines_for(namespace, pods, asks, replicas, now, memory=None):
                 f"Reserved {room.size(reserved)}. Asks for {room.size(asks)}.")
     used, peak = sum(item[0] for item in seen), sum(item[1] for item in seen)
     age = min(minutes_since(pod["status"]["startTime"], now) for pod in pods)
-    return ([head, f"Reserved {room.size(reserved)} in {len(pods)} pods. Used {room.size(used)} now, {room.size(peak)} "
-                   f"at its peak since these pods started, {age} minutes ago.", gives],
-            f"Reserved {room.size(reserved)}, used {room.size(used)}. Asks for {room.size(asks)}.")
+    return ([head, f"Reserved {room.size(reserved)} in {len(pods)} pods. Used {room.size_used(used)} now, "
+                   f"{room.size_used(peak)} at its peak since these pods started, {age} minutes ago.", gives],
+            f"Reserved {room.size(reserved)}, used {room.size_used(used)}. Asks for {room.size(asks)}.")
 
 
 def main():
