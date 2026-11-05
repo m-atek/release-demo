@@ -707,6 +707,17 @@ On the call: `/sbom CVE-2026-111497`, `/release orders-service ORD-[f] standard`
 
 After the call: `.venv/bin/python scripts/reset.py`. It puts production and staging back on 1.3.0 and the switch off, so brotli 1.2.0 isn't left live. `scripts/demo.sh status patch-clock` warns while it is.
 
+## Demo on a call: two ways to cheat a release (video 28)
+
+Two refusals every orders-service release already has, and nothing built for them: `scripts/change.py wait` refuses an approval by the person who asked, whatever ServiceNow says, and `scripts/deploy.py` refuses a stored package whose SHA-256 is no longer the one the build recorded. On Sam's normal change, in this order:
+
+1. `/release orders-service ORD-[s]`, and when Slack shows the change, `.venv/bin/python scripts/demos/two_ways/cheat.py approve <CHG>`: as ServiceNow's admin, from where you are signed in, one row in the requester's name beside Alex's. The pipeline looks every 15 seconds, cancels the change and stops: "Stopped after [total]. Nothing reached production."
+2. The same command again, and while the change waits, `.venv/bin/python scripts/demos/two_ways/cheat.py swap <build>`: on the tools host, first with the pipeline's own token, which JFrog refuses, then as JFrog's admin, the same zip with one harmless text file added. Alex approves in ServiceNow. At Production the pipeline downloads the package, compares, and stops before any call to Lambda.
+
+`cheat.py production` reads what production runs, for before and after. Say on a call that both cheats take admin rights: an admin can write any record, and the pipeline checks the record instead of trusting it. Neither refusal stops an admin who also changes the pipeline.
+
+Neither take goes live, so a retake is the same command again, with a new build. `scripts/reset.py two-ways` is for the first take of the day, or a take that went live by mistake: production and staging on 1.26.0, 1.30.0 on main, ORD-[s] made if it's missing, every demo's switch off. No account, secret, Terraform or Slack change. Afterwards the main reset puts production back on 1.3.0.
+
 ## Layout
 
 ```
