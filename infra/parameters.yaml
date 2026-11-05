@@ -555,6 +555,10 @@ appconfig/orders-service:
   source: terraform
   secure: false
   help: "Demo 21. orders-service's AWS AppConfig ids (application, environments, flags profile, deployment strategy), as JSON, for /flag and reset.py. Written by infra/demos/21-release-train-flags."
+appconfig/orders-service-settings:
+  source: terraform
+  secure: false
+  help: "Video 29. orders-service's settings file in AWS AppConfig: the application, environments, profile and deployment strategies' ids, as JSON, for the job setting and reset.py settings. Written by infra/demos/29-one-setting."
 release-train/enabled:
   source: terraform
   secure: false

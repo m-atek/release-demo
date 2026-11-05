@@ -37,6 +37,12 @@ features:
       description: Switch a feature flag on or off in production
       usage_hint: "<service> <flag> on|off"
       should_escape: false
+    # Video 29: change one value in a service's settings file, through AWS's validator and staging.
+    - command: /setting
+      url: https://REPLACE-WITH-SLACK-HANDLER-URL.invalid/
+      description: Change a setting, through its checks to production
+      usage_hint: "<service> <setting> <value>"
+      should_escape: false
     # Demo 23: a question for the runbook assistant in production.
     - command: /ask
       url: https://REPLACE-WITH-SLACK-HANDLER-URL.invalid/

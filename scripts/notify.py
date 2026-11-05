@@ -45,8 +45,9 @@ def requester(slack_id):
 def render(state):
     # One Jira key, or the release train's several (demo 21), comma-separated.
     keys = ", ".join(state.get("jira_keys") or [state["jira_key"]])
-    head = (f"*Release {state['service']} {state['version']}* · {keys} · "
-            f"requested by {requester(state.get('requested_by'))}")
+    # A run that isn't a release may name itself (video 29's setting change).
+    head = state.get("head") or (f"*Release {state['service']} {state['version']}* · {keys} · "
+                                 f"requested by {requester(state.get('requested_by'))}")
     rows = []
     for name, stage in state["stages"].items():
         took = f"  _{run_state.duration(stage['seconds'])}_" if stage.get("seconds") else ""

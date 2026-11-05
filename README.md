@@ -687,6 +687,24 @@ On the call: `/release orders-service ORD-[a] standard` and wait until the budge
 
 If something doesn't answer, it goes toward a person: without a reading from CloudWatch, `standard` becomes a Normal change and Slack says "no reading". Under 1,000 requests it is too few to judge, and passes. Afterwards: `scripts/demo.sh down error-budget`: the traffic and the check off. Running costs about USD 0.25 a day while the traffic is on, and a fraction of a cent a day while it is off.
 
+## Demo on a call: one setting, no release (video 29)
+
+`/setting orders-service free_delivery_until <value>` changes one value in orders-service's settings file in AWS AppConfig: no build, no new version. The job `setting` makes a new version of the file, from what production last completed, and runs AWS AppConfig's JSON Schema validator on it. It deploys it to staging, checks that `/health` reports the value and that the order page and `/api/orders` answer, opens a pre-approved change with the before and after in its short description, deploys the same version to production with 2 minutes of bake time, checks again, and closes the change.
+
+| Try | Value | What happens |
+| --- | --- | --- |
+| 1 | `31-11-2026` | AWS's validator refuses the file, in its own words. "Stopped after [total]. Nothing reached production." |
+| 2 | `2026-11-31` | The file passes: a regular expression doesn't know how long November is. The order page in staging answers 502, the check says so with the function's own exception, and staging goes back. "Stopped after [total]. Nothing reached production." |
+| 3 | `2026-11-30` | Through staging and production. "Live in [total]." The page reads "Free delivery until 30 November", on the same version. |
+
+orders-service reads the file from 1.31.0 on. The file has its own AWS AppConfig application, `orders-service-settings`, so demo 21's flags, its reset and its event bridge never see a setting: AWS AppConfig lists deployments per environment, whatever the profile. It reuses demo 21's alarm and the role that reads it, so `infra/demos/21-release-train-flags` must be applied first. A setting's events go to Splunk and Grafana Logs as `orders-service-settings`, so they stay off the release panels.
+
+Once, after the merge: `scripts/tf.sh apply -target=aws_lambda_function.slack_handler` (the handler, with `/setting`); Mateusz applies `infra/demos/29-one-setting` (`scripts/demos/settings/tf.sh init`, `plan`, `apply`), and pastes the Slack manifest (`.venv/bin/python scripts/slack_manifest.py`, then Install App, Reinstall to Workspace, Allow); `.venv/bin/python scripts/servicenow_setup.py` adds the template "Setting change of orders-service". The job `setting` comes with the tools host's next boot.
+
+Before each call or take: `.venv/bin/python scripts/reset.py settings`. The first time it makes the Jira story and releases 1.31.0 for real, about 4 minutes; after that it takes under 2 minutes, and it is safe to run twice. There is no `demo.sh up` or `down`: AWS AppConfig costs nothing while nobody asks it anything. `scripts/demo.sh status settings` shows what each environment has and serves.
+
+After the call: `.venv/bin/python scripts/reset.py`, so production goes back to 1.3.0.
+
 ## Demo on a call: the patch clock (video 24)
 
 `/sbom <CVE or GHSA id>` searches the SBOMs of what is live and names the service that holds it. The next release is refused by the scan, one line moves the package to the fixed version, the release goes live, its change closes, and a clock that started at the search stops. The same search then finds nothing. Anyone in `people.yaml` with Slack may search; only releasers may release. No Claude, no new account, nothing that bills beyond the tools host.
