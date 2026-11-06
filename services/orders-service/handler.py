@@ -3,8 +3,8 @@
 An AWS Lambda function behind a function URL. It serves one page with the
 service, environment, version, commit and deploy time in large type, a /health
 endpoint for the pipeline's checks, and /api/orders with today's fictional
-orders for the desktop and mobile demos, and /api/price, one product's price.
-Standard library only.
+orders for the desktop and mobile demos. The page's deploy time comes from AWS,
+through the SDK this version pins in requirements.txt, not the copy Lambda ships.
 """
 
 import datetime
@@ -13,7 +13,6 @@ import html
 import itertools
 import json
 import os
-import urllib.parse
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -35,10 +34,8 @@ PRODUCTS = [
     ("Training shirt", 24.99),
     ("Sports socks, 3 pairs", 14.99),
 ]
-PRICES = dict(PRODUCTS)
 STATUSES = ["received", "picking", "packed", "shipped"]
 DELIVERY_ESTIMATE_DAYS = 2
-GIFT_WRAP_EUR = 3.50
 
 _deployed_at = None
 
@@ -116,6 +113,16 @@ def _picker(seed):
     return pick
 
 
+def aws_sdk():
+    """The version of boto3 in this function's own package: the pin, not the copy Lambda ships."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("boto3")
+    except PackageNotFoundError:
+        return "unknown"
+
+
 def health():
     return {
         "status": "ok",
@@ -123,6 +130,7 @@ def health():
         "environment": environment(),
         "version": VERSION,
         "commit": COMMIT,
+        "aws_sdk": aws_sdk(),
     }
 
 
@@ -142,19 +150,9 @@ def page():
         commit=html.escape(COMMIT[:7]),
         deployed=html.escape(deployed_at()),
         delivery_days=DELIVERY_ESTIMATE_DAYS,
-        gift_wrap=f"{GIFT_WRAP_EUR:.2f}",
         order_count=len(orders),
         rows=rows,
     )
-
-
-def price(event):
-    """/api/price?product=<name>: one product's price in euros."""
-    query = urllib.parse.parse_qs(event.get("rawQueryString", ""))
-    name = query.get("product", [""])[0]
-    if not name:
-        return _json(400, {"error": "product is required"})
-    return _json(200, {"product": name, "price_eur": PRICES[name]})
 
 
 def handler(event, context):
@@ -168,8 +166,6 @@ def handler(event, context):
         return _json(200, health())
     if path == "/api/orders":
         return _json(200, todays_orders())
-    if path == "/api/price":
-        return price(event)
     if path == "/":
         return {
             "statusCode": 200,
@@ -233,7 +229,6 @@ PAGE = """<!doctype html>
   </header>
   <div class="version">{version}</div>
   <p class="note">Delivery estimate: {delivery_days} days</p>
-  <p class="note">Gift wrap on any order: &euro; {gift_wrap}</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>
