@@ -13,8 +13,17 @@ def env(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "staging")
     monkeypatch.setenv("DEPLOYED_AT", "26 Oct 2026, 09:30 UTC")
     monkeypatch.setattr(app, "_deployed_at", None)
+    monkeypatch.setattr(app, "_settings", {"client": None, "token": None, "values": {}, "next_poll": 0.0})
 
 
-def request(path, method="GET", query=""):
-    event = {"rawPath": path, "rawQueryString": query, "requestContext": {"http": {"method": method, "path": path}}}
+@pytest.fixture
+def file(monkeypatch):
+    """The settings file as AWS AppConfig hands it out, set by each test."""
+    values = {}
+    monkeypatch.setattr(app, "_poll_settings", lambda: app._settings.update(values=dict(values)))
+    return values
+
+
+def request(path, method="GET"):
+    event = {"rawPath": path, "requestContext": {"http": {"method": method, "path": path}}}
     return app.handler(event, None)
