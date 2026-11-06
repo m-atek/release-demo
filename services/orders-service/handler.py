@@ -3,13 +3,8 @@
 An AWS Lambda function behind a function URL. It serves one page with the
 service, environment, version, commit and deploy time in large type, a /health
 endpoint for the pipeline's checks, and /api/orders with today's fictional
-orders for the desktop and mobile demos. Standard library and boto3, which
-Lambda's runtime has.
-
-From 1.31.0 the page's free delivery line comes from a settings file in AWS
-AppConfig, one session per container, polled at most every 15 seconds, AppConfig's
-minimum. /health reports what the file said last, so the pipeline can see a new
-value arrive. The page trusts the file: a date that doesn't exist raises.
+orders for the desktop and mobile demos, and /api/price, one product's price.
+Standard library only.
 """
 
 import datetime
@@ -18,7 +13,7 @@ import html
 import itertools
 import json
 import os
-import time
+import urllib.parse
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -40,13 +35,12 @@ PRODUCTS = [
     ("Training shirt", 24.99),
     ("Sports socks, 3 pairs", 14.99),
 ]
+PRICES = dict(PRODUCTS)
 STATUSES = ["received", "picking", "packed", "shipped"]
-SETTINGS_APPLICATION = "orders-service-settings"
-SETTINGS_PROFILE = "settings"
-SETTINGS_POLL_SECONDS = 15
+DELIVERY_ESTIMATE_DAYS = 2
+GIFT_WRAP_EUR = 3.50
 
 _deployed_at = None
-_settings = {"client": None, "token": None, "values": {}, "next_poll": 0.0}
 
 
 def read_package(directory):
@@ -110,49 +104,6 @@ def todays_orders(today=None):
     return {"date": today.isoformat(), "orders": orders}
 
 
-def settings():
-    """The settings file as AWS AppConfig last handed it to this container. {} until it has answered."""
-    now = time.monotonic()
-    if now >= _settings["next_poll"]:
-        _settings["next_poll"] = now + SETTINGS_POLL_SECONDS
-        try:
-            _poll_settings()
-        except Exception as error:
-            print(f"{VERSION} settings: no answer from AWS AppConfig ({error.__class__.__name__}), keeping the last one")
-            _settings["token"] = None
-    return _settings["values"]
-
-
-def _poll_settings():
-    name = environment()
-    if name not in ("staging", "production"):
-        return
-    if _settings["client"] is None:
-        import boto3
-
-        _settings["client"] = boto3.client("appconfigdata")
-    client = _settings["client"]
-    if _settings["token"] is None:
-        _settings["token"] = client.start_configuration_session(
-            ApplicationIdentifier=SETTINGS_APPLICATION, EnvironmentIdentifier=name,
-            ConfigurationProfileIdentifier=SETTINGS_PROFILE,
-            RequiredMinimumPollIntervalInSeconds=SETTINGS_POLL_SECONDS)["InitialConfigurationToken"]
-    reply = client.get_latest_configuration(ConfigurationToken=_settings["token"])
-    _settings["token"] = reply["NextPollConfigurationToken"]
-    content = reply["Configuration"].read()
-    if content:  # empty when nothing changed since the last poll
-        _settings["values"] = json.loads(content)
-
-
-def free_delivery_line():
-    """The page's line, from the setting. No setting, no line."""
-    until = settings().get("free_delivery_until")
-    if not until:
-        return ""
-    day = datetime.date.fromisoformat(until)
-    return f"Free delivery until {day.day} {day:%B}"
-
-
 def _picker(seed):
     """pick(n) gives a number below n, derived from the seed and a counter: the
     same seed always gives the same numbers. For demo data, not for security."""
@@ -172,7 +123,6 @@ def health():
         "environment": environment(),
         "version": VERSION,
         "commit": COMMIT,
-        "settings": settings(),
     }
 
 
@@ -191,10 +141,20 @@ def page():
         version=html.escape(VERSION),
         commit=html.escape(COMMIT[:7]),
         deployed=html.escape(deployed_at()),
-        free_delivery=free_delivery_line(),
+        delivery_days=DELIVERY_ESTIMATE_DAYS,
+        gift_wrap=f"{GIFT_WRAP_EUR:.2f}",
         order_count=len(orders),
         rows=rows,
     )
+
+
+def price(event):
+    """/api/price?product=<name>: one product's price in euros."""
+    query = urllib.parse.parse_qs(event.get("rawQueryString", ""))
+    name = query.get("product", [""])[0]
+    if not name:
+        return _json(400, {"error": "product is required"})
+    return _json(200, {"product": name, "price_eur": PRICES[name]})
 
 
 def handler(event, context):
@@ -208,6 +168,8 @@ def handler(event, context):
         return _json(200, health())
     if path == "/api/orders":
         return _json(200, todays_orders())
+    if path == "/api/price":
+        return price(event)
     if path == "/":
         return {
             "statusCode": 200,
@@ -270,7 +232,8 @@ PAGE = """<!doctype html>
     <span class="env {env}">{env}</span>
   </header>
   <div class="version">{version}</div>
-  <p class="note">{free_delivery}</p>
+  <p class="note">Delivery estimate: {delivery_days} days</p>
+  <p class="note">Gift wrap on any order: &euro; {gift_wrap}</p>
   <section class="facts">
     <div class="fact"><span>Environment</span><strong>{env}</strong></div>
     <div class="fact"><span>Commit</span><strong>{commit}</strong></div>
