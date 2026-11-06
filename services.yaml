@@ -60,7 +60,7 @@ orders-service:
   # It names versions, so every other release of this service waits as it always has.
   approval_wait:
     versions: [1.33.0]
-    hours: 10
+    hours: 24     # 6 November: take A1 in the evening, the Approve the next day
 
   # Demo 21: feature flags in AWS AppConfig (infra/demos/21-release-train-flags),
   # read from 1.8.0 on and named, with the issue each hides, in the version's

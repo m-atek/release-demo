@@ -28,15 +28,15 @@ def clock(monkeypatch):
 
 # Which version waits how long.
 
-def test_services_yaml_names_one_version_for_ten_hours():
+def test_services_yaml_names_one_version_for_a_day():
     settings = common.services()["orders-service"]["approval_wait"]
-    assert settings == {"versions": [WAITS], "hours": 10}
+    assert settings == {"versions": [WAITS], "hours": 24}
     assert [name for name, config in common.services().items() if config.get("approval_wait")] == ["orders-service"]
 
 
 def test_only_the_named_version_gets_the_long_limit():
-    assert change.long_wait({"service": "orders-service", "version": WAITS})["hours"] == 10
-    assert change.approval_limit({"service": "orders-service", "version": WAITS}) == 36000
+    assert change.long_wait({"service": "orders-service", "version": WAITS})["hours"] == 24
+    assert change.approval_limit({"service": "orders-service", "version": WAITS}) == 86400
     for state in ({"service": "orders-service", "version": ANY_OTHER}, {"service": "orders-service", "version": "1.4.0"},
                   {"service": "catalog", "version": WAITS}, {"service": "no-such-service", "version": WAITS}, {}):
         assert change.long_wait(state) is None
@@ -44,7 +44,7 @@ def test_only_the_named_version_gets_the_long_limit():
 
 
 @pytest.mark.parametrize("argv, version, expected", [
-    (["wait"], WAITS, 36000),
+    (["wait"], WAITS, 86400),
     (["wait"], ANY_OTHER, 1800),
     (["wait"], "1.4.0", 1800),
     (["wait", "--timeout", "60"], WAITS, 60),
@@ -117,7 +117,7 @@ def test_a_servicenow_that_never_wakes_ends_the_wait_at_its_limit(clock):
     sn = FakeServiceNow([ASLEEP])
     with pytest.raises(SystemExit) as stopped:
         change.wait_long(sn, state, change.approval_limit(state), 15)
-    assert stopped.value.code == 1 and clock.now - 1793000000.0 == pytest.approx(36000, abs=15)
+    assert stopped.value.code == 1 and clock.now - 1793000000.0 == pytest.approx(86400, abs=15)
     assert "long_wait" not in change.run_state.load()
 
 
@@ -147,8 +147,8 @@ def test_a_long_wait_still_gives_up_at_its_own_limit(clock, monkeypatch):
     with pytest.raises(SystemExit) as stopped:
         change.wait_long(sn, state, change.approval_limit(state), 15)
     assert stopped.value.code == 1
-    assert cancelled == ["No approval within 600 minutes. The release stopped before production."]
-    assert clock.now - 1793000000.0 == pytest.approx(36000, abs=15)
+    assert cancelled == ["No approval within 1440 minutes. The release stopped before production."]
+    assert clock.now - 1793000000.0 == pytest.approx(86400, abs=15)
     assert "long_wait" not in change.run_state.load()
 
 
@@ -223,7 +223,7 @@ class OpeningServiceNow:
         return {}
 
 
-@pytest.mark.parametrize("version, hours", [(WAITS, 10), (ANY_OTHER, 0.5), ("1.4.0", 0.5)])
+@pytest.mark.parametrize("version, hours", [(WAITS, 24), (ANY_OTHER, 0.5), ("1.4.0", 0.5)])
 def test_the_planned_window_is_as_long_as_the_wait(monkeypatch, version, hours):
     monkeypatch.setattr(change, "requester_user", lambda sn, slack_id: {"sys_id": "sam-id"})
     monkeypatch.setattr(change, "get_parameter", lambda ssm, name: f"https://{name.split('/')[0]}.example")
