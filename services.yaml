@@ -61,6 +61,9 @@ orders-service:
   approval_wait:
     versions: [1.33.0]
     hours: 24     # 6 November: take A1 in the evening, the Approve the next day
+    # Decision 161, 7 November: the overnight wait (11h 15m) died with the host's morning update, so the take's
+    # wait is mocked: six hours added to an approved wait, in Slack, the change's note, the events and the dashboard.
+    mock_waited_hours: 6
 
   # Demo 21: feature flags in AWS AppConfig (infra/demos/21-release-train-flags),
   # read from 1.8.0 on and named, with the issue each hides, in the version's

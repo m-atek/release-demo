@@ -95,6 +95,17 @@ def duration(seconds):
     return f"{seconds // 60}m {seconds % 60:02d}s" if seconds >= 60 else f"{seconds}s"
 
 
+def mock_wait(state):
+    """Video 31's mock (REVIEW decision 161): the seconds services.yaml's approval_wait adds to an approved wait,
+    for the versions it names and only when it sets mock_waited_hours, else 0. Its real overnight wait, 11h 15m on
+    6 and 7 November, ended when the tools host's morning update killed the step, so the wait on film is shortened."""
+    from common import services
+    settings = (services().get(state.get("service")) or {}).get("approval_wait") or {}
+    if state.get("version") not in settings.get("versions", []):
+        return 0
+    return int(float(settings.get("mock_waited_hours") or 0) * 3600)
+
+
 def requested_at(value):
     """The Slack command's time (epoch seconds), if given and plausible, else now."""
     try:

@@ -30,7 +30,7 @@ def clock(monkeypatch):
 
 def test_services_yaml_names_one_version_for_a_day():
     settings = common.services()["orders-service"]["approval_wait"]
-    assert settings == {"versions": [WAITS], "hours": 24}
+    assert settings == {"versions": [WAITS], "hours": 24, "mock_waited_hours": 6}
     assert [name for name, config in common.services().items() if config.get("approval_wait")] == ["orders-service"]
 
 

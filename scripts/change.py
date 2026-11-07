@@ -278,6 +278,13 @@ def attach(sn, change_id, path):
         pass
 
 
+def mocked_note(state, text):
+    """Video 31's mock: the Approval stage's work note carries the same seconds as its Slack row."""
+    found = re.fullmatch(r"Approval: ok in ([0-9.]+)s", text)
+    extra = run_state.mock_wait(state) if found else 0
+    return f"Approval: ok in {float(found.group(1)) + extra:.1f}s" if extra else text
+
+
 def note(sn, state, text):
     change = state.get("change")
     if change:
@@ -552,7 +559,7 @@ def main():
     if args.command == "open":
         open_change(sn, ssm, state)
     elif args.command == "note":
-        note(sn, state, args.text)
+        note(sn, state, mocked_note(state, args.text))
     elif args.command == "wait":
         (wait_long if long_wait(state) else wait)(sn, state, args.timeout or approval_limit(state), args.interval)
     elif args.command == "implement":

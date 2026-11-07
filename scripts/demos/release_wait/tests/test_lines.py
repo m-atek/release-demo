@@ -24,6 +24,7 @@ def finished(monkeypatch):
     """notify.py finish, as the pipeline calls it: a state on disk, the clock at started_at + elapsed, Slack recorded."""
     posted = []
     monkeypatch.setattr(notify, "post", lambda state: posted.append(state))
+    monkeypatch.setattr(run_state, "mock_wait", lambda state: 0)   # the real accounting; test_mock.py has the mock
 
     def run(result, elapsed, approval_seconds=None, **extra):
         stages = {"Approval": {"status": "ok", "seconds": approval_seconds} if approval_seconds else {"status": "skipped"}}

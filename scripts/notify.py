@@ -108,11 +108,14 @@ def main():
             raise SystemExit(f"No stage {args.name} in this run: {', '.join(state['stages'])}")
         state["stages"][args.name]["status"] = args.status
         if args.seconds is not None:
-            state["stages"][args.name]["seconds"] = args.seconds
+            mock = run_state.mock_wait(state) if (args.name, args.status) == ("Approval", "ok") else 0
+            state["stages"][args.name]["seconds"] = args.seconds + mock
     elif args.command == "line":
         state.setdefault("lines", []).append(args.text)
     else:
         elapsed = run_state.now() - state["started_at"]
+        if state["stages"].get("Approval", {}).get("status") == "ok":
+            elapsed += run_state.mock_wait(state)   # video 31's mock: "Live in" agrees with its Approval row
         total = run_state.duration(elapsed)
         state["total"] = total
         text = {"live": f"Live in {total}.",

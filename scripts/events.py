@@ -183,6 +183,8 @@ def main():
 
     ssm = ssm_client()
     state = run_state.load()
+    if (args.stage, args.result) == ("Approval", "ok") and args.seconds is not None:
+        args.seconds += run_state.mock_wait(state)   # video 31's mock, as notify.py's Approval row
     body = event(args, state)
     # Splunk's collector listens on the tools host only: a run elsewhere (GitHub Actions) sends to Grafana alone.
     splunk = to_splunk(ssm, body) if state.get("ci", {}).get("splunk", True) else "skipped"
